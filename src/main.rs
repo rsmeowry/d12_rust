@@ -1,17 +1,21 @@
 mod wrappers;
 mod input;
+mod time;
 
 use crate::input::KeyCode;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use std::thread::sleep;
 use std::time::Duration;
+use crate::time::Time;
 
 fn main() -> anyhow::Result<()> {
     let mut window = NativeWindow::create(WindowProps {
         ..Default::default()
     })?;
+    let mut time = Time::new();
 
+    time.reset()?;
     'main: loop {
         window.update()?;
 
@@ -25,14 +29,13 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        if window.input().is_held(KeyCode::H) {
-            println!("H!");
-        }
-        if window.input().is_held(KeyCode::W) {
-            println!("W!");
+        if window.input().is_pressed(KeyCode::H) {
+            println!("{:?} {:?}", time.delta_time(), time.game_time());
         }
 
-        sleep(Duration::from_millis(100));
+        sleep(Duration::from_millis(100)); // workload simulator 2026
+
+        time.tick()?;
     }
 
     drop(window);
