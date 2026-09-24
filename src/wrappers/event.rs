@@ -1,6 +1,16 @@
-﻿#[derive(Debug, Clone)]
+﻿use crate::input::KeyCode;
+
+#[derive(Debug, Clone)]
 pub enum WindowEvent {
     Resized { width: u32, height: u32 },
-    KeyDown { key_code: u32 },
+    KeyDown { key: KeyCode, code: u32 },
     CloseRequested,
+}
+
+#[derive(Debug, Clone)]
+pub enum InputEvent {
+    LoseFocus,
+    GainFocus,
+    Key { key: KeyCode, down: bool },
+    MouseDelta { dx: i32, dy: i32 },
 }

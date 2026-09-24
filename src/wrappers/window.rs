@@ -1,11 +1,14 @@
-﻿use std::os::raw::c_void;
-use std::thread::JoinHandle;
+﻿use crate::input::{InputDevice, KeyCode};
+use crate::wrappers::event::{InputEvent, WindowEvent};
 use flume::{Receiver, Sender};
-use windows::core::{w, PCWSTR};
+use num_enum::TryFromPrimitive;
+use std::os::raw::c_void;
+use std::thread::JoinHandle;
+use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::{GetRawInputData, RegisterRawInputDevices, HRAWINPUT, MOUSE_MOVE_ABSOLUTE, RAWINPUT, RAWINPUTDEVICE, RAWINPUTDEVICE_FLAGS, RAWINPUTHEADER, RID_INPUT, RIM_TYPEKEYBOARD, RIM_TYPEMOUSE};
 use windows::Win32::UI::WindowsAndMessaging::*;
-use crate::wrappers::event::WindowEvent;
 
 const WM_APP_DESTROY: u32 = WM_APP + 1;
 
@@ -36,12 +39,14 @@ unsafe impl Send for SendHwnd {}
 #[derive(Debug, Clone)]
 struct WindowState {
     pub tx: Sender<WindowEvent>,
+    pub input_tx: Sender<InputEvent>,
 }
 
 pub struct NativeWindow {
     rx: Receiver<WindowEvent>,
     hwnd: SendHwnd,
-    thread_handle: Option<JoinHandle<()>>
+    thread_handle: Option<JoinHandle<()>>,
+    input_device: InputDevice,
 }
 
 impl NativeWindow {
@@ -64,13 +69,21 @@ impl NativeWindow {
                 bottom: props.height as i32,
             };
             AdjustWindowRect(&mut win_rect, WS_OVERLAPPEDWINDOW, false)?;
-            CreateWindowExW(
+            let hwnd = CreateWindowExW(
                 WS_EX_APPWINDOW, PCWSTR(class_name.as_ptr()), PCWSTR(title.as_ptr()),
                 WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                 win_rect.right - win_rect.left,
                 win_rect.bottom - win_rect.top,
-                None, None, Some(hinst), Some(state as *const WindowState as *const c_void))
-        }?);
+                None, None, Some(hinst), Some(state as *const WindowState as *const c_void))?;
+            let devices = [
+                // mouse
+                RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: 0x02, dwFlags: RAWINPUTDEVICE_FLAGS(0), hwndTarget: hwnd },
+                // keyboard
+                RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: 0x06, dwFlags: RAWINPUTDEVICE_FLAGS(0), hwndTarget: hwnd }
+            ];
+            RegisterRawInputDevices(&devices, size_of::<RAWINPUTDEVICE>() as u32)?;
+            hwnd
+        });
 
         let _ = unsafe { ShowWindow(handle.0, SW_SHOW) };
 
@@ -81,11 +94,16 @@ impl NativeWindow {
         self.hwnd.0
     }
 
+    pub fn input(&self) -> &InputDevice {
+        &self.input_device
+    }
+
     pub fn create(props: WindowProps) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = flume::unbounded();
+        let (input_tx, input_rx) = flume::unbounded();
         let (hwnd_tx, hwnd_rx) = flume::bounded::<anyhow::Result<SendHwnd>>(1);
 
-        let state = WindowState { tx: event_tx };
+        let state = WindowState { tx: event_tx, input_tx };
         let thread_handle = std::thread::spawn(move || {
             let h_instance: HINSTANCE = unsafe { HINSTANCE(GetModuleHandleW(None).expect("Could not get module handle").0) };
             match Self::init_internal(h_instance, props, &state) {
@@ -108,11 +126,17 @@ impl NativeWindow {
         });
 
         let hwnd = hwnd_rx.recv()??;
-        Ok(Self { hwnd, rx: event_rx, thread_handle: Some(thread_handle) })
+        let device = InputDevice::new(input_rx);
+        Ok(Self { hwnd, rx: event_rx, thread_handle: Some(thread_handle), input_device: device })
     }
 
-    pub fn events(&self) -> Receiver<WindowEvent> {
-        self.rx.clone()
+    pub fn events(&self) -> &Receiver<WindowEvent> {
+        &self.rx
+    }
+
+    pub fn update(&mut self) -> anyhow::Result<()> {
+        self.input_device.update()?;
+        Ok(())
     }
 }
 
@@ -148,10 +172,6 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                 state.tx.send(WindowEvent::Resized { width: w, height: h }).expect("Failed to send event");
                 LRESULT(0)
             }
-            WM_KEYDOWN => {
-                state.tx.send(WindowEvent::KeyDown { key_code: wparam.0 as u32 }).expect("Failed to send event");
-                LRESULT(0)
-            }
             WM_CLOSE => {
                 state.tx.send(WindowEvent::CloseRequested).expect("Failed to send event");
                 LRESULT(0)
@@ -162,6 +182,37 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
             }
             WM_DESTROY => {
                 PostQuitMessage(0);
+                LRESULT(0)
+            }
+            WM_INPUT => {
+                let mut raw = RAWINPUT::default();
+                let mut size = size_of::<RAWINPUT>() as u32;
+                let read = GetRawInputData(
+                    HRAWINPUT(lparam.0 as *mut c_void),
+                    RID_INPUT,
+                    Some(&mut raw as *mut RAWINPUT as *mut c_void),
+                    &mut size,
+                    size_of::<RAWINPUTHEADER>() as u32);
+                if read != u32::MAX {
+                    if raw.header.dwType == RIM_TYPEMOUSE.0 {
+                        let m = raw.data.mouse;
+                        if m.usFlags.0 & MOUSE_MOVE_ABSOLUTE.0 == 0 {
+                            state.input_tx
+                                .send(InputEvent::MouseDelta { dx: m.lLastX, dy: m.lLastY })
+                                .expect("Failed to send input event");
+                        }
+                    } else if raw.header.dwType == RIM_TYPEKEYBOARD.0 {
+                        let k = raw.data.keyboard;
+                        let down = (k.Flags as u32 & RI_KEY_BREAK) == 0;
+                        state.input_tx
+                            .send(InputEvent::Key { key: KeyCode::try_from_primitive(k.VKey as u32).unwrap_or(KeyCode::None), down })
+                            .expect("Failed to send input event");
+                    }
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            }
+            WM_KILLFOCUS => {
+                state.input_tx.send(InputEvent::LoseFocus).expect("Failed to send input event");
                 LRESULT(0)
             }
             _ => DefWindowProcW(hwnd, msg, wparam, lparam),

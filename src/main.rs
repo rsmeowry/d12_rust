@@ -1,27 +1,38 @@
 mod wrappers;
+mod input;
 
-use windows::core::w;
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::WindowsAndMessaging::{AdjustWindowRect, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, PostQuitMessage, RegisterClassExW, ShowWindow, TranslateMessage, CW_USEDEFAULT, MSG, SW_SHOW, WM_DESTROY, WM_SIZE, WNDCLASSEXW, WS_EX_APPWINDOW, WS_OVERLAPPEDWINDOW};
+use crate::input::KeyCode;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::window::{NativeWindow, WindowProps};
+use std::thread::sleep;
+use std::time::Duration;
 
 fn main() -> anyhow::Result<()> {
-    let window = NativeWindow::create(WindowProps {
+    let mut window = NativeWindow::create(WindowProps {
         ..Default::default()
     })?;
 
-    let rx = window.events();
-    'window: while let Ok(w) = rx.recv() {
-        match w {
-            WindowEvent::Resized { .. } => {}
-            WindowEvent::KeyDown { .. } => {}
-            WindowEvent::CloseRequested => {
-                break 'window;
+    'main: loop {
+        window.update()?;
+
+        for e in window.events().try_iter() {
+            match e {
+                WindowEvent::Resized { .. } => {}
+                WindowEvent::KeyDown { .. } => {}
+                WindowEvent::CloseRequested => {
+                    break 'main;
+                }
             }
         }
-        println!("{w:?}");
+
+        if window.input().is_held(KeyCode::H) {
+            println!("H!");
+        }
+        if window.input().is_held(KeyCode::W) {
+            println!("W!");
+        }
+
+        sleep(Duration::from_millis(100));
     }
 
     drop(window);
