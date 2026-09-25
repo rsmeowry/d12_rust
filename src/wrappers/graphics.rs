@@ -1,10 +1,12 @@
 ﻿use std::any::Any;
+use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 use std::ptr::null;
+use glam::Vec4;
 use windows::Win32::Foundation::{HANDLE, HWND, RECT};
-use windows::Win32::Graphics::Direct3D12::{D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12DescriptorHeap, ID3D12Device, ID3D12Device13, ID3D12Fence, ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_COMMAND_LIST_TYPE, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12_DESCRIPTOR_HEAP_DESC, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_FENCE_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_TEXTURE_LAYOUT_UNKNOWN, D3D12_VIEWPORT};
+use windows::Win32::Graphics::Direct3D12::{D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12DescriptorHeap, ID3D12Device, ID3D12Device13, ID3D12Fence, ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_FLAG_DEPTH, D3D12_CLEAR_FLAG_STENCIL, D3D12_CLEAR_VALUE, D3D12_COMMAND_LIST_TYPE, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_DESCRIPTOR_HEAP_DESC, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_FENCE_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_TEXTURE_LAYOUT_UNKNOWN, D3D12_VIEWPORT};
 use windows::Win32::Graphics::Direct3D::{D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_12_0};
-use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2, IDXGIAdapter, IDXGIFactory, IDXGIFactory6, IDXGISwapChain1, IDXGISwapChain3, DXGI_CREATE_FACTORY_FLAGS, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING, DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT};
+use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2, IDXGIAdapter, IDXGIFactory, IDXGIFactory6, IDXGISwapChain1, IDXGISwapChain3, DXGI_CREATE_FACTORY_FLAGS, DXGI_PRESENT_ALLOW_TEARING, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING, DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT};
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_R8G8B8A8_UNORM};
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject, INFINITE};
 
@@ -12,7 +14,7 @@ use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject, INFIN
 pub struct GraphicsDevice {
     dxgi_factory: IDXGIFactory6,
     device: ID3D12Device,
-    current_fence: u64,
+    current_fence: RefCell<u64>,
     resources: Option<GraphicsResources>
 }
 
@@ -36,17 +38,17 @@ impl GraphicsDevice {
             dxgi_factory,
             device: device_result.ok_or_else(|| anyhow::Error::msg("Failed to create a graphics device!"))?,
             resources: None,
-            current_fence: 0
+            current_fence: RefCell::new(0)
         })
     }
 
     #[inline(always)]
     fn flush_command_queue_internal(&self, command_queue: &ID3D12CommandQueue, fence: &ID3D12Fence, fence_event: HANDLE) -> anyhow::Result<()> {
-        unsafe { command_queue.Signal(fence, self.current_fence)? };
+        unsafe { command_queue.Signal(fence, *self.current_fence.borrow())? };
 
         unsafe {
-            if fence.GetCompletedValue() < self.current_fence {
-                fence.SetEventOnCompletion(self.current_fence, fence_event)?;
+            if fence.GetCompletedValue() < *self.current_fence.borrow() {
+                fence.SetEventOnCompletion(*self.current_fence.borrow(), fence_event)?;
                 WaitForSingleObject(fence_event, INFINITE);
             }
         }
@@ -55,8 +57,8 @@ impl GraphicsDevice {
     }
 
     #[inline]
-    pub fn flush_command_queue(&mut self) -> anyhow::Result<()> {
-        self.current_fence += 1;
+    pub fn flush_command_queue(&self) -> anyhow::Result<()> {
+        *self.current_fence.borrow_mut() += 1;
 
         let res = self.resources()?;
         self.flush_command_queue_internal(&res.command_queue, &res.fence, res.fence_event)
@@ -68,6 +70,100 @@ impl GraphicsDevice {
         } else {
             Err(anyhow::Error::msg("GraphicsDevice's resources have not yet been initialized"))
         }
+    }
+
+    #[inline(always)]
+    fn current_bb_handle(&self) -> anyhow::Result<D3D12_CPU_DESCRIPTOR_HANDLE> {
+        let res = self.resources()?;
+
+        let mut handle = unsafe { res.rtv_heap.GetCPUDescriptorHandleForHeapStart() };
+        handle.ptr += (*res.bb_index.borrow() * res.render_target_desc_size) as usize;
+
+        Ok(handle)
+    }
+
+    #[inline(always)]
+    fn current_bb(&self) -> anyhow::Result<&ID3D12Resource> {
+        let res = self.resources()?;
+        Ok(&res.swapchain_buffer[*res.bb_index.borrow() as usize])
+    }
+
+    #[inline(always)]
+    fn dsv(&self) -> anyhow::Result<D3D12_CPU_DESCRIPTOR_HANDLE> {
+        unsafe {
+            Ok(self.resources()?.dsv_heap.GetCPUDescriptorHandleForHeapStart())
+        }
+    }
+
+    pub fn prepare_rt(&self) -> anyhow::Result<()> {
+        let res = self.resources()?;
+
+        unsafe {
+            res.command_alloc.Reset()?;
+            res.command_list.Reset(Some(&res.command_alloc), None)?;
+        }
+
+        let barrier = transition_barrier(
+            self.current_bb()?.clone(),
+            D3D12_RESOURCE_STATE_PRESENT,
+            D3D12_RESOURCE_STATE_RENDER_TARGET
+        );
+
+        unsafe {
+            res.command_list.ResourceBarrier(&[barrier]);
+            res.command_list.RSSetViewports(&[res.viewport]);
+            res.command_list.RSSetScissorRects(&[res.scissor_rect]);
+        }
+
+        Ok(())
+    }
+
+    pub fn clear_color(&self, color: Vec4) -> anyhow::Result<()> {
+        let rtv = self.current_bb_handle()?;
+        let dsv = self.dsv()?;
+
+        let res = self.resources()?;
+        unsafe {
+            res.command_list
+                .OMSetRenderTargets(1, Some(&rtv), true, Some(&dsv));
+            res.command_list
+                .ClearRenderTargetView(rtv, color.as_ref(), None);
+            res.command_list
+                .ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1., 0, None);
+        }
+
+        Ok(())
+    }
+
+    pub fn display_rt(&mut self) -> anyhow::Result<()> {
+        let res = self.resources()?;
+        let barrier = transition_barrier(
+            self.current_bb()?.clone(),
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
+            D3D12_RESOURCE_STATE_PRESENT
+        );
+        unsafe {
+            res.command_list.ResourceBarrier(&[barrier]);
+        }
+
+        unsafe {
+            res.command_list.Close()?
+        };
+
+        let command_list = unsafe { std::mem::transmute(res.command_list.clone()) };
+        let command_list = &[Some(command_list)];
+        unsafe {
+            res.command_queue.ExecuteCommandLists(command_list);
+        }
+
+        unsafe {
+            res.swapchain.Present(0, DXGI_PRESENT_ALLOW_TEARING).ok()?;
+            *res.bb_index.borrow_mut() = res.swapchain.GetCurrentBackBufferIndex();
+        }
+
+        self.flush_command_queue()?;
+
+        Ok(())
     }
 
     pub fn setup_resources(&mut self, window_handle: HWND, width: u32, height: u32) -> anyhow::Result<()> {
@@ -189,7 +285,7 @@ impl GraphicsDevice {
         };
 
         // saving barrier
-        self.current_fence += 1;
+        *self.current_fence.get_mut() += 1;
         self.flush_command_queue_internal(&command_queue, &fence, fence_event)?;
 
         // viewport and scissor
@@ -219,7 +315,7 @@ impl GraphicsDevice {
             command_alloc,
             command_list,
             swapchain,
-            bb_index,
+            bb_index: RefCell::new(bb_index),
 
             rtv_heap,
             swapchain_buffer,
@@ -248,7 +344,7 @@ pub struct GraphicsResources {
     command_list: ID3D12GraphicsCommandList,
 
     swapchain: IDXGISwapChain3,
-    bb_index: u32,
+    bb_index: RefCell<u32>,
 
     rtv_heap: ID3D12DescriptorHeap,
     swapchain_buffer: Vec<ID3D12Resource>,

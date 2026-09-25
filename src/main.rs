@@ -8,6 +8,7 @@ use crate::wrappers::event::WindowEvent;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use std::thread::sleep;
 use std::time::Duration;
+use glam::Vec4;
 use crate::time::Time;
 use crate::wrappers::graphics::GraphicsDevice;
 
@@ -37,7 +38,10 @@ fn main() -> anyhow::Result<()> {
             println!("{:?} {:?}", time.delta_time(), time.game_time());
         }
 
-        sleep(Duration::from_millis(100)); // workload simulator 2026
+        // workload simulator 2027
+        gd.prepare_rt()?;
+        gd.clear_color(Vec4::new(0.3, 0.4, 0.9, 1.))?;
+        gd.display_rt()?;
 
         time.tick()?;
     }
