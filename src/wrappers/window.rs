@@ -138,6 +138,19 @@ impl NativeWindow {
         self.input_device.update()?;
         Ok(())
     }
+
+    pub fn set_title<S: Into<String>>(&self, title: S) -> anyhow::Result<()> {
+        let pcw = PCWSTR(title
+            .into().encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>().as_ptr());
+
+        unsafe {
+            SetWindowTextW(self.hwnd.0, pcw)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Drop for NativeWindow {
