@@ -15,12 +15,13 @@ pub struct Time {
 }
 
 impl Time {
-    pub fn new() -> Self {
+    pub fn new() -> anyhow::Result<Self> {
         let mut per_sec: i64 = 0;
         unsafe {
             QueryPerformanceFrequency(&mut per_sec).expect("Failed to query CPU frequency");
         }
-        Self {
+        
+        let mut slf = Self {
             secs_per_cnt: 1. / per_sec as f64,
             dt: 0.0,
             base_time: 0,
@@ -29,7 +30,10 @@ impl Time {
             prev_time: 0,
             curr_time: 0,
             stopped: false,
-        }
+        };
+        
+        slf.reset()?;
+        Ok(slf)
     }
 
     pub fn game_time(&self) -> f32 {

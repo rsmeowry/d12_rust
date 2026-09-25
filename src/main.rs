@@ -1,6 +1,7 @@
 mod wrappers;
 mod input;
 mod time;
+mod render;
 
 use crate::input::KeyCode;
 use crate::wrappers::event::WindowEvent;
@@ -8,14 +9,17 @@ use crate::wrappers::window::{NativeWindow, WindowProps};
 use std::thread::sleep;
 use std::time::Duration;
 use crate::time::Time;
+use crate::wrappers::graphics::GraphicsDevice;
 
 fn main() -> anyhow::Result<()> {
     let mut window = NativeWindow::create(WindowProps {
         ..Default::default()
     })?;
-    let mut time = Time::new();
+    let mut time = Time::new()?;
 
-    time.reset()?;
+    let mut gd = GraphicsDevice::new()?;
+    gd.setup_resources(window.handle(), 800, 600)?;
+
     'main: loop {
         window.update()?;
 
