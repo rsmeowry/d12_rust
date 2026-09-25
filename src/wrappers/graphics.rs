@@ -3,14 +3,15 @@ use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 use std::ptr::null;
 use glam::Vec4;
-use windows::Win32::Foundation::{HANDLE, HWND, RECT};
-use windows::Win32::Graphics::Direct3D12::{D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12DescriptorHeap, ID3D12Device, ID3D12Device13, ID3D12Fence, ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_FLAG_DEPTH, D3D12_CLEAR_FLAG_STENCIL, D3D12_CLEAR_VALUE, D3D12_COMMAND_LIST_TYPE, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_DESCRIPTOR_HEAP_DESC, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_FENCE_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_TEXTURE_LAYOUT_UNKNOWN, D3D12_VIEWPORT};
+use windows::core::Interface;
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, RECT};
+use windows::Win32::Graphics::Direct3D12::{D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12DescriptorHeap, ID3D12Device, ID3D12Device13, ID3D12Fence, ID3D12GraphicsCommandList, ID3D12Resource, ID3D12Resource1, D3D12_CLEAR_FLAG_DEPTH, D3D12_CLEAR_FLAG_STENCIL, D3D12_CLEAR_VALUE, D3D12_COMMAND_LIST_TYPE, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_DESCRIPTOR_HEAP_DESC, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_FENCE_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_TRANSITION_BARRIER, D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, D3D12_VIEWPORT};
 use windows::Win32::Graphics::Direct3D::{D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_12_0};
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2, IDXGIAdapter, IDXGIFactory, IDXGIFactory6, IDXGISwapChain1, IDXGISwapChain3, DXGI_CREATE_FACTORY_FLAGS, DXGI_PRESENT_ALLOW_TEARING, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING, DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT};
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_R8G8B8A8_UNORM};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC};
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject, INFINITE};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GraphicsDevice {
     dxgi_factory: IDXGIFactory6,
     device: ID3D12Device,
@@ -104,15 +105,19 @@ impl GraphicsDevice {
         }
 
         let barrier = transition_barrier(
-            self.current_bb()?.clone(),
+            self.current_bb()?,
             D3D12_RESOURCE_STATE_PRESENT,
             D3D12_RESOURCE_STATE_RENDER_TARGET
         );
+        let rtv = self.current_bb_handle()?;
+        let dsv = self.dsv()?;
 
         unsafe {
             res.command_list.ResourceBarrier(&[barrier]);
             res.command_list.RSSetViewports(&[res.viewport]);
             res.command_list.RSSetScissorRects(&[res.scissor_rect]);
+            res.command_list
+                .OMSetRenderTargets(1, Some(&rtv), true, Some(&dsv));
         }
 
         Ok(())
@@ -125,8 +130,6 @@ impl GraphicsDevice {
         let res = self.resources()?;
         unsafe {
             res.command_list
-                .OMSetRenderTargets(1, Some(&rtv), true, Some(&dsv));
-            res.command_list
                 .ClearRenderTargetView(rtv, color.as_ref(), None);
             res.command_list
                 .ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1., 0, None);
@@ -135,10 +138,54 @@ impl GraphicsDevice {
         Ok(())
     }
 
-    pub fn display_rt(&mut self) -> anyhow::Result<()> {
+    pub fn device(&self) -> &ID3D12Device {
+        &self.device
+    }
+
+    pub fn command_list(&self) -> anyhow::Result<&ID3D12GraphicsCommandList> {
+        Ok(&self.resources()?.command_list)
+    }
+
+    pub fn create_buffer(&self, data: &[u8]) -> anyhow::Result<ID3D12Resource> {
+        let heap = D3D12_HEAP_PROPERTIES {
+            Type: D3D12_HEAP_TYPE_UPLOAD,
+            ..Default::default()
+        };
+        let desc = D3D12_RESOURCE_DESC {
+            Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
+            Width: data.len() as u64,
+            Height: 1,
+            DepthOrArraySize: 1,
+            MipLevels: 1,
+            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+            Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+            ..Default::default()
+        };
+        let mut buf: Option<ID3D12Resource> = None;
+        unsafe {
+            self.device.CreateCommittedResource(
+                &heap,
+                D3D12_HEAP_FLAG_NONE,
+                &desc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                None,
+                &mut buf)?;
+        }
+        let mut buf = buf.ok_or_else(|| anyhow::Error::msg("Failed to create a buffer"))?;
+        unsafe {
+            let mut ptr = std::ptr::null_mut();
+            buf.Map(0, None, Some(&mut ptr))?;
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr.cast::<u8>(), data.len());
+            buf.Unmap(0, None);
+        }
+
+        Ok(buf)
+    }
+
+    pub fn display_rt(&self) -> anyhow::Result<()> {
         let res = self.resources()?;
         let barrier = transition_barrier(
-            self.current_bb()?.clone(),
+            self.current_bb()?,
             D3D12_RESOURCE_STATE_RENDER_TARGET,
             D3D12_RESOURCE_STATE_PRESENT
         );
@@ -202,7 +249,7 @@ impl GraphicsDevice {
         sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING.0 as u32;
 
         let swapchain1: IDXGISwapChain1 = unsafe { self.dxgi_factory.CreateSwapChainForHwnd(&command_queue, window_handle, &sd, None, None)? };
-        let swapchain = unsafe { std::mem::transmute::<IDXGISwapChain1, IDXGISwapChain3>(swapchain1) };
+        let swapchain = swapchain1.cast::<IDXGISwapChain3>()?;
         let bb_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
 
         // rtv heap
@@ -273,7 +320,7 @@ impl GraphicsDevice {
             self.device.CreateDepthStencilView(&depth_stencil_buffer, None, dsv_heap.GetCPUDescriptorHandleForHeapStart());
         }
 
-        let barrier = transition_barrier(depth_stencil_buffer.clone(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+        let barrier = transition_barrier(&depth_stencil_buffer, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE);
         unsafe { command_list.ResourceBarrier(&[barrier]) };
 
         unsafe { command_list.Close()? };
@@ -330,7 +377,17 @@ impl GraphicsDevice {
     }
 }
 
-#[derive(Debug, Clone)]
+impl Drop for GraphicsDevice {
+    fn drop(&mut self) {
+        if let Some(res) = &self.resources {
+            unsafe {
+                CloseHandle(res.fence_event).expect("Failed to close fence event");
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct GraphicsResources {
     fence: ID3D12Fence,
     fence_event: HANDLE,
@@ -357,19 +414,19 @@ pub struct GraphicsResources {
 
 #[inline(always)]
 pub fn transition_barrier(
-    res: ID3D12Resource,
-    before: D3D12_RESOURCE_STATES,
-    after: D3D12_RESOURCE_STATES,
-) -> D3D12_RESOURCE_BARRIER {
-    let mut result = D3D12_RESOURCE_BARRIER::default();
-    result.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    result.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    unsafe {
-        let barrier = &mut result.Anonymous;
-        barrier.Transition.pResource = ManuallyDrop::new(Some(res));
-        barrier.Transition.StateBefore = before;
-        barrier.Transition.StateAfter = after;
-        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    res: &ID3D12Resource,
+    before: D3D12_RESOURCE_STATES, after
+    : D3D12_RESOURCE_STATES) -> D3D12_RESOURCE_BARRIER {
+    D3D12_RESOURCE_BARRIER {
+        Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+        Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
+        Anonymous: D3D12_RESOURCE_BARRIER_0 {
+            Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
+                pResource: unsafe { std::mem::transmute_copy(res) },
+                Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                StateBefore: before,
+                StateAfter: after,
+            }),
+        },
     }
-    result
 }
