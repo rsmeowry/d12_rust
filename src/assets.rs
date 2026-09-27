@@ -1,11 +1,9 @@
-﻿use std::collections::HashMap;
-use std::io::Cursor;
-use glam::{Vec2, Vec3, Vec4};
-use tobj::{LoadOptions, Material};
-use crate::render::builtin::{Vertex3, VertexPhong};
-use crate::render::mesh::Mesh;
+﻿use crate::render::mesh::Mesh;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
+use glam::{Vec2, Vec3, Vec4};
+use std::io::Cursor;
+use tobj::LoadOptions;
 
 pub fn load_obj_mesh<V: Vertex>(gd: &GraphicsDevice, bytes: &[u8], make_vert: impl Fn(Vec3, Vec3, Vec2, Vec4) -> V) -> anyhow::Result<Mesh> {
     let mut c = Cursor::new(bytes);
