@@ -12,8 +12,11 @@ use crate::time::Time;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::graphics::GraphicsDevice;
 use crate::wrappers::window::{NativeWindow, WindowProps};
-use glam::{Mat4, Vec2, Vec3, Vec4};
+use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
+use crate::render::camera::Camera;
 
+const WIDTH: u32 = 800;
+const HEIGHT: u32 = 600;
 fn main() -> anyhow::Result<()> {
     let mut window = NativeWindow::create(WindowProps {
         ..Default::default()
@@ -21,16 +24,14 @@ fn main() -> anyhow::Result<()> {
     let mut time = Time::new()?;
 
     let mut gd = GraphicsDevice::new()?;
-    gd.setup_resources(window.handle(), 800, 600)?;
+    gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
 
     let pipeline = Pipeline::new::<Vertex2>(&gd, include_str!("../assets/shaders/Sample.hlsl"))?;
     let mesh = cube_mesh(&gd)?;
 
-    let view = glam::camera::lh::view::look_at_mat4(Vec3::new(0., 2., -5.), Vec3::ZERO, Vec3::Y);
-    let mut proj = glam::camera::lh::proj::directx::perspective(60f32.to_radians(), 800. / 600., 0.1, 100.);
-    let mut view_proj = proj * view;
+    let mut cam = Camera::new(WIDTH, HEIGHT, 70., Vec3::new(0., 2., -3.), Quat::from_rotation_x(30f32.to_radians()));
     let mut globals = Globals {
-        view_proj,
+        view_proj: cam.view_proj(),
         resolution: Vec2::new(800., 600.),
         time: 0.0,
         delta_time: 0.0,
@@ -60,9 +61,8 @@ fn main() -> anyhow::Result<()> {
         if let Some(size) = new_size {
             gd.resize(size.0, size.1)?;
             globals.resolution = Vec2::new(size.0 as f32, size.1 as f32);
-            proj = glam::camera::lh::proj::directx::perspective(60f32.to_radians(), size.0 as f32 / size.1 as f32, 0.1, 100.);
-            view_proj = proj * view;
-            globals.view_proj = view_proj;
+            cam.resize(size.0, size.1);
+            globals.view_proj = cam.view_proj();
         }
 
         // updating globals
