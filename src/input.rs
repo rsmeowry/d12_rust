@@ -1,7 +1,7 @@
 ﻿use crate::wrappers::event::InputEvent;
 use flume::Receiver;
 use glam::Vec2;
-use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
@@ -14,6 +14,7 @@ pub struct InputDevice {
     rx: Receiver<InputEvent>
 }
 
+#[allow(unused)]
 impl InputDevice {
     pub fn new(rx: Receiver<InputEvent>) -> Self {
         Self {
@@ -30,9 +31,6 @@ impl InputDevice {
         match event {
             InputEvent::LoseFocus => {
                 self.held.clear();
-            }
-            InputEvent::GainFocus => {
-
             }
             InputEvent::Key { key, down } => {
                 if down && !self.held.contains(&key) {

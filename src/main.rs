@@ -77,7 +77,6 @@ fn main() -> anyhow::Result<()> {
                 WindowEvent::Resized { width, height } => {
                     new_size = Some((width, height));
                 }
-                WindowEvent::KeyDown { .. } => {}
                 WindowEvent::CloseRequested => {
                     break 'main;
                 }

@@ -1,5 +1,5 @@
 [package]
-name = "d12_rust"
+name = "d12-rust"
 version = "0.1.0"
 edition = "2024"
 

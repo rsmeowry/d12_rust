@@ -1,4 +1,6 @@
-﻿use glam::Vec4;
+﻿#![allow(unused)]
+
+use glam::Vec4;
 use std::cell::{Cell, RefCell};
 use std::mem::ManuallyDrop;
 use windows::core::Interface;
@@ -211,7 +213,7 @@ impl GraphicsDevice {
                 None,
                 &mut buf)?;
         }
-        let mut buf = buf.ok_or_else(|| anyhow::Error::msg("Failed to create a buffer"))?;
+        let buf = buf.ok_or_else(|| anyhow::Error::msg("Failed to create a buffer"))?;
         unsafe {
             let mut ptr = std::ptr::null_mut();
             buf.Map(0, None, Some(&mut ptr))?;

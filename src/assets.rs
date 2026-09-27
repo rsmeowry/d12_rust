@@ -14,7 +14,7 @@ pub fn load_obj_mesh<V: Vertex>(gd: &GraphicsDevice, bytes: &[u8], make_vert: im
             single_index: true,
             ..Default::default()
         },
-        |p| { tobj::load_mtl_buf(&mut Cursor::new(vec![])) }
+        |_| { tobj::load_mtl_buf(&mut Cursor::new(vec![])) }
     )?;
 
     let mesh = &models.first().unwrap().mesh;

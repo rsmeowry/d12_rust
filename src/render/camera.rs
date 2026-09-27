@@ -5,6 +5,7 @@ pub struct Camera {
     fov_rad: f32,
     aspect: f32,
     pos: Vec3,
+    #[allow(unused)]
     rot: Quat,
 
     view: Mat4,
@@ -12,6 +13,7 @@ pub struct Camera {
     view_proj: Mat4,
 }
 
+#[allow(unused)]
 impl Camera {
     pub fn new(width: u32, height: u32, fov_deg: f32, pos: Vec3, rot: Quat) -> Self {
         let fov_rad = fov_deg.to_radians();

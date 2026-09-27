@@ -50,8 +50,6 @@ macro_rules! vertex_struct {
 }
 
 mod tests {
-    use glam::{Vec3, Vec4};
-
     vertex_struct!(
         VertPosColor {
             pos: [f32; 3] as POSITION;
@@ -63,6 +61,7 @@ mod tests {
     pub fn test_vert_creation() {
         use crate::render::vertex::Vertex;
         use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R32G32B32A32_FLOAT;
+        use glam::{Vec3, Vec4};
 
         let v = VertPosColor::new(Vec3::new(0., 3., 0.), Vec4::new(0.7, 0.3, 0.3, 1.));
         assert_eq!(size_of_val(&v), 28);

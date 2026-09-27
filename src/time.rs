@@ -60,6 +60,7 @@ impl Time {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn start(&mut self) -> anyhow::Result<()> {
         if !self.stopped {
             return Ok(());
@@ -76,6 +77,7 @@ impl Time {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn stop(&mut self) -> anyhow::Result<()> {
         if self.stopped {
            return Ok(());

@@ -1,8 +1,8 @@
-﻿use windows::Win32::Graphics::Direct3D12::{ID3D12CommandList, ID3D12GraphicsCommandList, ID3D12Resource, D3D12_INDEX_BUFFER_VIEW, D3D12_VERTEX_BUFFER_VIEW};
-use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32_UINT};
-use crate::render::vertex::Vertex;
+﻿use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
+use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_INDEX_BUFFER_VIEW, D3D12_VERTEX_BUFFER_VIEW};
+use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R32_UINT;
 
 #[derive(Debug)]
 pub struct Mesh {

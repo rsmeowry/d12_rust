@@ -190,7 +190,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                 LRESULT(0)
             }
             WM_APP_DESTROY => {
-                unsafe { let _ = DestroyWindow(hwnd); }
+                let _ = DestroyWindow(hwnd);
                 LRESULT(0)
             }
             WM_DESTROY => {

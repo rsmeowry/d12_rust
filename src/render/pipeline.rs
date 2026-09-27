@@ -231,12 +231,13 @@ impl ShaderIncludes {
         }
     }
 
+    #[allow(unused)]
     pub fn get(&self, name: &str) -> Option<&'static str> {
         self.files.get(name).copied()
     }
 }
 
-#[allow(E0407)]
+#[allow(non_snake_case)]
 impl ID3DInclude_Impl for ShaderIncludes {
     fn Open(
         &self,

@@ -1,6 +1,5 @@
-﻿use std::os::raw::c_void;
+﻿use crate::wrappers::graphics::GraphicsDevice;
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
-use crate::wrappers::graphics::GraphicsDevice;
 
 #[derive(Debug)]
 pub struct ConstBuffer<T: bytemuck::Pod> {
