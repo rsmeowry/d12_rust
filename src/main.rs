@@ -36,9 +36,12 @@ fn main() -> anyhow::Result<()> {
     'main: loop {
         window.update()?;
 
+        let mut new_size: Option<(u32, u32)> = None;
         for e in window.events().try_iter() {
             match e {
-                WindowEvent::Resized { .. } => {}
+                WindowEvent::Resized { width, height } => {
+                    new_size = Some((width, height));
+                }
                 WindowEvent::KeyDown { .. } => {}
                 WindowEvent::CloseRequested => {
                     break 'main;
@@ -48,6 +51,10 @@ fn main() -> anyhow::Result<()> {
 
         if window.input().is_pressed(KeyCode::H) {
             println!("{:?} {:?}", time.delta_time(), time.game_time());
+        }
+
+        if let Some(size) = new_size {
+            gd.resize(size.0, size.1)?;
         }
 
         // workload simulator 2027
