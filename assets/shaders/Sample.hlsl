@@ -1,6 +1,4 @@
-cbuffer Obj : register(b0) {
-    float4x4 mvp;
-};
+#include <Core.hlsl>
 
 struct Attributes {
     float3 pos: POSITION;
@@ -14,7 +12,8 @@ struct Varyings {
 
 Varyings vert(Attributes attr) {
     Varyings v;
-    v.pos = mul(float4(attr.pos, 1.), mvp);
+
+    v.pos = mul(viewProj, mul(model, float4(attr.pos, 1.)));
     v.col = attr.col;
     return v;
 }
