@@ -2,11 +2,12 @@
 use std::io::Cursor;
 use glam::{Vec2, Vec3, Vec4};
 use tobj::{LoadOptions, Material};
-use crate::render::builtin::VertexPhong;
+use crate::render::builtin::{Vertex3, VertexPhong};
 use crate::render::mesh::Mesh;
+use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 
-pub fn load_obj_mesh(gd: &GraphicsDevice, bytes: &[u8]) -> anyhow::Result<Mesh> {
+pub fn load_obj_mesh<V: Vertex>(gd: &GraphicsDevice, bytes: &[u8], make_vert: impl Fn(Vec3, Vec3, Vec2, Vec4) -> V) -> anyhow::Result<Mesh> {
     let mut c = Cursor::new(bytes);
     let (models, _mats) = tobj::load_obj_buf(
         &mut c,
@@ -20,7 +21,7 @@ pub fn load_obj_mesh(gd: &GraphicsDevice, bytes: &[u8]) -> anyhow::Result<Mesh> 
 
     let mesh = &models.first().unwrap().mesh;
     let vertex_cnt = mesh.positions.len() / 3;
-    let mut vertices = Vec::with_capacity(vertex_cnt);
+    let mut vertices: Vec<V> = Vec::with_capacity(vertex_cnt);
 
     for i in 0..vertex_cnt {
         let pos = Vec3::new(
@@ -39,7 +40,7 @@ pub fn load_obj_mesh(gd: &GraphicsDevice, bytes: &[u8]) -> anyhow::Result<Mesh> 
             Vec3::ZERO
         };
 
-        let _uv = if !mesh.texcoords.is_empty() {
+        let uv = if !mesh.texcoords.is_empty() {
             Vec2::new(mesh.texcoords[i * 2], 1.0 - mesh.texcoords[i * 2 + 1])
         } else {
             Vec2::ZERO
@@ -51,7 +52,7 @@ pub fn load_obj_mesh(gd: &GraphicsDevice, bytes: &[u8]) -> anyhow::Result<Mesh> 
             Vec4::new(0.5, 0.6, 0.75, 1.)
         };
 
-        vertices.push(VertexPhong::new(pos, normal, col))
+        vertices.push(make_vert(pos, normal, uv, col));
     }
 
     Mesh::new(gd, &vertices, &mesh.indices)

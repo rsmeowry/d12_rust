@@ -16,22 +16,21 @@ use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use crate::assets::load_obj_mesh;
 use crate::render::camera::Camera;
+use crate::render::texture::Texture;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 
-type ObjectModel = Mat4;
-
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct ObjectPhong {
-    pub model: [f32; 16],
+    pub model: Mat4,
 
-    pub cam_pos: [f32; 3],
+    pub cam_pos: Vec3,
     pub shininess: f32,
-    pub ambient_color: [f32; 4],
-    pub diffuse_color: [f32; 4],
-    pub specular_color: [f32; 4],
+    pub ambient_color: Vec4,
+    pub diffuse_color: Vec4,
+    pub specular_color: Vec4,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -43,9 +42,10 @@ fn main() -> anyhow::Result<()> {
     let mut gd = GraphicsDevice::new()?;
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
 
-    let pipeline = Pipeline::<ObjectPhong>::new::<VertexPhong>(&gd, include_str!("../assets/shaders/Phong.hlsl"))?;
+    let pipeline = Pipeline::<ObjectPhong>::new::<Vertex3>(&gd, include_str!("../assets/shaders/PhongTex.hlsl"))?;
     // let mesh = cube_mesh_phong(&gd)?;
-    let mesh = load_obj_mesh(&gd, include_bytes!("../assets/models/pusheen_hi_res.obj"))?;
+    let mesh = load_obj_mesh(&gd, include_bytes!("../assets/models/pusheen_hi_res.obj"), |pos, norm, uv, _col| { Vertex3::new(pos, norm, uv) })?;
+    let tex = Texture::load(&gd, include_bytes!("../assets/textures/pusheen_albedo.png"))?;
 
     let mut cam = Camera::new(WIDTH, HEIGHT, 70., Vec3::new(0., 2., -3.), Quat::from_rotation_x(30f32.to_radians()));
     let mut globals = Globals {
@@ -59,13 +59,12 @@ fn main() -> anyhow::Result<()> {
     };
     let globals_cbuf = ConstBuffer::<Globals>::new(&gd, &globals)?;
 
-    let mut model = Mat4::IDENTITY;
     let mut object_data = ObjectPhong {
-        model: model.to_rows_array(),
+        model: Mat4::IDENTITY,
         cam_pos: cam.pos().into(),
-        ambient_color: [0.1, 0.05, 0.05, 1.0],
-        diffuse_color: [1.0, 1.0, 1.0, 1.0],
-        specular_color: [1.0, 0.6, 1.0, 1.0],
+        ambient_color: Vec4::new(0.1, 0.1, 0.1, 1.0),
+        diffuse_color: Vec4::new(1.0, 1.0, 1.0, 1.0),
+        specular_color: Vec4::new(1.0, 0.9, 0.7, 1.0),
         shininess: 128.0,
     };
 
@@ -109,10 +108,11 @@ fn main() -> anyhow::Result<()> {
         pipeline.bind(&cmd, &globals_cbuf);
 
         let model = Mat4::from_rotation_y(time.game_time());
-        object_data.model = model.to_rows_array();
+        object_data.model = model;
         object_data.cam_pos = cam.pos().into();
 
         pipeline.set_per_obj_data(&cmd, &object_data);
+        pipeline.set_tex(&cmd, &tex);
         mesh.draw(&cmd);
         gd.display_rt()?;
 
@@ -127,6 +127,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[allow(unused)]
 fn cube_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
     let vertices = [
         Vertex2::new(Vec3::new(-1.0, -1.0, -1.0), Vec4::new(0.0, 1.0, 0.0, 1.0)),
@@ -151,6 +152,7 @@ fn cube_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
     Mesh::new(gd, &vertices, &indices)
 }
 
+#[allow(unused)]
 fn cube_mesh_phong(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
     let col = Vec4::new(0.5, 0.6, 0.75, 1.);
     let vertices = [
@@ -198,6 +200,7 @@ fn cube_mesh_phong(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
 }
 
 
+#[allow(unused)]
 fn tri_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
     let vertices = [
         Vertex2 { pos: [ 0.0,  0.5, 0.5], col: [1., 0., 0., 1.] },

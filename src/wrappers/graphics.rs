@@ -1,11 +1,11 @@
 ﻿use std::any::Any;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::mem::ManuallyDrop;
 use std::ptr::null;
 use glam::Vec4;
 use windows::core::Interface;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, RECT};
-use windows::Win32::Graphics::Direct3D12::{D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12DescriptorHeap, ID3D12Device, ID3D12Device13, ID3D12Fence, ID3D12GraphicsCommandList, ID3D12Resource, ID3D12Resource1, D3D12_CLEAR_FLAG_DEPTH, D3D12_CLEAR_FLAG_STENCIL, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_COMMAND_LIST_TYPE, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_DEPTH_STENCIL_VALUE, D3D12_DESCRIPTOR_HEAP_DESC, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_FENCE_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_TRANSITION_BARRIER, D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, D3D12_VIEWPORT};
+use windows::Win32::Graphics::Direct3D12::{D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12DescriptorHeap, ID3D12Device, ID3D12Device13, ID3D12Fence, ID3D12GraphicsCommandList, ID3D12Resource, ID3D12Resource1, D3D12_CLEAR_FLAG_DEPTH, D3D12_CLEAR_FLAG_STENCIL, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_COMMAND_LIST_TYPE, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_DEPTH_STENCIL_VALUE, D3D12_DESCRIPTOR_HEAP_DESC, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_FENCE_FLAG_NONE, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_TRANSITION_BARRIER, D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, D3D12_VIEWPORT};
 use windows::Win32::Graphics::Direct3D::{D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_12_0};
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2, IDXGIAdapter, IDXGIFactory, IDXGIFactory6, IDXGISwapChain, IDXGISwapChain1, IDXGISwapChain3, DXGI_CREATE_FACTORY_FLAGS, DXGI_PRESENT_ALLOW_TEARING, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING, DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT};
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC};
@@ -20,6 +20,7 @@ pub struct GraphicsDevice {
 }
 
 impl GraphicsDevice {
+    pub const SRV_HEAP_SIZE: u32 = 1024;
     pub const BB_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
     pub const DS_FORMAT: DXGI_FORMAT = DXGI_FORMAT_D24_UNORM_S8_UINT;
     pub const SWAPCHAIN_BUFFER_COUNT: u32 = 2;
@@ -124,6 +125,7 @@ impl GraphicsDevice {
             res.command_list.ResourceBarrier(&[barrier]);
             res.command_list.RSSetViewports(&[res.viewport]);
             res.command_list.RSSetScissorRects(&[res.scissor_rect]);
+            res.command_list.SetDescriptorHeaps(&[Some(res.srv_heap.clone())]);
             res.command_list
                 .OMSetRenderTargets(1, Some(&rtv), true, Some(&dsv));
         }
@@ -152,6 +154,38 @@ impl GraphicsDevice {
 
     pub fn command_list(&self) -> anyhow::Result<&ID3D12GraphicsCommandList> {
         Ok(&self.resources()?.command_list)
+    }
+
+    pub fn create_srv(&self) -> anyhow::Result<(D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE)> {
+        let res = self.resources()?;
+        let i = res.srv_next.get();
+        if i >= Self::SRV_HEAP_SIZE {
+            return Err(anyhow::Error::msg("The SRV heap is full!"))
+        }
+
+        res.srv_next.set(i + 1);
+        let offset = i * res.cbv_srv_uav_desc_size;
+        let (mut cpu, mut gpu) = unsafe {
+            (
+                res.srv_heap.GetCPUDescriptorHandleForHeapStart(),
+                res.srv_heap.GetGPUDescriptorHandleForHeapStart(),
+            )
+        };
+        cpu.ptr += offset as usize;
+        gpu.ptr += offset as u64;
+        Ok((cpu, gpu))
+    }
+
+    pub fn execute_now(&self, f: impl FnOnce(&ID3D12GraphicsCommandList)) -> anyhow::Result<()> {
+        let res = self.resources()?;
+        unsafe {
+            res.command_alloc.Reset()?;
+            res.command_list.Reset(&res.command_alloc, None)?;
+            f(&res.command_list);
+            res.command_list.Close()?;
+            res.command_queue.ExecuteCommandLists(&[Some(res.command_list.cast()?)]);
+        }
+        self.flush_command_queue()
     }
 
     pub fn create_buffer(&self, data: &[u8]) -> anyhow::Result<ID3D12Resource> {
@@ -303,6 +337,14 @@ impl GraphicsDevice {
         dsv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         let dsv_heap: ID3D12DescriptorHeap = unsafe { self.device.CreateDescriptorHeap(&dsv_heap_desc)? };
 
+        // srv heap
+        let mut srv_heap_desc = D3D12_DESCRIPTOR_HEAP_DESC::default();
+        srv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        srv_heap_desc.NumDescriptors = Self::SRV_HEAP_SIZE;
+        srv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        srv_heap_desc.NodeMask = 0;
+        let srv_heap: ID3D12DescriptorHeap = unsafe { self.device.CreateDescriptorHeap(&srv_heap_desc)? };
+
         let (swapchain_buffer, depth_stencil_buffer) = Self::size_dependent(
             &self.device, &swapchain, &rtv_heap, render_target_desc_size, &dsv_heap, width, height)?;
 
@@ -343,6 +385,9 @@ impl GraphicsDevice {
             swapchain_buffer,
             dsv_heap,
             depth_stencil_buffer,
+
+            srv_heap,
+            srv_next: Cell::new(0),
 
             viewport,
             scissor_rect
@@ -446,6 +491,9 @@ pub struct GraphicsResources {
     swapchain_buffer: Vec<ID3D12Resource>,
     dsv_heap: ID3D12DescriptorHeap,
     depth_stencil_buffer: ID3D12Resource,
+
+    srv_heap: ID3D12DescriptorHeap,
+    srv_next: Cell<u32>,
 
     viewport: D3D12_VIEWPORT,
     scissor_rect: RECT
