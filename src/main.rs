@@ -1,22 +1,22 @@
-mod wrappers;
-mod input;
-mod time;
-mod render;
 mod assets;
+mod input;
+mod render;
+mod time;
+mod wrappers;
 
+use crate::assets::load_obj_mesh;
 use crate::input::KeyCode;
 use crate::render::builtin::{Vertex2, Vertex3, VertexPhong};
+use crate::render::camera::Camera;
 use crate::render::cbuffer::ConstBuffer;
 use crate::render::mesh::Mesh;
 use crate::render::pipeline::{Globals, Pipeline};
+use crate::render::texture::Texture;
 use crate::time::Time;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::graphics::GraphicsDevice;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
-use crate::assets::load_obj_mesh;
-use crate::render::camera::Camera;
-use crate::render::texture::Texture;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -42,12 +42,25 @@ fn main() -> anyhow::Result<()> {
     let mut gd = GraphicsDevice::new()?;
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
 
-    let pipeline = Pipeline::<ObjectPhong>::new::<Vertex3>(&gd, include_str!("../assets/shaders/PhongTex.hlsl"))?;
+    let pipeline = Pipeline::<ObjectPhong>::new::<Vertex3>(
+        &gd,
+        include_str!("../assets/shaders/PhongTex.hlsl"),
+    )?;
     // let mesh = cube_mesh_phong(&gd)?;
-    let mesh = load_obj_mesh(&gd, include_bytes!("../assets/models/pusheen_hi_res.obj"), |pos, norm, uv, _col| { Vertex3::new(pos, norm, uv) })?;
+    let mesh = load_obj_mesh(
+        &gd,
+        include_bytes!("../assets/models/pusheen_hi_res.obj"),
+        |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
+    )?;
     let tex = Texture::load(&gd, include_bytes!("../assets/textures/pusheen_albedo.png"))?;
 
-    let mut cam = Camera::new(WIDTH, HEIGHT, 70., Vec3::new(0., 2., -3.), Quat::from_rotation_x(30f32.to_radians()));
+    let mut cam = Camera::new(
+        WIDTH,
+        HEIGHT,
+        70.,
+        Vec3::new(0., 2., -3.),
+        Quat::from_rotation_x(30f32.to_radians()),
+    );
     let mut globals = Globals {
         view_proj: cam.view_proj(),
         resolution: Vec2::new(800., 600.),
@@ -115,7 +128,10 @@ fn main() -> anyhow::Result<()> {
         mesh.draw(&cmd);
         gd.display_rt()?;
 
-        let title = format!("A DirectX12 Renderer | FPS: {}", (1. / time.delta_time()).round());
+        let title = format!(
+            "A DirectX12 Renderer | FPS: {}",
+            (1. / time.delta_time()).round()
+        );
         window.set_title(title)?;
 
         time.tick()?;
@@ -140,11 +156,7 @@ fn cube_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
     ];
 
     let indices: [u32; 36] = [
-        0, 1, 2, 0, 2, 3,
-        4, 6, 5, 4, 7, 6,
-        4, 5, 1, 4, 1, 0,
-        3, 2, 6, 3, 6, 7,
-        1, 5, 6, 1, 6, 2,
+        0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 4, 5, 1, 4, 1, 0, 3, 2, 6, 3, 6, 7, 1, 5, 6, 1, 6, 2,
         4, 0, 3, 4, 3, 7,
     ];
 
@@ -159,27 +171,22 @@ fn cube_mesh_phong(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
         VertexPhong::new(Vec3::new(-1.0, 1.0, -1.0), Vec3::new(0., 0., -1.), col),
         VertexPhong::new(Vec3::new(1.0, 1.0, -1.0), Vec3::new(0., 0., -1.), col),
         VertexPhong::new(Vec3::new(1.0, -1.0, -1.0), Vec3::new(0., 0., -1.), col),
-
         VertexPhong::new(Vec3::new(-1., -1., 1.), Vec3::new(0., 0., 1.), col),
         VertexPhong::new(Vec3::new(1., -1., 1.), Vec3::new(0., 0., 1.), col),
         VertexPhong::new(Vec3::new(1., 1., 1.), Vec3::new(0., 0., 1.), col),
         VertexPhong::new(Vec3::new(-1., 1., 1.), Vec3::new(0., 0., 1.), col),
-
         VertexPhong::new(Vec3::new(-1., -1., 1.), Vec3::new(-1., 0., 0.), col),
         VertexPhong::new(Vec3::new(-1., 1., 1.), Vec3::new(-1., 0., 0.), col),
         VertexPhong::new(Vec3::new(-1., 1., -1.), Vec3::new(-1., 0., 0.), col),
         VertexPhong::new(Vec3::new(-1., -1., -1.), Vec3::new(-1., 0., 0.), col),
-
         VertexPhong::new(Vec3::new(1., -1., -1.), Vec3::new(1., 0., 0.), col),
         VertexPhong::new(Vec3::new(1., 1., -1.), Vec3::new(1., 0., 0.), col),
         VertexPhong::new(Vec3::new(1., 1., 1.), Vec3::new(1., 0., 0.), col),
         VertexPhong::new(Vec3::new(1., -1., 1.), Vec3::new(1., 0., 0.), col),
-
         VertexPhong::new(Vec3::new(-1., 1., -1.), Vec3::new(0., 1., 0.), col),
         VertexPhong::new(Vec3::new(-1., 1., 1.), Vec3::new(0., 1., 0.), col),
         VertexPhong::new(Vec3::new(1., 1., 1.), Vec3::new(0., 1., 0.), col),
         VertexPhong::new(Vec3::new(1., 1., -1.), Vec3::new(0., 1., 0.), col),
-
         VertexPhong::new(Vec3::new(-1., -1., 1.), Vec3::new(0., -1., 0.), col),
         VertexPhong::new(Vec3::new(-1., -1., -1.), Vec3::new(0., -1., 0.), col),
         VertexPhong::new(Vec3::new(1., -1., -1.), Vec3::new(0., -1., 0.), col),
@@ -198,13 +205,21 @@ fn cube_mesh_phong(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
     Mesh::new(gd, &vertices, &indices)
 }
 
-
 #[allow(unused)]
 fn tri_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
     let vertices = [
-        Vertex2 { pos: [ 0.0,  0.5, 0.5], col: [1., 0., 0., 1.] },
-        Vertex2 { pos: [ 0.5, -0.5, 0.5], col: [0., 1., 0., 1.] },
-        Vertex2 { pos: [-0.5, -0.5, 0.5], col: [0., 0., 1., 1.] }
+        Vertex2 {
+            pos: [0.0, 0.5, 0.5],
+            col: [1., 0., 0., 1.],
+        },
+        Vertex2 {
+            pos: [0.5, -0.5, 0.5],
+            col: [0., 1., 0., 1.],
+        },
+        Vertex2 {
+            pos: [-0.5, -0.5, 0.5],
+            col: [0., 0., 1., 1.],
+        },
     ];
 
     let indices = [0, 1, 2];

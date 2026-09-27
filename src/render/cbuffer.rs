@@ -1,4 +1,4 @@
-﻿use crate::wrappers::graphics::GraphicsDevice;
+use crate::wrappers::graphics::GraphicsDevice;
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-﻿use crate::wrappers::event::InputEvent;
+use crate::wrappers::event::InputEvent;
 use flume::Receiver;
 use glam::Vec2;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -11,7 +11,7 @@ pub struct InputDevice {
     pressed: HashSet<KeyCode>,
     released: HashSet<KeyCode>,
     held: HashSet<KeyCode>,
-    rx: Receiver<InputEvent>
+    rx: Receiver<InputEvent>,
 }
 
 #[allow(unused)]
@@ -44,7 +44,7 @@ impl InputDevice {
             }
             InputEvent::MouseDelta { dx, dy } => {
                 self.mouse_delta += Vec2::new(dx as f32, dy as f32);
-            },
+            }
         }
         Ok(())
     }
@@ -64,17 +64,39 @@ impl InputDevice {
         Ok(())
     }
 
-    pub fn is_pressed(&self, key: KeyCode) -> bool { self.pressed.contains(&key) }
-    pub fn is_held(&self, key: KeyCode) -> bool { self.held.contains(&key) }
-    pub fn was_released(&self, key: KeyCode) -> bool { self.released.contains(&key) }
+    pub fn is_pressed(&self, key: KeyCode) -> bool {
+        self.pressed.contains(&key)
+    }
+    pub fn is_held(&self, key: KeyCode) -> bool {
+        self.held.contains(&key)
+    }
+    pub fn was_released(&self, key: KeyCode) -> bool {
+        self.released.contains(&key)
+    }
 
-    pub fn mouse_pos(&self) -> Vec2 { self.mouse_pos }
-    pub fn mouse_delta(&self) -> Vec2 { self.mouse_delta }
+    pub fn mouse_pos(&self) -> Vec2 {
+        self.mouse_pos
+    }
+    pub fn mouse_delta(&self) -> Vec2 {
+        self.mouse_delta
+    }
 }
 
 //#region keys enum
 #[repr(u32)]
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, TryFromPrimitive, IntoPrimitive, Default)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Default,
+)]
 pub enum KeyCode {
     #[default]
     None = 0,

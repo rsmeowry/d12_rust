@@ -1,11 +1,15 @@
-﻿use crate::render::mesh::Mesh;
+use crate::render::mesh::Mesh;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 use glam::{Vec2, Vec3, Vec4};
 use std::io::Cursor;
 use tobj::LoadOptions;
 
-pub fn load_obj_mesh<V: Vertex>(gd: &GraphicsDevice, bytes: &[u8], make_vert: impl Fn(Vec3, Vec3, Vec2, Vec4) -> V) -> anyhow::Result<Mesh> {
+pub fn load_obj_mesh<V: Vertex>(
+    gd: &GraphicsDevice,
+    bytes: &[u8],
+    make_vert: impl Fn(Vec3, Vec3, Vec2, Vec4) -> V,
+) -> anyhow::Result<Mesh> {
     let mut c = Cursor::new(bytes);
     let (models, _mats) = tobj::load_obj_buf(
         &mut c,
@@ -14,7 +18,7 @@ pub fn load_obj_mesh<V: Vertex>(gd: &GraphicsDevice, bytes: &[u8], make_vert: im
             single_index: true,
             ..Default::default()
         },
-        |_| { tobj::load_mtl_buf(&mut Cursor::new(vec![])) }
+        |_| tobj::load_mtl_buf(&mut Cursor::new(vec![])),
     )?;
 
     let mesh = &models.first().unwrap().mesh;
@@ -45,7 +49,12 @@ pub fn load_obj_mesh<V: Vertex>(gd: &GraphicsDevice, bytes: &[u8], make_vert: im
         };
 
         let col = if !mesh.vertex_color.is_empty() {
-            Vec4::new(mesh.vertex_color[i * 3], mesh.vertex_color[i * 3 + 1], mesh.vertex_color[i * 3 + 2], 1.0)
+            Vec4::new(
+                mesh.vertex_color[i * 3],
+                mesh.vertex_color[i * 3 + 1],
+                mesh.vertex_color[i * 3 + 2],
+                1.0,
+            )
         } else {
             Vec4::new(0.5, 0.6, 0.75, 1.)
         };

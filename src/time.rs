@@ -1,4 +1,4 @@
-﻿use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
+use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 
 #[derive(Debug, Clone)]
 pub struct Time {
@@ -11,7 +11,7 @@ pub struct Time {
     prev_time: i64,
     curr_time: i64,
 
-    stopped: bool
+    stopped: bool,
 }
 
 impl Time {
@@ -20,7 +20,7 @@ impl Time {
         unsafe {
             QueryPerformanceFrequency(&mut per_sec).expect("Failed to query CPU frequency");
         }
-        
+
         let mut slf = Self {
             secs_per_cnt: 1. / per_sec as f64,
             dt: 0.0,
@@ -31,16 +31,18 @@ impl Time {
             curr_time: 0,
             stopped: false,
         };
-        
+
         slf.reset()?;
         Ok(slf)
     }
 
     pub fn game_time(&self) -> f32 {
         if self.stopped {
-            return ((self.stop_time - self.paused_time - self.base_time) as f64 * self.secs_per_cnt) as f32
+            return ((self.stop_time - self.paused_time - self.base_time) as f64 * self.secs_per_cnt)
+                as f32;
         }
-        return ((self.curr_time - self.stop_time - self.base_time) as f64 * self.secs_per_cnt) as f32
+        ((self.curr_time - self.stop_time - self.base_time) as f64 * self.secs_per_cnt)
+            as f32
     }
 
     pub fn delta_time(&self) -> f32 {
@@ -80,7 +82,7 @@ impl Time {
     #[allow(unused)]
     pub fn stop(&mut self) -> anyhow::Result<()> {
         if self.stopped {
-           return Ok(());
+            return Ok(());
         }
 
         let mut c_time: i64 = 0;
