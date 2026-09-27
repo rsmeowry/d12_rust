@@ -67,14 +67,14 @@ fn main() -> anyhow::Result<()> {
         time: 0.0,
         delta_time: 0.0,
         _pad: 0.0,
-        light_dir: Vec3::new(-0.4, -0.8, 0.5).normalize().into(),
+        light_dir: Vec3::new(-0.4, -0.8, 0.5).normalize(),
         light_col: Vec4::new(1.0, 0.9, 0.9, 1.0),
     };
     let globals_cbuf = ConstBuffer::<Globals>::new(&gd, &globals)?;
 
     let mut object_data = ObjectPhong {
         model: Mat4::IDENTITY,
-        cam_pos: cam.pos().into(),
+        cam_pos: cam.pos(),
         ambient_color: Vec4::new(0.1, 0.1, 0.1, 1.0),
         diffuse_color: Vec4::new(1.0, 1.0, 1.0, 1.0),
         specular_color: Vec4::new(1.0, 0.9, 0.7, 1.0),
@@ -117,15 +117,15 @@ fn main() -> anyhow::Result<()> {
         gd.clear_color(Vec4::new(0.3, 0.4, 0.9, 1.))?;
 
         let cmd = gd.command_list()?;
-        pipeline.bind(&cmd, &globals_cbuf);
+        pipeline.bind(cmd, &globals_cbuf);
 
         let model = Mat4::from_rotation_y(time.game_time());
         object_data.model = model;
-        object_data.cam_pos = cam.pos().into();
+        object_data.cam_pos = cam.pos();
 
-        pipeline.set_per_obj_data(&cmd, &object_data);
-        pipeline.set_tex(&cmd, &tex);
-        mesh.draw(&cmd);
+        pipeline.set_per_obj_data(cmd, &object_data);
+        pipeline.set_tex(cmd, &tex);
+        mesh.draw(cmd);
         gd.display_rt()?;
 
         let title = format!(

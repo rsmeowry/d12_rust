@@ -154,7 +154,7 @@ impl NativeWindow {
                     hwnd_tx.send(Ok(hwnd)).unwrap();
                 }
                 Err(err) => {
-                    hwnd_tx.send(Err(anyhow::Error::from(err))).unwrap();
+                    hwnd_tx.send(Err(err)).unwrap();
                     return;
                 }
             }

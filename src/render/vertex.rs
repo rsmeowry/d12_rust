@@ -57,7 +57,7 @@ macro_rules! vertex_struct {
 
         impl $crate::render::vertex::Vertex for $name {
             const LAYOUT: &'static [windows::Win32::Graphics::Direct3D12::D3D12_INPUT_ELEMENT_DESC] = &[
-                $(crate::render::vertex::attr(core::concat!(core::stringify!($sem), "\0"), <$ty as crate::render::vertex::VertexAttr>::FORMAT, core::mem::offset_of!($name, $field))),*
+                $($crate::render::vertex::attr(core::concat!(core::stringify!($sem), "\0"), <$ty as crate::render::vertex::VertexAttr>::FORMAT, core::mem::offset_of!($name, $field))),*
             ];
         }
     };
