@@ -11,3 +11,8 @@ vertex_struct!(Vertex3 {
     uv: [f32; 2] as TEXCOORD0;
 });
 
+vertex_struct!(VertexPhong {
+    pos: [f32; 3] as POSITION;
+    norm: [f32; 3] as NORMAL;
+    color: [f32; 4] as COLOR;
+});

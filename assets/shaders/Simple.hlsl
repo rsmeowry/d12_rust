@@ -1,5 +1,9 @@
 #include <Core.hlsl>
 
+cbuffer SimpleObj : register(b0) {
+    float4x4 model;
+}
+
 struct Attributes {
     float3 pos: POSITION;
     float4 col: COLOR;

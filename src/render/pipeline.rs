@@ -1,8 +1,9 @@
 ﻿use std::boxed::Box;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-use glam::{Mat4, Vec2};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use windows::core::{implement, s, PCSTR};
 use windows::Win32::Foundation::E_FAIL;
 use windows::Win32::Graphics::Direct3D12::{D3D12SerializeRootSignature, ID3D12GraphicsCommandList, ID3D12PipelineState, ID3D12RootSignature, D3D12_BLEND_ONE, D3D12_BLEND_OP_ADD, D3D12_BLEND_ZERO, D3D12_COLOR_WRITE_ENABLE_ALL, D3D12_COMPARISON_FUNC_LESS, D3D12_CULL_MODE_BACK, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_FILL_MODE_SOLID, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_LOGIC_OP_NOOP, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RASTERIZER_DESC, D3D12_RENDER_TARGET_BLEND_DESC, D3D12_ROOT_CONSTANTS, D3D12_ROOT_DESCRIPTOR, D3D12_ROOT_DESCRIPTOR_TABLE, D3D12_ROOT_PARAMETER, D3D12_ROOT_PARAMETER_0, D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, D3D12_ROOT_PARAMETER_TYPE_CBV, D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE, D3D12_ROOT_SIGNATURE_DESC, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, D3D12_SHADER_BYTECODE, D3D12_SHADER_VISIBILITY_ALL, D3D12_SHADER_VISIBILITY_VERTEX, D3D_ROOT_SIGNATURE_VERSION_1};
@@ -14,12 +15,19 @@ use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 
 #[derive(Debug)]
-pub struct Pipeline {
+pub struct Pipeline<TParam> {
     root_sig: ID3D12RootSignature,
     pso: ID3D12PipelineState,
+    _t: PhantomData<TParam>,
 }
 
-impl Pipeline {
+impl<TParam: bytemuck::Pod> Pipeline<TParam> {
+    const PARAM_DWORDS: u32 = {
+        assert!(size_of::<TParam>() % 4 == 0 &&
+                    size_of::<TParam>() / 4 <= 62, "Per object params too big for root constants!");
+        (size_of::<TParam>() / 4) as u32
+    };
+
     pub fn new<TVert: Vertex>(gd: &GraphicsDevice, shader: &str) -> anyhow::Result<Self> {
         let dev = gd.device();
 
@@ -28,9 +36,9 @@ impl Pipeline {
             D3D12_ROOT_PARAMETER {
                 ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
                 Anonymous: D3D12_ROOT_PARAMETER_0 {
-                    Constants: D3D12_ROOT_CONSTANTS { ShaderRegister: 0, RegisterSpace: 0, Num32BitValues: 16 }
+                    Constants: D3D12_ROOT_CONSTANTS { ShaderRegister: 0, RegisterSpace: 0, Num32BitValues: Self::PARAM_DWORDS }
                 },
-                ShaderVisibility: D3D12_SHADER_VISIBILITY_VERTEX,
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
             },
             // b1 - globals
             D3D12_ROOT_PARAMETER {
@@ -91,7 +99,7 @@ impl Pipeline {
         };
         let pso = unsafe { dev.CreateGraphicsPipelineState(&desc)? };
 
-        Ok(Self { root_sig, pso })
+        Ok(Self { root_sig, pso, _t: PhantomData })
     }
 
     pub fn bind(&self, cmd: &ID3D12GraphicsCommandList, globals: &ConstBuffer<Globals>) {
@@ -102,9 +110,9 @@ impl Pipeline {
         }
     }
 
-    pub fn set_model(&self, cmd: &ID3D12GraphicsCommandList, model: &Mat4) {
+    pub fn set_per_obj_data(&self, cmd: &ID3D12GraphicsCommandList, data: &TParam) {
         unsafe {
-            cmd.SetGraphicsRoot32BitConstants(0, 16, model.as_ref().as_ptr().cast(), 0);
+            cmd.SetGraphicsRoot32BitConstants(0, Self::PARAM_DWORDS, (data as *const TParam).cast(), 0);
         }
     }
 }
@@ -115,7 +123,10 @@ pub struct Globals {
     pub view_proj: Mat4,
     pub resolution: Vec2,
     pub time: f32,
-    pub delta_time: f32
+    pub delta_time: f32,
+    pub light_dir: Vec3,
+    pub _pad: f32,
+    pub light_col: Vec4,
 }
 
 fn compile(src: &str, entry: PCSTR, target: PCSTR) -> anyhow::Result<ID3DBlob> {
@@ -173,7 +184,8 @@ impl ShaderIncludes {
         Self {
             files: HashMap::from(shader_files![
                 "Core.hlsl",
-                "Sample.hlsl"
+                "Simple.hlsl",
+                "Phong.hlsl"
             ]),
         }
     }
