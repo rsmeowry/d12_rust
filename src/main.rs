@@ -2,6 +2,7 @@ mod wrappers;
 mod input;
 mod time;
 mod render;
+mod assets;
 
 use crate::input::KeyCode;
 use crate::render::builtin::{Vertex2, Vertex3, VertexPhong};
@@ -13,6 +14,7 @@ use crate::wrappers::event::WindowEvent;
 use crate::wrappers::graphics::GraphicsDevice;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
+use crate::assets::load_obj_mesh;
 use crate::render::camera::Camera;
 
 const WIDTH: u32 = 800;
@@ -42,7 +44,8 @@ fn main() -> anyhow::Result<()> {
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
 
     let pipeline = Pipeline::<ObjectPhong>::new::<VertexPhong>(&gd, include_str!("../assets/shaders/Phong.hlsl"))?;
-    let mesh = cube_mesh_phong(&gd)?;
+    // let mesh = cube_mesh_phong(&gd)?;
+    let mesh = load_obj_mesh(&gd, include_bytes!("../assets/models/pusheen_hi_res.obj"))?;
 
     let mut cam = Camera::new(WIDTH, HEIGHT, 70., Vec3::new(0., 2., -3.), Quat::from_rotation_x(30f32.to_radians()));
     let mut globals = Globals {
@@ -63,7 +66,7 @@ fn main() -> anyhow::Result<()> {
         ambient_color: [0.1, 0.05, 0.05, 1.0],
         diffuse_color: [1.0, 1.0, 1.0, 1.0],
         specular_color: [1.0, 0.6, 1.0, 1.0],
-        shininess: 32.0,
+        shininess: 128.0,
     };
 
     'main: loop {
