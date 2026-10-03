@@ -269,6 +269,7 @@ pub enum KeyCode {
     Zoom = 251,
     Pa1 = 253,
     OemClear = 254,
+    Shift,
 }
 
 //#endregion

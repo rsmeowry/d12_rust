@@ -4,7 +4,7 @@ mod render;
 mod time;
 mod wrappers;
 
-use crate::assets::load_obj_mesh;
+use crate::assets::{load_assimp_scene, load_obj_mesh};
 use crate::input::KeyCode;
 use crate::render::builtin::{Vertex2, Vertex3, VertexPhong};
 use crate::render::camera::Camera;
@@ -34,6 +34,7 @@ struct ObjectPhong {
 }
 
 fn main() -> anyhow::Result<()> {
+
     let mut window = NativeWindow::create(WindowProps {
         ..Default::default()
     })?;
@@ -46,10 +47,15 @@ fn main() -> anyhow::Result<()> {
         &gd,
         include_str!("../assets/shaders/PhongTex.hlsl"),
     )?;
+
+    // sponza !!
+    let sponza_curtains = load_assimp_scene(&gd, "assets/sponza/NewSponza_Curtains_glTF.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
+    let sponza_base = load_assimp_scene(&gd, "assets/sponza/NewSponza_Main_glTF_003.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
+
     // let mesh = cube_mesh_phong(&gd)?;
     let mesh = load_obj_mesh(
         &gd,
-        include_bytes!("../assets/models/pusheen_hi_res.obj"),
+        include_bytes!("../assets/models/sphere.obj"),
         |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
     )?;
     let tex = Texture::load(&gd, include_bytes!("../assets/textures/pusheen_albedo.png"))?;
@@ -78,8 +84,10 @@ fn main() -> anyhow::Result<()> {
         ambient_color: Vec4::new(0.1, 0.1, 0.1, 1.0),
         diffuse_color: Vec4::new(1.0, 1.0, 1.0, 1.0),
         specular_color: Vec4::new(1.0, 0.9, 0.7, 1.0),
-        shininess: 128.0,
+        shininess: 32.0,
     };
+
+    let mut camera_y = 0.;
 
     'main: loop {
         window.update()?;
@@ -100,6 +108,40 @@ fn main() -> anyhow::Result<()> {
             println!("{:?} {:?}", time.delta_time(), time.game_time());
         }
 
+        if window.input().is_held(KeyCode::Left) {
+            camera_y -= time.delta_time() * 50.;
+            cam.set_rot(Quat::from_rotation_y(camera_y.to_radians()));
+        }
+
+        if window.input().is_held(KeyCode::Right) {
+            camera_y += time.delta_time() * 50.;
+            cam.set_rot(Quat::from_rotation_y(camera_y.to_radians()));
+        }
+
+        if window.input().is_held(KeyCode::A) {
+            cam.set_pos(cam.pos() - cam.rot().mul_vec3(Vec3::X) * time.delta_time());
+        }
+
+        if window.input().is_held(KeyCode::D) {
+            cam.set_pos(cam.pos() + cam.rot().mul_vec3(Vec3::X) * time.delta_time());
+        }
+
+        if window.input().is_held(KeyCode::W) {
+            cam.set_pos(cam.pos() + cam.rot().mul_vec3(Vec3::Z) * time.delta_time());
+        }
+
+        if window.input().is_held(KeyCode::S) {
+            cam.set_pos(cam.pos() - cam.rot().mul_vec3(Vec3::Z) * time.delta_time());
+        }
+
+        if window.input().is_held(KeyCode::Space) {
+            cam.set_pos(cam.pos() + Vec3::Y * time.delta_time());
+        }
+
+        if window.input().is_held(KeyCode::V) {
+            cam.set_pos(cam.pos() - Vec3::Y * time.delta_time());
+        }
+
         if let Some(size) = new_size {
             gd.resize(size.0, size.1)?;
             globals.resolution = Vec2::new(size.0 as f32, size.1 as f32);
@@ -110,6 +152,8 @@ fn main() -> anyhow::Result<()> {
         // updating globals
         globals.time = time.game_time();
         globals.delta_time = time.delta_time();
+        globals.view_proj = cam.view_proj();
+
         globals_cbuf.write(&globals);
 
         // workload simulator 2027
@@ -123,9 +167,36 @@ fn main() -> anyhow::Result<()> {
         object_data.model = model;
         object_data.cam_pos = cam.pos();
 
-        pipeline.set_per_obj_data(cmd, &object_data);
-        pipeline.set_tex(cmd, &tex);
-        mesh.draw(cmd);
+        for (mesh_idx, model) in &sponza_base.mesh_indices {
+            let mesh = sponza_base.meshes.get(*mesh_idx).unwrap();
+            let material = sponza_base.materials.get(&mesh.1);
+            let material = if let Some(mat) = material {
+                mat
+            } else {
+                continue
+            };
+
+            object_data.model = *model;
+
+            pipeline.set_per_obj_data(cmd, &object_data);
+            pipeline.set_tex(cmd, &material.texture);
+            mesh.0.draw(cmd);
+        }
+
+        for (mesh_idx, model) in &sponza_curtains.mesh_indices {
+            let mesh = sponza_curtains.meshes.get(*mesh_idx).unwrap();
+            let material = sponza_curtains.materials.get(&mesh.1).unwrap();
+            object_data.model = *model;
+
+            pipeline.set_per_obj_data(cmd, &object_data);
+            pipeline.set_tex(cmd, &material.texture);
+            mesh.0.draw(cmd);
+        }
+
+        // pipeline.set_per_obj_data(cmd, &object_data);
+        // pipeline.set_tex(cmd, &tex);
+        // mesh.draw(cmd);
+
         gd.display_rt()?;
 
         let title = format!(
@@ -156,8 +227,12 @@ fn cube_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
     ];
 
     let indices: [u32; 36] = [
-        0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 4, 5, 1, 4, 1, 0, 3, 2, 6, 3, 6, 7, 1, 5, 6, 1, 6, 2,
-        4, 0, 3, 4, 3, 7,
+        0, 1, 2,  0, 2, 3,
+        4, 6, 5,  4, 7, 6,
+        4, 5, 1,  4, 1, 0,
+        3, 2, 6,  3, 6, 7,
+        1, 5, 6,  1, 6, 2,
+        4, 0, 3,  4, 3, 7,
     ];
 
     Mesh::new(gd, &vertices, &indices)

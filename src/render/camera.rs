@@ -52,14 +52,14 @@ impl Camera {
     pub fn set_pos(&mut self, pos: Vec3) {
         self.pos = pos;
         self.view =
-            glam::camera::lh::view::look_to_mat4(self.pos, self.rot.mul_vec3(Vec3::NEG_Z), Vec3::Y);
+            glam::camera::lh::view::look_to_mat4(self.pos, self.rot.mul_vec3(Vec3::Z), Vec3::Y);
         self.view_proj = self.proj * self.view;
     }
 
     pub fn set_rot(&mut self, rot: Quat) {
         self.rot = rot;
         self.view =
-            glam::camera::lh::view::look_to_mat4(self.pos, self.rot.mul_vec3(Vec3::NEG_Z), Vec3::Y);
+            glam::camera::lh::view::look_to_mat4(self.pos, self.rot.mul_vec3(Vec3::Z), Vec3::Y);
         self.view_proj = self.proj * self.view;
     }
 
