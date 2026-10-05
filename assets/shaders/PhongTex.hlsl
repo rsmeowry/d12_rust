@@ -11,6 +11,9 @@ cbuffer PhongObj : register(b0) {
     float4 ambientColor;
     float4 diffuseColor;
     float4 specularColor;
+    float diffuseK;
+    float specularK;
+    float2 pad;
 }
 
 struct Attributes {
@@ -45,13 +48,14 @@ float4 frag(Varyings i) : SV_Target {
     float3 V = normalize(cameraPos - i.posW);
     float3 R = reflect(-L, N);
 
-    float4 ambient = ambientColor * lightCol;
+    float4 albedo = tex.Sample(LINEAR, i.uv);
+    float4 ambient = albedo * ambientColor * lightCol;
 
     float diffuseFactor = max(dot(N, L), 0.0f);
-    float4 diffuse = diffuseFactor * tex.Sample(LINEAR, i.uv) * diffuseColor * lightCol;
+    float4 diffuse = diffuseFactor * albedo * diffuseColor * lightCol * diffuseK;
 
     float specularFactor = pow(max(dot(R, V), 0.0f), shininess);
-    float4 specular = specularFactor * specularColor * lightCol;
+    float4 specular = specularFactor * specularColor * lightCol * specularK;
 
     specular *= (diffuseFactor > 0.0f) ? 1.0f : 0.0f;
 

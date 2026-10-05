@@ -31,6 +31,9 @@ struct ObjectPhong {
     pub ambient_color: Vec4,
     pub diffuse_color: Vec4,
     pub specular_color: Vec4,
+    pub diffuse_k: f32,
+    pub specular_k: f32,
+    pub _pad: [f32; 2]
 }
 
 fn main() -> anyhow::Result<()> {
@@ -49,16 +52,17 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // sponza !!
-    let sponza_curtains = load_assimp_scene(&gd, "assets/sponza/NewSponza_Curtains_glTF.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
-    let sponza_base = load_assimp_scene(&gd, "assets/sponza/NewSponza_Main_glTF_003.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
+    // let sponza_curtains = load_assimp_scene(&gd, "assets/sponza/NewSponza_Curtains_glTF.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
+    // let sponza_base = load_assimp_scene(&gd, "assets/sponza/NewSponza_Main_glTF_003.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
+    let sponza_old = load_assimp_scene(&gd, "assets/sponza_old/Sponza.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
 
     // let mesh = cube_mesh_phong(&gd)?;
-    let mesh = load_obj_mesh(
-        &gd,
-        include_bytes!("../assets/models/sphere.obj"),
-        |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
-    )?;
-    let tex = Texture::load(&gd, include_bytes!("../assets/textures/pusheen_albedo.png"))?;
+    // let mesh = load_obj_mesh(
+    //     &gd,
+    //     include_bytes!("../assets/models/sphere.obj"),
+    //     |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
+    // )?;
+    // let tex = Texture::load(&gd, include_bytes!("../assets/textures/pusheen_albedo.png"))?;
 
     let mut cam = Camera::new(
         WIDTH,
@@ -84,7 +88,10 @@ fn main() -> anyhow::Result<()> {
         ambient_color: Vec4::new(0.1, 0.1, 0.1, 1.0),
         diffuse_color: Vec4::new(1.0, 1.0, 1.0, 1.0),
         specular_color: Vec4::new(1.0, 0.9, 0.7, 1.0),
+        diffuse_k: 0.4,
+        specular_k: 0.6,
         shininess: 32.0,
+        _pad: [0., 0.],
     };
 
     let mut camera_y = 0.;
@@ -167,25 +174,15 @@ fn main() -> anyhow::Result<()> {
         object_data.model = model;
         object_data.cam_pos = cam.pos();
 
-        for (mesh_idx, model) in &sponza_base.mesh_indices {
-            let mesh = sponza_base.meshes.get(*mesh_idx).unwrap();
-            let material = sponza_base.materials.get(&mesh.1);
+        for (mesh_idx, model) in &sponza_old.mesh_indices {
+            let mesh = sponza_old.meshes.get(*mesh_idx).unwrap();
+            let material = sponza_old.materials.get(&mesh.1);
             let material = if let Some(mat) = material {
                 mat
             } else {
                 continue
             };
 
-            object_data.model = *model;
-
-            pipeline.set_per_obj_data(cmd, &object_data);
-            pipeline.set_tex(cmd, &material.texture);
-            mesh.0.draw(cmd);
-        }
-
-        for (mesh_idx, model) in &sponza_curtains.mesh_indices {
-            let mesh = sponza_curtains.meshes.get(*mesh_idx).unwrap();
-            let material = sponza_curtains.materials.get(&mesh.1).unwrap();
             object_data.model = *model;
 
             pipeline.set_per_obj_data(cmd, &object_data);
