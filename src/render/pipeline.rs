@@ -188,11 +188,11 @@ impl<TParam: bytemuck::Pod> Pipeline<TParam> {
         })
     }
 
-    pub fn bind(&self, cmd: &ID3D12GraphicsCommandList, globals: &ConstBuffer<Globals>) {
+    pub fn bind(&self, cmd: &ID3D12GraphicsCommandList, globals_addr: u64) {
         unsafe {
             cmd.SetGraphicsRootSignature(&self.root_sig);
             cmd.SetPipelineState(&self.pso);
-            cmd.SetGraphicsRootConstantBufferView(1, globals.addr());
+            cmd.SetGraphicsRootConstantBufferView(1, globals_addr);
         }
     }
 

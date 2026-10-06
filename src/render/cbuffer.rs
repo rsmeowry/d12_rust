@@ -10,8 +10,10 @@ pub struct ConstBuffer<T: bytemuck::Pod> {
 }
 
 impl<T: bytemuck::Pod> ConstBuffer<T> {
+    const STRIDE: usize = size_of::<T>().next_multiple_of(256);
+
     pub fn new(gd: &GraphicsDevice, seed: &T) -> anyhow::Result<Self> {
-        let mut bytes = vec![0u8; size_of::<T>().next_multiple_of(256)];
+        let mut bytes = vec![0u8; Self::STRIDE * GraphicsDevice::FRAMES_IN_FLIGHT];
         bytes[..size_of::<T>()].copy_from_slice(bytemuck::bytes_of(seed));
         let buf = gd.create_buffer(&bytes, format!("ConstBuffer_{:4x}", random::<u16>()))?;
 
@@ -24,12 +26,15 @@ impl<T: bytemuck::Pod> ConstBuffer<T> {
         })
     }
 
-    pub fn write(&self, data: &T) {
+    pub fn write(&self, frame: usize, data: &T) {
         let bytes = bytemuck::bytes_of(data);
-        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.ptr, bytes.len()) };
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.ptr.add(frame * Self::STRIDE), bytes.len())
+        };
     }
 
-    pub fn addr(&self) -> u64 {
-        unsafe { self.buf.GetGPUVirtualAddress() }
+    pub fn addr(&self, frame: usize) -> u64 {
+        unsafe { self.buf.GetGPUVirtualAddress() + (frame * Self::STRIDE) as u64 }
     }
 }

@@ -37,7 +37,6 @@ struct ObjectPhong {
 }
 
 fn main() -> anyhow::Result<()> {
-
     let mut window = NativeWindow::create(WindowProps {
         ..Default::default()
     })?;
@@ -52,17 +51,7 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // sponza !!
-    // let sponza_curtains = load_assimp_scene(&gd, "assets/sponza/NewSponza_Curtains_glTF.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
-    // let sponza_base = load_assimp_scene(&gd, "assets/sponza/NewSponza_Main_glTF_003.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
     let sponza_old = load_assimp_scene(&gd, "assets/sponza_old/Sponza.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
-
-    // let mesh = cube_mesh_phong(&gd)?;
-    // let mesh = load_obj_mesh(
-    //     &gd,
-    //     include_bytes!("../assets/models/sphere.obj"),
-    //     |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
-    // )?;
-    // let tex = Texture::load(&gd, include_bytes!("../assets/textures/pusheen_albedo.png"))?;
 
     let mut cam = Camera::new(
         WIDTH,
@@ -95,6 +84,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut camera_y = 0.;
+    let mut last_title_update: f32 = 0.;
 
     'main: loop {
         window.update()?;
@@ -161,14 +151,14 @@ fn main() -> anyhow::Result<()> {
         globals.delta_time = time.delta_time();
         globals.view_proj = cam.view_proj();
 
-        globals_cbuf.write(&globals);
-
         // workload simulator 2027
         gd.prepare_rt()?;
+        globals_cbuf.write(gd.frame_index()?, &globals);
+
         gd.clear_color(Vec4::new(0.3, 0.4, 0.9, 1.))?;
 
         let cmd = gd.command_list()?;
-        pipeline.bind(cmd, &globals_cbuf);
+        pipeline.bind(cmd, globals_cbuf.addr(gd.frame_index()?));
 
         let model = Mat4::from_rotation_y(time.game_time());
         object_data.model = model;
@@ -196,14 +186,18 @@ fn main() -> anyhow::Result<()> {
 
         gd.display_rt()?;
 
-        let title = format!(
-            "A DirectX12 Renderer | FPS: {}",
-            (1. / time.delta_time()).round()
-        );
-        window.set_title(title)?;
+        if time.game_time() - 1. > last_title_update {
+            last_title_update = time.game_time();
+            let title = format!(
+                "A DirectX12 Renderer | FPS: {}",
+                (1. / time.delta_time()).round()
+            );
+            window.set_title(title)?;
+        }
 
         time.tick()?;
     }
+    gd.flush_command_queue()?;
 
     drop(window);
 
