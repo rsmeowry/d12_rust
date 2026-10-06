@@ -12,7 +12,7 @@ use windows::Win32::UI::Input::{
     RegisterRawInputDevices,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::PCWSTR;
+use windows::core::{HSTRING, PCWSTR};
 
 const WM_APP_DESTROY: u32 = WM_APP + 1;
 
@@ -188,17 +188,9 @@ impl NativeWindow {
     }
 
     pub fn set_title<S: Into<String>>(&self, title: S) -> anyhow::Result<()> {
-        let pcw = PCWSTR(
-            title
-                .into()
-                .encode_utf16()
-                .chain(std::iter::once(0))
-                .collect::<Vec<_>>()
-                .as_ptr(),
-        );
-
+        let hstr = HSTRING::from(title.into());
         unsafe {
-            SetWindowTextW(self.hwnd.0, pcw)?;
+            SetWindowTextW(self.hwnd.0, &hstr)?;
         }
 
         Ok(())

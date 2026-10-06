@@ -12,6 +12,7 @@ num_enum = "0.7.6"
 tobj = "4.0.5"
 image = { version = "0.25.10", features = ["png", "jpeg"] }
 asset-importer = { version = "0.8.0", features = ["glam"]}
+rand = "0.10.3"
 
 [dependencies.windows]
 version = "0.62.2"

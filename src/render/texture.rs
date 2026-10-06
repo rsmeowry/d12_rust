@@ -1,3 +1,4 @@
+use rand::random;
 use crate::wrappers::graphics::{GraphicsDevice, transition_barrier};
 use windows::Win32::Graphics::Direct3D12::{
     D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES,
@@ -82,7 +83,7 @@ impl Texture {
         for y in 0..height as usize {
             staging[y * pitch..y * pitch + row].copy_from_slice(&bytes[y * row..(y + 1) * row]);
         }
-        let upload = gd.create_buffer(&staging)?;
+        let upload = gd.create_buffer(&staging, format!("Tex_{:4x}", random::<u16>()))?;
 
         gd.execute_now(|cmd| unsafe {
             let dst = D3D12_TEXTURE_COPY_LOCATION {

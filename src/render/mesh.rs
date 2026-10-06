@@ -21,8 +21,9 @@ impl Mesh {
         vertices: &[TVert],
         indices: &[u32],
     ) -> anyhow::Result<Self> {
-        let vb = gd.create_buffer(bytemuck::cast_slice(vertices))?;
-        let ib = gd.create_buffer(bytemuck::cast_slice(indices))?;
+        let id: u16 = rand::random();
+        let vb = gd.create_buffer(bytemuck::cast_slice(vertices), format!("Mesh_VB_{:4x}", id))?;
+        let ib = gd.create_buffer(bytemuck::cast_slice(indices), format!("Mesh_IB_{:4x}", id))?;
         let vbv = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation: unsafe { vb.GetGPUVirtualAddress() },
             SizeInBytes: size_of_val(vertices) as u32,
