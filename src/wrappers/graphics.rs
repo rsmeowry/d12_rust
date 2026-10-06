@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 pub mod frames;
+pub mod alloc;
 
 use glam::Vec4;
 use std::cell::{Cell, RefCell};
@@ -16,6 +17,7 @@ use windows::Win32::Graphics::Dxgi::Common::{
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2, DXGI_CREATE_FACTORY_FLAGS, DXGI_PRESENT_ALLOW_TEARING, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING, DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter, IDXGIFactory6, IDXGISwapChain1, IDXGISwapChain3, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT};
 use windows::Win32::System::Threading::{CreateEventW, INFINITE, WaitForSingleObject};
 use windows::core::{Interface, HSTRING, PCWSTR};
+use crate::wrappers::graphics::alloc::FrameAllocator;
 use crate::wrappers::graphics::frames::FrameContext;
 
 #[derive(Debug)]
@@ -32,6 +34,7 @@ impl GraphicsDevice {
     pub const DS_FORMAT: DXGI_FORMAT = DXGI_FORMAT_D24_UNORM_S8_UINT;
     pub const SWAPCHAIN_BUFFER_COUNT: u32 = 2;
     pub const FRAMES_IN_FLIGHT: usize = 2;
+    pub const FRAME_ALLOC_SIZE: usize = 4 * 1024 * 1024; // 4 megabytes
 
     pub fn new() -> anyhow::Result<Self> {
         #[cfg(debug_assertions)]
@@ -200,7 +203,7 @@ impl GraphicsDevice {
 
     pub fn create_srv(
         &self,
-    ) -> anyhow::Result<(D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE)> {
+    ) -> anyhow::Result<(D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE, u32)> {
         let res = self.resources()?;
         let i = res.srv_next.get();
         if i >= Self::SRV_HEAP_SIZE {
@@ -217,7 +220,7 @@ impl GraphicsDevice {
         };
         cpu.ptr += offset as usize;
         gpu.ptr += offset as u64;
-        Ok((cpu, gpu))
+        Ok((cpu, gpu, i))
     }
 
     pub fn execute_now(&self, f: impl FnOnce(&ID3D12GraphicsCommandList)) -> anyhow::Result<()> {
@@ -234,45 +237,13 @@ impl GraphicsDevice {
     }
 
     pub fn create_buffer<S: AsRef<str>>(&self, data: &[u8], name: S) -> anyhow::Result<ID3D12Resource> {
-        let heap = D3D12_HEAP_PROPERTIES {
-            Type: D3D12_HEAP_TYPE_UPLOAD,
-            ..Default::default()
-        };
-        let desc = D3D12_RESOURCE_DESC {
-            Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
-            Width: data.len() as u64,
-            Height: 1,
-            DepthOrArraySize: 1,
-            MipLevels: 1,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-            ..Default::default()
-        };
-        let mut buf: Option<ID3D12Resource> = None;
-        unsafe {
-            self.device.CreateCommittedResource(
-                &heap,
-                D3D12_HEAP_FLAG_NONE,
-                &desc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                None,
-                &mut buf,
-            )?;
-        }
-        let buf = buf.ok_or_else(|| anyhow::Error::msg("Failed to create a buffer"))?;
+        let buf = Self::create_upload_buffer(&self.device, data.len(), name)?;
+
         unsafe {
             let mut ptr = std::ptr::null_mut();
             buf.Map(0, None, Some(&mut ptr))?;
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr.cast::<u8>(), data.len());
             buf.Unmap(0, None);
-
-            // naming for debug
-            let name = format!("Brine::{}", name.as_ref());
-            let hstring = HSTRING::from(name);
-            buf.SetName(&hstring);
         }
 
         Ok(buf)
@@ -348,6 +319,10 @@ impl GraphicsDevice {
         Ok(())
     }
 
+    pub fn srv_heap_start(&self) -> anyhow::Result<D3D12_GPU_DESCRIPTOR_HANDLE> {
+        Ok(unsafe { self.resources()?.srv_heap.GetGPUDescriptorHandleForHeapStart() })
+    }
+
     pub fn setup_resources(
         &mut self,
         window_handle: HWND,
@@ -386,9 +361,11 @@ impl GraphicsDevice {
         let command_queue: ID3D12CommandQueue = unsafe { dev.CreateCommandQueue(&queue_desc)? };
         let frames = (0..Self::FRAMES_IN_FLIGHT)
             .map(|_| {
+                let frame_alloc = FrameAllocator::new(dev, Self::FRAME_ALLOC_SIZE)?;
                 Ok(FrameContext {
                     command_alloc: unsafe { dev.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)? },
                     fence_value: Cell::new(0),
+                    frame_alloc,
                 })
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -474,10 +451,49 @@ impl GraphicsDevice {
             viewport,
             scissor_rect,
             frame_index: Cell::new(0),
-            upload_list,
+            upload_list
         });
 
         Ok(())
+    }
+
+    pub fn create_upload_buffer<S: AsRef<str>>(dev: &ID3D12Device, size: usize, name: S) -> anyhow::Result<ID3D12Resource> {
+        let heap = D3D12_HEAP_PROPERTIES {
+            Type: D3D12_HEAP_TYPE_UPLOAD,
+            ..Default::default()
+        };
+        let desc = D3D12_RESOURCE_DESC {
+            Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
+            Width: size as u64,
+            Height: 1,
+            DepthOrArraySize: 1,
+            MipLevels: 1,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+            ..Default::default()
+        };
+        let mut buf: Option<ID3D12Resource> = None;
+        unsafe {
+            dev.CreateCommittedResource(
+                &heap,
+                D3D12_HEAP_FLAG_NONE,
+                &desc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                None,
+                &mut buf,
+            )?;
+        }
+        let buf = buf.ok_or_else(|| anyhow::Error::msg("Failed to create a buffer"))?;
+        // naming for debug
+        let name = format!("Brine::{}", name.as_ref());
+        let hstring = HSTRING::from(name);
+        unsafe {
+            buf.SetName(&hstring);
+        }
+        Ok(buf)
     }
 
     fn create_heap(
@@ -499,7 +515,7 @@ impl GraphicsDevice {
         Ok(unsafe { dev.CreateDescriptorHeap(&desc)? })
     }
 
-    fn frame_context(&self) -> anyhow::Result<&FrameContext> {
+    pub fn frame_context(&self) -> anyhow::Result<&FrameContext> {
         let res = self.resources()?;
         Ok(&res.frames[res.frame_index.get()])
     }

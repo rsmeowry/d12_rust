@@ -11,51 +11,27 @@ use windows::Win32::Graphics::Direct3D::Fxc::{D3DCOMPILE_DEBUG, D3DCompile};
 use windows::Win32::Graphics::Direct3D::{
     D3D_INCLUDE_TYPE, ID3DBlob, ID3DInclude, ID3DInclude_Impl,
 };
-use windows::Win32::Graphics::Direct3D12::{
-    D3D_ROOT_SIGNATURE_VERSION_1, D3D12_BLEND_ONE, D3D12_BLEND_OP_ADD, D3D12_BLEND_ZERO,
-    D3D12_COLOR_WRITE_ENABLE_ALL, D3D12_COMPARISON_FUNC_LESS, D3D12_COMPARISON_FUNC_NEVER,
-    D3D12_CULL_MODE_BACK, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL,
-    D3D12_DESCRIPTOR_RANGE, D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-    D3D12_FILL_MODE_SOLID, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_FLOAT32_MAX,
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_LOGIC_OP_NOOP,
-    D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RASTERIZER_DESC, D3D12_RENDER_TARGET_BLEND_DESC,
-    D3D12_ROOT_CONSTANTS, D3D12_ROOT_DESCRIPTOR, D3D12_ROOT_DESCRIPTOR_TABLE, D3D12_ROOT_PARAMETER,
-    D3D12_ROOT_PARAMETER_0, D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
-    D3D12_ROOT_PARAMETER_TYPE_CBV, D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
-    D3D12_ROOT_SIGNATURE_DESC, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT,
-    D3D12_SHADER_BYTECODE, D3D12_SHADER_VISIBILITY_ALL, D3D12_SHADER_VISIBILITY_PIXEL,
-    D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK, D3D12_STATIC_SAMPLER_DESC,
-    D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12SerializeRootSignature, ID3D12GraphicsCommandList,
-    ID3D12PipelineState, ID3D12RootSignature,
-};
+use windows::Win32::Graphics::Direct3D12::{D3D_ROOT_SIGNATURE_VERSION_1, D3D12_BLEND_ONE, D3D12_BLEND_OP_ADD, D3D12_BLEND_ZERO, D3D12_COLOR_WRITE_ENABLE_ALL, D3D12_COMPARISON_FUNC_LESS, D3D12_COMPARISON_FUNC_NEVER, D3D12_CULL_MODE_BACK, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DESCRIPTOR_RANGE, D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, D3D12_FILL_MODE_SOLID, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_FLOAT32_MAX, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_LOGIC_OP_NOOP, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RASTERIZER_DESC, D3D12_RENDER_TARGET_BLEND_DESC, D3D12_ROOT_CONSTANTS, D3D12_ROOT_DESCRIPTOR, D3D12_ROOT_DESCRIPTOR_TABLE, D3D12_ROOT_PARAMETER, D3D12_ROOT_PARAMETER_0, D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, D3D12_ROOT_PARAMETER_TYPE_CBV, D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE, D3D12_ROOT_SIGNATURE_DESC, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, D3D12_SHADER_BYTECODE, D3D12_SHADER_VISIBILITY_ALL, D3D12_SHADER_VISIBILITY_PIXEL, D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK, D3D12_STATIC_SAMPLER_DESC, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12SerializeRootSignature, ID3D12GraphicsCommandList, ID3D12PipelineState, ID3D12RootSignature, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_ROOT_PARAMETER_TYPE_SRV};
 use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
 use windows::core::{PCSTR, s};
 
 #[derive(Debug)]
-pub struct Pipeline<TParam> {
+pub struct Pipeline {
     root_sig: ID3D12RootSignature,
     pso: ID3D12PipelineState,
-    _t: PhantomData<TParam>,
+    heap_start: D3D12_GPU_DESCRIPTOR_HANDLE,
 }
 
-impl<TParam: bytemuck::Pod> Pipeline<TParam> {
-    const PARAM_DWORDS: u32 = {
-        assert!(
-            size_of::<TParam>().is_multiple_of(4) && size_of::<TParam>() / 4 <= 61,
-            "Per object params too big for root constants!"
-        );
-        (size_of::<TParam>() / 4) as u32
-    };
-
+impl Pipeline {
     pub fn new<TVert: Vertex>(gd: &GraphicsDevice, shader: &str) -> anyhow::Result<Self> {
         let dev = gd.device();
 
         let srv_range = D3D12_DESCRIPTOR_RANGE {
             RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-            NumDescriptors: 1,
+            NumDescriptors: u32::MAX, // unlimited !! cus its heap
             BaseShaderRegister: 0,
-            RegisterSpace: 0,
-            OffsetInDescriptorsFromTableStart: D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND,
+            RegisterSpace: 1, // space1
+            OffsetInDescriptorsFromTableStart: 0,  // spans the wholeee heap
         };
 
         let params = [
@@ -66,7 +42,7 @@ impl<TParam: bytemuck::Pod> Pipeline<TParam> {
                     Constants: D3D12_ROOT_CONSTANTS {
                         ShaderRegister: 0,
                         RegisterSpace: 0,
-                        Num32BitValues: Self::PARAM_DWORDS,
+                        Num32BitValues: 1, // just the draw index
                     },
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
@@ -93,6 +69,17 @@ impl<TParam: bytemuck::Pod> Pipeline<TParam> {
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
             },
+            // t1 - objects
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_SRV,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    Descriptor: D3D12_ROOT_DESCRIPTOR {
+                        ShaderRegister: 1,
+                        RegisterSpace: 0,
+                    }
+                },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL
+            }
         ];
 
         let sampler = D3D12_STATIC_SAMPLER_DESC {
@@ -184,7 +171,7 @@ impl<TParam: bytemuck::Pod> Pipeline<TParam> {
         Ok(Self {
             root_sig,
             pso,
-            _t: PhantomData,
+            heap_start: gd.srv_heap_start()?
         })
     }
 
@@ -193,24 +180,16 @@ impl<TParam: bytemuck::Pod> Pipeline<TParam> {
             cmd.SetGraphicsRootSignature(&self.root_sig);
             cmd.SetPipelineState(&self.pso);
             cmd.SetGraphicsRootConstantBufferView(1, globals_addr);
+            cmd.SetGraphicsRootDescriptorTable(2, self.heap_start);
         }
     }
 
-    pub fn set_per_obj_data(&self, cmd: &ID3D12GraphicsCommandList, data: &TParam) {
-        unsafe {
-            cmd.SetGraphicsRoot32BitConstants(
-                0,
-                Self::PARAM_DWORDS,
-                (data as *const TParam).cast(),
-                0,
-            );
-        }
+    pub fn set_objects(&self, cmd: &ID3D12GraphicsCommandList, ptr: u64) {
+        unsafe { cmd.SetGraphicsRootShaderResourceView(3, ptr); }
     }
 
-    pub fn set_tex(&self, cmd: &ID3D12GraphicsCommandList, tex: &Texture) {
-        unsafe {
-            cmd.SetGraphicsRootDescriptorTable(2, tex.srv());
-        }
+    pub fn set_draw_index(&self, cmd: &ID3D12GraphicsCommandList, index: u32) {
+        unsafe { cmd.SetGraphicsRoot32BitConstant(0, index, 0); }
     }
 }
 
@@ -222,7 +201,9 @@ pub struct Globals {
     pub time: f32,
     pub delta_time: f32,
     pub light_dir: Vec3,
-    pub _pad: f32,
+    pub _pad1: f32,
+    pub camera_pos: Vec3,
+    pub _pad2: f32,
     pub light_col: Vec4,
 }
 

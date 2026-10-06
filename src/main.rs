@@ -26,14 +26,14 @@ const HEIGHT: u32 = 600;
 struct ObjectPhong {
     pub model: Mat4,
 
-    pub cam_pos: Vec3,
-    pub shininess: f32,
     pub ambient_color: Vec4,
     pub diffuse_color: Vec4,
     pub specular_color: Vec4,
+
+    pub shininess: f32,
     pub diffuse_k: f32,
     pub specular_k: f32,
-    pub _pad: [f32; 2]
+    pub albedo_tex: u32,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
     let mut gd = GraphicsDevice::new()?;
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
 
-    let pipeline = Pipeline::<ObjectPhong>::new::<Vertex3>(
+    let pipeline = Pipeline::new::<Vertex3>(
         &gd,
         include_str!("../assets/shaders/PhongTex.hlsl"),
     )?;
@@ -65,7 +65,9 @@ fn main() -> anyhow::Result<()> {
         resolution: Vec2::new(800., 600.),
         time: 0.0,
         delta_time: 0.0,
-        _pad: 0.0,
+        _pad1: 0.0,
+        _pad2: 0.0,
+        camera_pos: cam.pos(),
         light_dir: Vec3::new(-0.4, -0.8, 0.5).normalize(),
         light_col: Vec4::new(1.0, 0.9, 0.9, 1.0),
     };
@@ -73,14 +75,13 @@ fn main() -> anyhow::Result<()> {
 
     let mut object_data = ObjectPhong {
         model: Mat4::IDENTITY,
-        cam_pos: cam.pos(),
-        ambient_color: Vec4::new(0.1, 0.1, 0.1, 1.0),
+        ambient_color: Vec4::new(0.17, 0.17, 0.17, 1.0),
         diffuse_color: Vec4::new(1.0, 1.0, 1.0, 1.0),
         specular_color: Vec4::new(1.0, 0.9, 0.7, 1.0),
         diffuse_k: 0.4,
         specular_k: 0.6,
         shininess: 32.0,
-        _pad: [0., 0.],
+        albedo_tex: 0
     };
 
     let mut camera_y = 0.;
@@ -151,33 +152,38 @@ fn main() -> anyhow::Result<()> {
         globals.delta_time = time.delta_time();
         globals.view_proj = cam.view_proj();
 
-        // workload simulator 2027
         gd.prepare_rt()?;
-        globals_cbuf.write(gd.frame_index()?, &globals);
-
         gd.clear_color(Vec4::new(0.3, 0.4, 0.9, 1.))?;
-
         let cmd = gd.command_list()?;
-        pipeline.bind(cmd, globals_cbuf.addr(gd.frame_index()?));
 
-        let model = Mat4::from_rotation_y(time.game_time());
-        object_data.model = model;
-        object_data.cam_pos = cam.pos();
+        // frame allocator
+        let alloc = &gd.frame_context()?.frame_alloc;
+        let globals_va = alloc.push(&globals)?;
+        pipeline.bind(cmd, globals_va);
 
+        let mut objects = Vec::new();
+        let mut draws = Vec::new();
         for (mesh_idx, model) in &sponza_old.mesh_indices {
-            let mesh = sponza_old.meshes.get(*mesh_idx).unwrap();
-            let material = sponza_old.materials.get(&mesh.1);
-            let material = if let Some(mat) = material {
-                mat
-            } else {
-                continue
-            };
+            let (mesh, mat_idx) = &sponza_old.meshes[*mesh_idx];
+            let Some(material) = sponza_old.materials.get(mat_idx) else { continue };
+            objects.push(ObjectPhong {
+                model: *model,
+                ambient_color: Vec4::new(0.15, 0.15, 0.15, 1.),
+                diffuse_color: Vec4::ONE,
+                specular_color: Vec4::ONE,
+                shininess: 32.0,
+                diffuse_k: 0.4,
+                specular_k: 0.7,
+                albedo_tex: material.texture.index()
+            });
+            draws.push(mesh);
+        }
 
-            object_data.model = *model;
-
-            pipeline.set_per_obj_data(cmd, &object_data);
-            pipeline.set_tex(cmd, &material.texture);
-            mesh.0.draw(cmd);
+        let objects_va = alloc.push_slice(&objects, 16)?;
+        pipeline.set_objects(cmd, objects_va);
+        for (i, mesh) in draws.iter().enumerate() {
+            pipeline.set_draw_index(cmd, i as u32);
+            mesh.draw(cmd);
         }
 
         // pipeline.set_per_obj_data(cmd, &object_data);
@@ -185,6 +191,7 @@ fn main() -> anyhow::Result<()> {
         // mesh.draw(cmd);
 
         gd.display_rt()?;
+        alloc.reset();
 
         if time.game_time() - 1. > last_title_update {
             last_title_update = time.game_time();

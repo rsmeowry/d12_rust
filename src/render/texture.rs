@@ -13,7 +13,7 @@ use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SA
 #[derive(Debug)]
 pub struct Texture {
     _res: ID3D12Resource,
-    srv: D3D12_GPU_DESCRIPTOR_HANDLE,
+    idx: u32
 }
 
 impl Texture {
@@ -108,16 +108,16 @@ impl Texture {
             )]);
         })?;
 
-        let (cpu, gpu) = gd.create_srv()?;
+        let (cpu, _gpu, idx) = gd.create_srv()?;
         unsafe { dev.CreateShaderResourceView(&tex, None, cpu) };
 
         Ok(Self {
             _res: tex,
-            srv: gpu,
+            idx
         })
     }
 
-    pub fn srv(&self) -> D3D12_GPU_DESCRIPTOR_HANDLE {
-        self.srv
+    pub fn index(&self) -> u32 {
+        self.idx
     }
 }

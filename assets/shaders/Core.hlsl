@@ -4,6 +4,7 @@ cbuffer Globals : register(b1) {
     float time;
     float deltaTime;
     float3 lightDir;
-    float _pad;
+    float3 cameraPos;
     float4 lightCol;
+    float2 _pad;
 };
