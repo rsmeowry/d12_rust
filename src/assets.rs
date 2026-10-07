@@ -1,3 +1,5 @@
+pub mod shaders;
+
 use std::collections::HashMap;
 use std::fs::File;
 use crate::render::mesh::Mesh;

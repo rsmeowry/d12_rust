@@ -1,4 +1,4 @@
-#include <Core.hlsl>
+#include <lib/Core.hlsl>
 
 SamplerState LINEAR : register(s0);
 

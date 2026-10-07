@@ -1,3 +1,5 @@
+extern crate core;
+
 mod assets;
 mod input;
 mod render;
@@ -16,6 +18,7 @@ use crate::wrappers::event::WindowEvent;
 use crate::wrappers::graphics::GraphicsDevice;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
+use crate::assets::shaders::ShaderStorage;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -44,9 +47,13 @@ fn main() -> anyhow::Result<()> {
     let mut gd = GraphicsDevice::new()?;
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
 
+    let mut shaders = ShaderStorage::new(r#"C:\Users\rose\RustroverProjects\d12_rust\assets\shaders"#);
+    shaders.compile()?;
+
     let pipeline = Pipeline::new::<Vertex3>(
         &gd,
-        include_str!("../assets/shaders/PhongTex.hlsl"),
+        &shaders,
+        "PhongTex.hlsl".as_ref()
     )?;
 
     // sponza !!

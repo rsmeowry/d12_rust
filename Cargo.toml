@@ -13,6 +13,11 @@ tobj = "4.0.5"
 image = { version = "0.25.10", features = ["png", "jpeg"] }
 asset-importer = { version = "0.8.0", features = ["glam"]}
 rand = "0.10.3"
+walkdir = "2.5.0"
+rapidhash = "4.5.1"
+skip_bom = "0.5.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
 
 [dependencies.windows]
 version = "0.62.2"
