@@ -43,6 +43,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut gd = GraphicsDevice::new()?;
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
+    let mut depth = Texture::depth(&gd, WIDTH, HEIGHT, "SceneDepth")?;
 
     let mut shaders = ShaderStorage::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/shaders"));
     shaders.compile()?;
@@ -64,6 +65,7 @@ fn main() -> anyhow::Result<()> {
     let unlit = pipeline_mgr.create(&gd, &shaders, unlit_desc)?;
 
     let white_tex = Texture::from_rgba8(&gd, 1, 1, &[255; 4], "builtin/WHITE")?;
+    let checker_tex = Texture::from_rgba8(&gd, 32, 32, &debug_checker_tex(32, 32), "builtin/CHECKER")?;
 
     let mut materials: Vec<GpuMaterial> = Vec::new();
     // unlit sphere
@@ -79,7 +81,7 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // sponza !!
-    let sponza_old = load_assimp_scene(
+    let mut sponza_old = load_assimp_scene(
         &gd, "assets/sponza_old/Sponza.gltf",
         white_tex.srv_ptr(), &mut materials,
         |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
@@ -180,8 +182,17 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
+        if window.input().was_released(KeyCode::F6) {
+            gd.flush_command_queue()?;
+            for tex in &mut sponza_old.textures {
+                tex.resize(&gd, 32, 32)?;
+            }
+            pipeline_mgr.rebuild_all(&gd, &shaders)?;
+        }
+
         if let Some(size) = new_size {
             gd.resize(size.0, size.1)?;
+            depth.resize(&gd, size.0, size.1)?;
             globals.resolution = Vec2::new(size.0 as f32, size.1 as f32);
             cam.resize(size.0, size.1);
             globals.view_proj = cam.view_proj();
@@ -193,7 +204,10 @@ fn main() -> anyhow::Result<()> {
         globals.view_proj = cam.view_proj();
 
         gd.prepare_rt()?;
-        gd.clear_color(Vec4::new(0.3, 0.4, 0.9, 1.))?;
+        gd.bind_backbuffer(Some(&depth))?;
+        gd.clear_color(Vec4::new(0.2, 0.3, 0.8, 1.0))?;
+        gd.clear(&depth)?;
+        
         globals.camera_pos = cam.pos();
         globals_cbuf.write(gd.frame_index()?, &globals);
         let cmd = gd.command_list()?;
@@ -289,6 +303,15 @@ fn cube_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
     ];
 
     Mesh::new(gd, &vertices, &indices)
+}
+
+fn debug_checker_tex(w: u32, h: u32) -> Vec<u8> {
+    (0..w * h)
+        .flat_map(|i| {
+            let (x, y) = (i % w, i / w);
+            if (x / 4 + y / 4) % 2 == 0 { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
+        })
+        .collect()
 }
 
 #[allow(unused)]

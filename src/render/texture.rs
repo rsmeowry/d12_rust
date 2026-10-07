@@ -29,6 +29,7 @@ pub struct Texture {
     srv_ptr: u32,
     rtv_ptr: Option<u32>,
     dsv_ptr: Option<u32>,
+    name: String,
 }
 
 impl Texture {
@@ -36,7 +37,7 @@ impl Texture {
         let srv = gd.srv_heap()?.alloc()?;
         let rtv = matches!(desc.kind, TextureKind::RenderTarget(_)).then(|| gd.rtv_heap()?.alloc()).transpose()?;
         let dsv = matches!(desc.kind, TextureKind::Depth).then(|| gd.dsv_heap()?.alloc()).transpose()?;
-        let (res, state) = Self::load_resources(gd, &desc, name, srv)?;
+        let (res, state) = Self::load_resources(gd, &desc, name)?;
 
         let tex = Self {
             res,
@@ -45,6 +46,7 @@ impl Texture {
             srv_ptr: srv,
             rtv_ptr: rtv,
             dsv_ptr: dsv,
+            name: name.into()
         };
         tex.write_views(gd)?;
 
@@ -91,7 +93,20 @@ impl Texture {
         }
     }
 
-    fn load_resources(gd: &GraphicsDevice, desc: &TextureDesc, name: &str, idx: u32) -> anyhow::Result<(ID3D12Resource, D3D12_RESOURCE_STATES)> {
+    pub fn resize(&mut self, gd: &GraphicsDevice, new_width: u32, new_height: u32) -> anyhow::Result<()> {
+        if new_width == self.desc.width && new_height == self.desc.height {
+            return Ok(())
+        }
+        self.desc.width = new_width;
+        self.desc.height = new_height;
+        let (res, state) = Self::load_resources(gd, &self.desc, &self.name)?;
+        self.res = res;
+        self.state.set(state);
+        self.write_views(gd)?;
+        Ok(())
+    }
+
+    fn load_resources(gd: &GraphicsDevice, desc: &TextureDesc, name: &str) -> anyhow::Result<(ID3D12Resource, D3D12_RESOURCE_STATES)> {
         let dev = gd.device();
         let fmt = formats(desc);
         let (flags, state, clear) = match desc.kind {

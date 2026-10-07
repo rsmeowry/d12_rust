@@ -37,15 +37,13 @@ impl Camera {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         self.aspect = width as f32 / height as f32;
-        self.proj =
-            glam::camera::lh::proj::directx::perspective(self.fov_rad, self.aspect, 0.1, 100.);
+        self.proj = Self::projection(self.aspect, self.fov_rad);
         self.view_proj = self.proj * self.view;
     }
 
     pub fn set_fov(&mut self, fov_deg: f32) {
         self.fov_rad = fov_deg.to_radians();
-        self.proj =
-            glam::camera::lh::proj::directx::perspective(self.fov_rad, self.aspect, 0.1, 100.);
+        self.proj = Self::projection(self.fov_rad, self.aspect);
         self.view_proj = self.proj * self.view;
     }
 
@@ -69,5 +67,9 @@ impl Camera {
 
     pub fn rot(&self) -> Quat {
         self.rot
+    }
+
+    fn projection(fov_rad: f32, aspect: f32) -> Mat4 {
+        glam::camera::lh::proj::directx::perspective(fov_rad, aspect, 100.0, 0.1)
     }
 }
