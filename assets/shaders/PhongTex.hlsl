@@ -1,6 +1,6 @@
 #include <lib/Core.hlsl>
 
-SamplerState LINEAR : register(s0);
+SamplerState AnisoWrap : register(s3);
 
 struct ObjectData {
     float4x4 model;
@@ -54,7 +54,7 @@ float4 frag(Varyings i) : SV_Target {
     float3 V = normalize(cameraPos - i.posW);
     float3 R = reflect(-L, N);
 
-    float4 albedo = g_Tex2D[obj.albedoTex].Sample(LINEAR, i.uv);
+    float4 albedo = g_Tex2D[obj.albedoTex].Sample(AnisoWrap, i.uv);
     float4 ambient = albedo * obj.ambientColor * lightCol;
 
     float diffuseFactor = max(dot(N, L), 0.0f);

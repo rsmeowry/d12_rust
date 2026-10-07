@@ -22,10 +22,10 @@ use crate::wrappers::graphics::frames::FrameContext;
 
 #[derive(Debug)]
 pub struct GraphicsDevice {
+    resources: Option<GraphicsResources>,
     dxgi_factory: IDXGIFactory6,
     device: ID3D12Device,
     current_fence: Cell<u64>,
-    resources: Option<GraphicsResources>,
 }
 
 impl GraphicsDevice {
@@ -148,6 +148,7 @@ impl GraphicsDevice {
         self.wait_for(frame.fence_value.get())?;
 
         unsafe {
+            frame.frame_alloc.reset();
             frame.command_alloc.Reset()?;
             res.command_list.Reset(&frame.command_alloc, None)?;
         }

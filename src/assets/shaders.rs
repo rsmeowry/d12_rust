@@ -209,7 +209,6 @@ impl ShaderStorage {
                 anyhow::bail!("Failed to compile shader at {}: {msg}", path.display());
             }
             let blob = code.unwrap();
-            println!("Inserting! {:?}", target.get_type());
             blob_map.insert(target.get_type(), blob);
         }
 

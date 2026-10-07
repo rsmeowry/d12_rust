@@ -1,5 +1,3 @@
-extern crate core;
-
 mod assets;
 mod input;
 mod render;
@@ -19,6 +17,8 @@ use crate::wrappers::graphics::GraphicsDevice;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use crate::assets::shaders::ShaderStorage;
+use crate::render::pipeline::desc::PipelineDesc;
+use crate::render::vertex::Vertex;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -50,13 +50,14 @@ fn main() -> anyhow::Result<()> {
     let mut shaders = ShaderStorage::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/shaders"));
     shaders.compile()?;
 
-    let mut pipeline_mgr = PipelineManager::new();
-
-    let mut pipeline = pipeline_mgr.get_pipeline::<Vertex3>(
-        &gd,
-        &shaders,
-        "PhongTex.hlsl".as_ref()
-    )?;
+    let mut pipeline_mgr = PipelineManager::new(&gd)?;
+    let phong_desc = PipelineDesc {
+        name: "Phong",
+        shader: "PhongTex.hlsl".into(),
+        input: Vertex3::LAYOUT,
+        ..Default::default()
+    };
+    let phong = pipeline_mgr.create(&gd, &shaders, phong_desc)?;
 
     // sponza !!
     let sponza_old = load_assimp_scene(&gd, "assets/sponza_old/Sponza.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
@@ -139,15 +140,9 @@ fn main() -> anyhow::Result<()> {
 
         if window.input().was_released(KeyCode::F5) {
             // recompile shaders and PSOs
-            if let Err(e) = shaders.recompile() {
-                eprintln!("Error recompiling shaders:\n{}", e);
-            } else {
-                pipeline_mgr.rebuild_all(&gd, &shaders)?;
-                pipeline = pipeline_mgr.get_pipeline::<Vertex3>(
-                    &gd,
-                    &shaders,
-                    "PhongTex.hlsl".as_ref()
-                )?;
+            let r = shaders.recompile().and_then(|_| pipeline_mgr.rebuild_all(&gd, &shaders));
+            if let Err(e) = r {
+                eprintln!("Error performing a hot-reload:\n{}", e);
             }
         }
 
@@ -172,7 +167,9 @@ fn main() -> anyhow::Result<()> {
         // frame allocator
         let alloc = &gd.frame_context()?.frame_alloc;
         let globals_va = alloc.push(&globals)?;
-        pipeline.bind(cmd, globals_va);
+        let rs = pipeline_mgr.root_sig();
+        rs.bind(cmd, globals_va, gd.srv_heap_start()?);
+        pipeline_mgr.get(phong).bind(cmd);
 
         let mut objects = Vec::new();
         let mut draws = Vec::new();
@@ -193,9 +190,9 @@ fn main() -> anyhow::Result<()> {
         }
 
         let objects_va = alloc.push_slice(&objects, 16)?;
-        pipeline.set_objects(cmd, objects_va);
+        rs.set_objects(cmd, objects_va);
         for (i, mesh) in draws.iter().enumerate() {
-            pipeline.set_draw_index(cmd, i as u32);
+            rs.set_draw_index(cmd, i as u32);
             mesh.draw(cmd);
         }
 
@@ -204,7 +201,6 @@ fn main() -> anyhow::Result<()> {
         // mesh.draw(cmd);
 
         gd.display_rt()?;
-        alloc.reset();
 
         if time.game_time() - 1. > last_title_update {
             last_title_update = time.game_time();
