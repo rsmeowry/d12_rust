@@ -1,19 +1,14 @@
+use crate::assets::shaders::{ShaderStorage, ShaderType};
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
-use glam::{Mat4, Vec2, Vec3, Vec4};
-use std::collections::HashMap;
-use std::ffi::c_void;
-use std::path::Path;
 use anyhow::anyhow;
-use windows::core::{s, PCSTR};
-use windows::Win32::Foundation::E_FAIL;
-use windows::Win32::Graphics::Direct3D::Fxc::{D3DCompile, D3DCOMPILE_DEBUG};
-use windows::Win32::Graphics::Direct3D::{
-    ID3DBlob, ID3DInclude, ID3DInclude_Impl, D3D_INCLUDE_TYPE,
-};
+use glam::{Mat4, Vec2, Vec3, Vec4};
+use std::path::Path;
+use windows::core::{Interface, HSTRING};
+use windows::Win32::Graphics::Direct3D::ID3DBlob;
 use windows::Win32::Graphics::Direct3D12::{D3D12SerializeRootSignature, ID3D12GraphicsCommandList, ID3D12PipelineState, ID3D12RootSignature, D3D12_BLEND_ONE, D3D12_BLEND_OP_ADD, D3D12_BLEND_ZERO, D3D12_COLOR_WRITE_ENABLE_ALL, D3D12_COMPARISON_FUNC_LESS, D3D12_COMPARISON_FUNC_NEVER, D3D12_CULL_MODE_BACK, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DESCRIPTOR_RANGE, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, D3D12_FILL_MODE_SOLID, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_FLOAT32_MAX, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_LOGIC_OP_NOOP, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RASTERIZER_DESC, D3D12_RENDER_TARGET_BLEND_DESC, D3D12_ROOT_CONSTANTS, D3D12_ROOT_DESCRIPTOR, D3D12_ROOT_DESCRIPTOR_TABLE, D3D12_ROOT_PARAMETER, D3D12_ROOT_PARAMETER_0, D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, D3D12_ROOT_PARAMETER_TYPE_CBV, D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE, D3D12_ROOT_PARAMETER_TYPE_SRV, D3D12_ROOT_SIGNATURE_DESC, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, D3D12_SHADER_BYTECODE, D3D12_SHADER_VISIBILITY_ALL, D3D12_SHADER_VISIBILITY_PIXEL, D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK, D3D12_STATIC_SAMPLER_DESC, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D_ROOT_SIGNATURE_VERSION_1};
+use windows::Win32::Graphics::Direct3D12::ID3D12Object;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
-use crate::assets::shaders::{ShaderStorage, ShaderType};
 
 #[derive(Debug)]
 pub struct Pipeline {
@@ -185,7 +180,12 @@ impl Pipeline {
             RenderTargetWriteMask: D3D12_COLOR_WRITE_ENABLE_ALL.0 as u8,
             ..Default::default()
         };
-        let pso = unsafe { dev.CreateGraphicsPipelineState(&desc)? };
+        let pso: ID3D12PipelineState = unsafe { dev.CreateGraphicsPipelineState(&desc)? };
+        unsafe {
+            let shader_name = shader_path.file_name().unwrap().to_str().unwrap();
+            let name = format!("Brine::Pipeline_{}_{:04x}", shader_name, rand::random::<u16>());
+            pso.SetName(&HSTRING::from(name))?;
+        }
 
         Ok(Self {
             root_sig,
@@ -193,7 +193,7 @@ impl Pipeline {
             heap_start: gd.srv_heap_start()?
         })
     }
-
+    
     pub fn bind(&self, cmd: &ID3D12GraphicsCommandList, globals_addr: u64) {
         unsafe {
             cmd.SetGraphicsRootSignature(&self.root_sig);

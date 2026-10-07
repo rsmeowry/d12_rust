@@ -50,7 +50,7 @@ fn main() -> anyhow::Result<()> {
     let mut shaders = ShaderStorage::new(r#"C:\Users\rose\RustroverProjects\d12_rust\assets\shaders"#);
     shaders.compile()?;
 
-    let pipeline = Pipeline::new::<Vertex3>(
+    let mut pipeline = Pipeline::new::<Vertex3>(
         &gd,
         &shaders,
         "PhongTex.hlsl".as_ref()
@@ -133,6 +133,19 @@ fn main() -> anyhow::Result<()> {
 
         if window.input().is_held(KeyCode::V) {
             cam.set_pos(cam.pos() - Vec3::Y * time.delta_time());
+        }
+
+        if window.input().was_released(KeyCode::F5) {
+            // recompile shaders and PSOs
+            if let Err(e) = shaders.recompile() {
+                eprintln!("Error recompiling shaders:\n{}", e);
+            } else {
+                pipeline = Pipeline::new::<Vertex3>(
+                    &gd,
+                    &shaders,
+                    "PhongTex.hlsl".as_ref()
+                )?;
+            }
         }
 
         if let Some(size) = new_size {

@@ -63,6 +63,7 @@ pub struct ShaderStorage {
     root_dir: PathBuf,
     lib_shaders: HashMap<PathBuf, String>,
     shaders: HashMap<PathBuf, ShaderPair>,
+    staging_shaders: HashMap<PathBuf, ShaderPair>,
     dirty_files: Vec<PathBuf>,
 }
 
@@ -72,7 +73,20 @@ impl ShaderStorage {
             root_dir: root_dir.as_ref().to_path_buf(),
             lib_shaders: HashMap::new(),
             shaders: HashMap::new(),
+            staging_shaders: HashMap::new(),
             dirty_files: vec![],
+        }
+    }
+
+    pub fn recompile(&mut self) -> anyhow::Result<()> {
+        self.staging_shaders = self.shaders.clone();
+        if let Err(err) = self.compile() {
+            self.shaders = self.staging_shaders.clone();
+            self.staging_shaders.clear();
+            Err(err)
+        } else {
+            self.staging_shaders.clear();
+            Ok(())
         }
     }
 
