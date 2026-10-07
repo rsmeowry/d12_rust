@@ -17,7 +17,9 @@ use crate::wrappers::event::WindowEvent;
 use crate::wrappers::graphics::GraphicsDevice;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
-use windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE};
+use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
 use crate::assets::shaders::ShaderStorage;
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
@@ -44,6 +46,7 @@ fn main() -> anyhow::Result<()> {
     let mut gd = GraphicsDevice::new()?;
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
     let mut depth = Texture::depth(&gd, WIDTH, HEIGHT, "SceneDepth")?;
+    let mut scene_color = Texture::render_target(&gd, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, WIDTH, HEIGHT, Vec4::new(0.4, 0.5, 0.9, 1.), "SceneColor")?;
 
     let mut shaders = ShaderStorage::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/shaders"));
     shaders.compile()?;
@@ -61,8 +64,17 @@ fn main() -> anyhow::Result<()> {
         input: Vertex3::LAYOUT,
         ..Default::default()
     };
+    let blit_desc = PipelineDesc {
+        name: "Blit",
+        shader: "Blit.hlsl".into(),
+        input: &[],
+        depth: None,
+        cull: D3D12_CULL_MODE_NONE,
+        ..Default::default()
+    };
     let phong = pipeline_mgr.create(&gd, &shaders, phong_desc)?;
     let unlit = pipeline_mgr.create(&gd, &shaders, unlit_desc)?;
+    let blit = pipeline_mgr.create(&gd, &shaders, blit_desc)?;
 
     let white_tex = Texture::from_rgba8(&gd, 1, 1, &[255; 4], "builtin/WHITE")?;
     let checker_tex = Texture::from_rgba8(&gd, 32, 32, &debug_checker_tex(32, 32), "builtin/CHECKER")?;
@@ -193,6 +205,8 @@ fn main() -> anyhow::Result<()> {
         if let Some(size) = new_size {
             gd.resize(size.0, size.1)?;
             depth.resize(&gd, size.0, size.1)?;
+            scene_color.resize(&gd, size.0, size.1)?;
+
             globals.resolution = Vec2::new(size.0 as f32, size.1 as f32);
             cam.resize(size.0, size.1);
             globals.view_proj = cam.view_proj();
@@ -204,10 +218,10 @@ fn main() -> anyhow::Result<()> {
         globals.view_proj = cam.view_proj();
 
         gd.prepare_rt()?;
-        gd.bind_backbuffer(Some(&depth))?;
-        gd.clear_color(Vec4::new(0.2, 0.3, 0.8, 1.0))?;
+        gd.set_render_targets(&[&scene_color], Some(&depth))?;
+        gd.clear(&scene_color);
         gd.clear(&depth)?;
-        
+
         globals.camera_pos = cam.pos();
         globals_cbuf.write(gd.frame_index()?, &globals);
         let cmd = gd.command_list()?;
@@ -258,6 +272,16 @@ fn main() -> anyhow::Result<()> {
             }
             rs.set_draw_index(cmd, i as u32);
             mesh.draw(cmd);
+        }
+
+        // blitting scene_color to view
+        scene_color.transition(cmd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        gd.bind_backbuffer(None)?;
+        pipeline_mgr.get(blit).bind(cmd);
+        rs.set_draw_index(cmd, scene_color.srv_ptr());
+        unsafe {
+            cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            cmd.DrawInstanced(3, 1, 0, 0);
         }
 
         gd.display_rt()?;

@@ -69,7 +69,7 @@ impl Camera {
         self.rot
     }
 
-    fn projection(fov_rad: f32, aspect: f32) -> Mat4 {
+    fn projection(aspect: f32, fov_rad: f32) -> Mat4 {
         glam::camera::lh::proj::directx::perspective(fov_rad, aspect, 100.0, 0.1)
     }
 }
