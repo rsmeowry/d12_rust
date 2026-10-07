@@ -47,12 +47,14 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
             Some(t) => {
                 let path_parent = pathbuf.parent().unwrap();
                 println!("Loading texture: {}", t.path);
-                let mut tex_file = File::open(path_parent.join(t.path))?;
+                let mut tex_file = File::open(path_parent.join(&t.path))?;
                 let mut buf = Vec::with_capacity(1024 * 1024);
                 tex_file.read_to_end(&mut buf)?;
 
-                let tex = Texture::load(gd, &buf)?;
-                let idx = tex.index();
+                let tex_name: &Path = t.path.as_ref();
+                let tex_name = tex_name.file_name().unwrap();
+                let tex = Texture::load(gd, &buf, tex_name.to_str().unwrap())?;
+                let idx = tex.srv_ptr();
                 textures.push(tex);
                 idx
             },

@@ -63,13 +63,13 @@ fn main() -> anyhow::Result<()> {
     let phong = pipeline_mgr.create(&gd, &shaders, phong_desc)?;
     let unlit = pipeline_mgr.create(&gd, &shaders, unlit_desc)?;
 
-    let white_tex = Texture::from_rgba8(&gd, 1, 1, &[255; 4])?;
+    let white_tex = Texture::from_rgba8(&gd, 1, 1, &[255; 4], "builtin/WHITE")?;
 
     let mut materials: Vec<GpuMaterial> = Vec::new();
     // unlit sphere
     let sphere = load_assimp_scene(
         &gd, "assets/models/Sphere.gltf",
-        white_tex.index(), &mut materials,
+        white_tex.srv_ptr(), &mut materials,
         |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
         |mat, tex| MaterialParams::ScrollingTex {
             tex,
@@ -81,11 +81,11 @@ fn main() -> anyhow::Result<()> {
     // sponza !!
     let sponza_old = load_assimp_scene(
         &gd, "assets/sponza_old/Sponza.gltf",
-        white_tex.index(), &mut materials,
+        white_tex.srv_ptr(), &mut materials,
         |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
         |mat, tex| MaterialParams::Phong {
             tex,
-            ambient: Vec3::new(0.15, 0.15, 0.15),
+            ambient: Vec3::new(0.3, 0.3, 0.3),
             diffuse: Vec3::ONE,
             specular: Vec3::ONE,
             shininess: 32.0,
