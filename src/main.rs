@@ -12,7 +12,7 @@ use crate::render::builtin::{Vertex2, Vertex3, VertexPhong};
 use crate::render::camera::Camera;
 use crate::render::cbuffer::ConstBuffer;
 use crate::render::mesh::Mesh;
-use crate::render::pipeline::{Globals, Pipeline};
+use crate::render::pipeline::{Globals, Pipeline, PipelineManager};
 use crate::time::Time;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -50,7 +50,9 @@ fn main() -> anyhow::Result<()> {
     let mut shaders = ShaderStorage::new(r#"C:\Users\rose\RustroverProjects\d12_rust\assets\shaders"#);
     shaders.compile()?;
 
-    let mut pipeline = Pipeline::new::<Vertex3>(
+    let mut pipeline_mgr = PipelineManager::new();
+
+    let mut pipeline = pipeline_mgr.get_pipeline::<Vertex3>(
         &gd,
         &shaders,
         "PhongTex.hlsl".as_ref()
@@ -140,7 +142,8 @@ fn main() -> anyhow::Result<()> {
             if let Err(e) = shaders.recompile() {
                 eprintln!("Error recompiling shaders:\n{}", e);
             } else {
-                pipeline = Pipeline::new::<Vertex3>(
+                pipeline_mgr.rebuild_all(&gd, &shaders)?;
+                pipeline = pipeline_mgr.get_pipeline::<Vertex3>(
                     &gd,
                     &shaders,
                     "PhongTex.hlsl".as_ref()

@@ -1,14 +1,57 @@
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::marker::PhantomData;
 use crate::assets::shaders::{ShaderStorage, ShaderType};
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 use anyhow::anyhow;
 use glam::{Mat4, Vec2, Vec3, Vec4};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use windows::core::{Interface, HSTRING};
 use windows::Win32::Graphics::Direct3D::ID3DBlob;
-use windows::Win32::Graphics::Direct3D12::{D3D12SerializeRootSignature, ID3D12GraphicsCommandList, ID3D12PipelineState, ID3D12RootSignature, D3D12_BLEND_ONE, D3D12_BLEND_OP_ADD, D3D12_BLEND_ZERO, D3D12_COLOR_WRITE_ENABLE_ALL, D3D12_COMPARISON_FUNC_LESS, D3D12_COMPARISON_FUNC_NEVER, D3D12_CULL_MODE_BACK, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DESCRIPTOR_RANGE, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, D3D12_FILL_MODE_SOLID, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_FLOAT32_MAX, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_LOGIC_OP_NOOP, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RASTERIZER_DESC, D3D12_RENDER_TARGET_BLEND_DESC, D3D12_ROOT_CONSTANTS, D3D12_ROOT_DESCRIPTOR, D3D12_ROOT_DESCRIPTOR_TABLE, D3D12_ROOT_PARAMETER, D3D12_ROOT_PARAMETER_0, D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, D3D12_ROOT_PARAMETER_TYPE_CBV, D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE, D3D12_ROOT_PARAMETER_TYPE_SRV, D3D12_ROOT_SIGNATURE_DESC, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, D3D12_SHADER_BYTECODE, D3D12_SHADER_VISIBILITY_ALL, D3D12_SHADER_VISIBILITY_PIXEL, D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK, D3D12_STATIC_SAMPLER_DESC, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D_ROOT_SIGNATURE_VERSION_1};
+use windows::Win32::Graphics::Direct3D12::{D3D12SerializeRootSignature, ID3D12GraphicsCommandList, ID3D12PipelineState, ID3D12RootSignature, D3D12_BLEND_ONE, D3D12_BLEND_OP_ADD, D3D12_BLEND_ZERO, D3D12_COLOR_WRITE_ENABLE_ALL, D3D12_COMPARISON_FUNC_LESS, D3D12_COMPARISON_FUNC_NEVER, D3D12_CULL_MODE_BACK, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DESCRIPTOR_RANGE, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, D3D12_FILL_MODE_SOLID, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_FLOAT32_MAX, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_ELEMENT_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_LOGIC_OP_NOOP, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RASTERIZER_DESC, D3D12_RENDER_TARGET_BLEND_DESC, D3D12_ROOT_CONSTANTS, D3D12_ROOT_DESCRIPTOR, D3D12_ROOT_DESCRIPTOR_TABLE, D3D12_ROOT_PARAMETER, D3D12_ROOT_PARAMETER_0, D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, D3D12_ROOT_PARAMETER_TYPE_CBV, D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE, D3D12_ROOT_PARAMETER_TYPE_SRV, D3D12_ROOT_SIGNATURE_DESC, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, D3D12_SHADER_BYTECODE, D3D12_SHADER_VISIBILITY_ALL, D3D12_SHADER_VISIBILITY_PIXEL, D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK, D3D12_STATIC_SAMPLER_DESC, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D_ROOT_SIGNATURE_VERSION_1};
 use windows::Win32::Graphics::Direct3D12::ID3D12Object;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PipelineDef {
+    shader: PathBuf,
+    layout_hash: u64
+}
+
+pub struct PipelineManager {
+    pipelines: HashMap<PipelineDef, (Pipeline, &'static [D3D12_INPUT_ELEMENT_DESC])>
+}
+
+impl PipelineManager {
+    pub fn new() -> Self {
+        Self {
+            pipelines: HashMap::new()
+        }
+    }
+
+    pub fn rebuild_all(&mut self, gd: &GraphicsDevice, shaders: &ShaderStorage) -> anyhow::Result<()> {
+        for (def, (pipeline, layout)) in self.pipelines.iter_mut() {
+            *pipeline = Pipeline::new(gd, shaders, &def.shader, layout)?;
+        }
+        Ok(())
+    }
+
+    pub fn get_pipeline<TVert: Vertex>(&mut self, gd: &GraphicsDevice, shaders: &ShaderStorage, shader: &Path) -> anyhow::Result<&Pipeline> {
+        let layout = TVert::LAYOUT;
+
+        let def = PipelineDef { shader: shader.into(), layout_hash: calculate_layout_hash(layout) };
+        if let Some(prebuilt) = self.pipelines.get(&def) {
+            // using cached
+            Ok(&prebuilt.0)
+        } else {
+            // building a new pipeline
+            let pipeline = Pipeline::new(gd, shaders, shader.as_ref(), layout)?;
+            self.pipelines.insert(def.clone(), (pipeline, layout));
+            Ok(&self.pipelines.get(&def).unwrap().0)
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Pipeline {
@@ -18,7 +61,7 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn new<TVert: Vertex>(gd: &GraphicsDevice, shaders: &ShaderStorage, shader_path: &Path) -> anyhow::Result<Self> {
+    pub fn new(gd: &GraphicsDevice, shaders: &ShaderStorage, shader_path: &Path, layout: &[D3D12_INPUT_ELEMENT_DESC]) -> anyhow::Result<Self> {
         let dev = gd.device();
 
         let tex2d_range = D3D12_DESCRIPTOR_RANGE {
@@ -136,8 +179,6 @@ impl Pipeline {
         let vert = shaders.get_shader(shader_path, ShaderType::Vertex).ok_or_else(|| anyhow!("Could not find vertex shader in {}", shader_path.display()))?;
         let frag = shaders.get_shader(shader_path, ShaderType::Fragment).ok_or_else(|| anyhow!("Could not find fragment shader in {}", shader_path.display()))?;
 
-        let layout = TVert::LAYOUT;
-
         let mut desc = D3D12_GRAPHICS_PIPELINE_STATE_DESC {
             pRootSignature: unsafe { std::mem::transmute_copy(&root_sig) },
             VS: bytecode(&vert),
@@ -193,7 +234,7 @@ impl Pipeline {
             heap_start: gd.srv_heap_start()?
         })
     }
-    
+
     pub fn bind(&self, cmd: &ID3D12GraphicsCommandList, globals_addr: u64) {
         unsafe {
             cmd.SetGraphicsRootSignature(&self.root_sig);
@@ -239,4 +280,20 @@ pub fn bytecode(b: &ID3DBlob) -> D3D12_SHADER_BYTECODE {
             BytecodeLength: b.GetBufferSize(),
         }
     }
+}
+
+fn calculate_layout_hash(layout: &[D3D12_INPUT_ELEMENT_DESC]) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    for desc in layout {
+        desc.SemanticName.0.hash(&mut hasher);
+        desc.SemanticIndex.hash(&mut hasher);
+        desc.Format.0.hash(&mut hasher);
+        desc.InputSlot.hash(&mut hasher);
+        desc.AlignedByteOffset.hash(&mut hasher);
+        desc.InputSlotClass.0.hash(&mut hasher);
+    }
+    hasher.finish()
 }
