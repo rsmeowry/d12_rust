@@ -1,5 +1,6 @@
 mod signature;
 pub mod desc;
+pub mod material;
 
 use std::collections::HashMap;
 use std::hash::Hash;

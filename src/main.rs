@@ -4,7 +4,7 @@ mod render;
 mod time;
 mod wrappers;
 
-use crate::assets::load_assimp_scene;
+use crate::assets::{load_assimp_scene, MaterialDefinition};
 use crate::input::KeyCode;
 use crate::render::builtin::{Vertex2, Vertex3, VertexPhong};
 use crate::render::camera::Camera;
@@ -18,6 +18,7 @@ use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use crate::assets::shaders::ShaderStorage;
 use crate::render::pipeline::desc::PipelineDesc;
+use crate::render::pipeline::material::MaterialParams;
 use crate::render::vertex::Vertex;
 
 const WIDTH: u32 = 800;
@@ -25,17 +26,10 @@ const HEIGHT: u32 = 600;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct ObjectPhong {
+struct ObjectData {
     pub model: Mat4,
-
-    pub ambient_color: Vec4,
-    pub diffuse_color: Vec4,
-    pub specular_color: Vec4,
-
-    pub shininess: f32,
-    pub diffuse_k: f32,
-    pub specular_k: f32,
-    pub albedo_tex: u32,
+    pub material_id: u32,
+    pub _pad: [u32; 3]
 }
 
 fn main() -> anyhow::Result<()> {
@@ -166,39 +160,51 @@ fn main() -> anyhow::Result<()> {
 
         // frame allocator
         let alloc = &gd.frame_context()?.frame_alloc;
+
+        // globals
         let globals_va = alloc.push(&globals)?;
+
+
         let rs = pipeline_mgr.root_sig();
         rs.bind(cmd, globals_va, gd.srv_heap_start()?);
         pipeline_mgr.get(phong).bind(cmd);
 
         let mut objects = Vec::new();
+        let mut materials = Vec::new();
         let mut draws = Vec::new();
+        let mut material_id = 0;
         for (mesh_idx, model) in &sponza_old.mesh_indices {
             let (mesh, mat_idx) = &sponza_old.meshes[*mesh_idx];
             let Some(material) = sponza_old.materials.get(mat_idx) else { continue };
-            objects.push(ObjectPhong {
+            objects.push(ObjectData {
                 model: *model,
-                ambient_color: Vec4::new(0.15, 0.15, 0.15, 1.),
-                diffuse_color: Vec4::ONE,
-                specular_color: Vec4::ONE,
+                material_id,
+                _pad: [0; 3]
+            });
+            materials.push(MaterialParams::Phong {
+                tex: material.texture.index(),
+                ambient: Vec3::new(0.15, 0.15, 0.15),
+                diffuse: Vec3::ONE,
+                specular: Vec3::ONE,
                 shininess: 32.0,
                 diffuse_k: 0.4,
                 specular_k: 0.7,
-                albedo_tex: material.texture.index()
-            });
+            }.to_gpu_material());
+            material_id += 1;
             draws.push(mesh);
         }
 
+        // objects (model + material id)
         let objects_va = alloc.push_slice(&objects, 16)?;
         rs.set_objects(cmd, objects_va);
+
+        // materials (material props)
+        let materials_va = alloc.push_slice(&materials, 16)?;
+        rs.set_materials(cmd, materials_va);
         for (i, mesh) in draws.iter().enumerate() {
             rs.set_draw_index(cmd, i as u32);
             mesh.draw(cmd);
         }
-
-        // pipeline.set_per_obj_data(cmd, &object_data);
-        // pipeline.set_tex(cmd, &tex);
-        // mesh.draw(cmd);
 
         gd.display_rt()?;
 

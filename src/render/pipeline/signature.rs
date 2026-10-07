@@ -12,6 +12,7 @@ impl RootSignature {
     pub const TEX2D: u32 = 2; // t0 space1 - textures
     pub const OBJECTS: u32 = 3; // t1 - objects data
     pub const TEX2D_ARRAY: u32 = 4; // t0 space2 - texture arrays
+    pub const MATERIALS: u32 = 5; // t2 - materials
 
     pub fn new(dev: &ID3D12Device) -> anyhow::Result<Self> {
         let tex2d_range = D3D12_DESCRIPTOR_RANGE {
@@ -87,6 +88,18 @@ impl RootSignature {
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
             },
+            // t2 - materials
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_SRV,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    Descriptor: D3D12_ROOT_DESCRIPTOR {
+                        ShaderRegister: 2,
+                        RegisterSpace: 0,
+                    }
+                },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL
+            },
+
         ];
 
         let samplers = [
@@ -112,7 +125,7 @@ impl RootSignature {
         };
         if let Err(e) = r {
             let msg = err.map(|e| String::from_utf8_lossy(blob_bytes(&e)).into_owned()).unwrap_or_default();
-            anyhow::bail!("Root signature: {e} {msg}");
+            anyhow::bail!("Error in root signature: {e} {msg}");
         }
         let rs = unsafe { dev.CreateRootSignature(0, blob_bytes(&blob.unwrap()))? };
         Ok(Self { rs })
@@ -129,6 +142,10 @@ impl RootSignature {
 
     pub fn set_objects(&self, cmd: &ID3D12GraphicsCommandList, va: u64) {
         unsafe { cmd.SetGraphicsRootShaderResourceView(Self::OBJECTS, va) };
+    }
+
+    pub fn set_materials(&self, cmd: &ID3D12GraphicsCommandList, va: u64) {
+        unsafe { cmd.SetGraphicsRootShaderResourceView(Self::MATERIALS, va) };
     }
 
     pub fn set_draw_index(&self, cmd: &ID3D12GraphicsCommandList, index: u32) {
