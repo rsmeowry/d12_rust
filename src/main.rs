@@ -4,14 +4,13 @@ mod render;
 mod time;
 mod wrappers;
 
-use crate::assets::{load_assimp_scene, load_obj_mesh};
+use crate::assets::load_assimp_scene;
 use crate::input::KeyCode;
 use crate::render::builtin::{Vertex2, Vertex3, VertexPhong};
 use crate::render::camera::Camera;
 use crate::render::cbuffer::ConstBuffer;
 use crate::render::mesh::Mesh;
 use crate::render::pipeline::{Globals, Pipeline};
-use crate::render::texture::Texture;
 use crate::time::Time;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -72,17 +71,6 @@ fn main() -> anyhow::Result<()> {
         light_col: Vec4::new(1.0, 0.9, 0.9, 1.0),
     };
     let globals_cbuf = ConstBuffer::<Globals>::new(&gd, &globals)?;
-
-    let mut object_data = ObjectPhong {
-        model: Mat4::IDENTITY,
-        ambient_color: Vec4::new(0.17, 0.17, 0.17, 1.0),
-        diffuse_color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-        specular_color: Vec4::new(1.0, 0.9, 0.7, 1.0),
-        diffuse_k: 0.4,
-        specular_k: 0.6,
-        shininess: 32.0,
-        albedo_tex: 0
-    };
 
     let mut camera_y = 0.;
     let mut last_title_update: f32 = 0.;
@@ -154,6 +142,8 @@ fn main() -> anyhow::Result<()> {
 
         gd.prepare_rt()?;
         gd.clear_color(Vec4::new(0.3, 0.4, 0.9, 1.))?;
+        globals.camera_pos = cam.pos();
+        globals_cbuf.write(gd.frame_index()?, &globals);
         let cmd = gd.command_list()?;
 
         // frame allocator

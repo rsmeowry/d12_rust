@@ -1,12 +1,12 @@
-use rand::random;
-use crate::wrappers::graphics::{GraphicsDevice, transition_barrier};
+use crate::wrappers::graphics::{transition_barrier, GraphicsDevice};
+use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D12::{
-    D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES,
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC,
-    D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_STATE_COPY_DEST,
-    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_TEXTURE_COPY_LOCATION,
-    D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-    D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, ID3D12Resource,
+    ID3D12Resource, D3D12_HEAP_FLAG_NONE,
+    D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT,
+    D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+    D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+    D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0,
+    D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
 };
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC};
 
@@ -62,6 +62,10 @@ impl Texture {
             )?;
         }
         let tex = tex.ok_or_else(|| anyhow::Error::msg("Could not create texture!"))?;
+        let (cpu, _gpu, idx) = gd.create_srv()?;
+        unsafe {
+            tex.SetName(&HSTRING::from(format!("Brine::Tex2D_{:04x}", idx)))?;
+        }
 
         let mut footprint = D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default();
         let mut total: u64 = 0;
@@ -83,7 +87,7 @@ impl Texture {
         for y in 0..height as usize {
             staging[y * pitch..y * pitch + row].copy_from_slice(&bytes[y * row..(y + 1) * row]);
         }
-        let upload = gd.create_buffer(&staging, format!("Tex_{:4x}", random::<u16>()))?;
+        let upload = gd.create_buffer(&staging, format!("Tex_{:04x}", idx))?;
 
         gd.execute_now(|cmd| unsafe {
             let dst = D3D12_TEXTURE_COPY_LOCATION {
@@ -108,7 +112,6 @@ impl Texture {
             )]);
         })?;
 
-        let (cpu, _gpu, idx) = gd.create_srv()?;
         unsafe { dev.CreateShaderResourceView(&tex, None, cpu) };
 
         Ok(Self {

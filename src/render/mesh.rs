@@ -1,9 +1,7 @@
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-use windows::Win32::Graphics::Direct3D12::{
-    D3D12_INDEX_BUFFER_VIEW, D3D12_VERTEX_BUFFER_VIEW, ID3D12GraphicsCommandList, ID3D12Resource,
-};
+use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_INDEX_BUFFER_VIEW, D3D12_RESOURCE_STATE_INDEX_BUFFER, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_VERTEX_BUFFER_VIEW};
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R32_UINT;
 
 #[derive(Debug)]
@@ -22,8 +20,9 @@ impl Mesh {
         indices: &[u32],
     ) -> anyhow::Result<Self> {
         let id: u16 = rand::random();
-        let vb = gd.create_buffer(bytemuck::cast_slice(vertices), format!("Mesh_VB_{:4x}", id))?;
-        let ib = gd.create_buffer(bytemuck::cast_slice(indices), format!("Mesh_IB_{:4x}", id))?;
+
+        let vb = gd.create_default_buffer(bytemuck::cast_slice(vertices), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, format!("Mesh_VB_{:04x}", id))?;
+        let ib = gd.create_default_buffer(bytemuck::cast_slice(indices),  D3D12_RESOURCE_STATE_INDEX_BUFFER, format!("Mesh_IB_{:04x}", id))?;
         let vbv = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation: unsafe { vb.GetGPUVirtualAddress() },
             SizeInBytes: size_of_val(vertices) as u32,

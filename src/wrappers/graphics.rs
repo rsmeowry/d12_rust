@@ -10,7 +10,7 @@ use std::ops::BitOr;
 use anyhow::anyhow;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, RECT};
 use windows::Win32::Graphics::Direct3D::{D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_12_0};
-use windows::Win32::Graphics::Direct3D12::{D3D12_CLEAR_FLAG_DEPTH, D3D12_CLEAR_FLAG_STENCIL, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_DEPTH_STENCIL_VALUE, D3D12_DESCRIPTOR_HEAP_DESC, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_FENCE_FLAG_NONE, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATES, D3D12_RESOURCE_TRANSITION_BARRIER, D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, D3D12_VIEWPORT, D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12DescriptorHeap, ID3D12Device, ID3D12Fence, ID3D12GraphicsCommandList, ID3D12Resource, D3D12GetDebugInterface, ID3D12Debug, ID3D12Object, D3D12_DESCRIPTOR_HEAP_TYPE};
+use windows::Win32::Graphics::Direct3D12::{D3D12_CLEAR_FLAG_DEPTH, D3D12_CLEAR_FLAG_STENCIL, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_DEPTH_STENCIL_VALUE, D3D12_DESCRIPTOR_HEAP_DESC, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_FENCE_FLAG_NONE, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATES, D3D12_RESOURCE_TRANSITION_BARRIER, D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, D3D12_VIEWPORT, D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12DescriptorHeap, ID3D12Device, ID3D12Fence, ID3D12GraphicsCommandList, ID3D12Resource, D3D12GetDebugInterface, ID3D12Debug, ID3D12Object, D3D12_DESCRIPTOR_HEAP_TYPE, D3D12_HEAP_TYPE, D3D12_RESOURCE_STATE_COPY_DEST};
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC,
 };
@@ -456,43 +456,60 @@ impl GraphicsDevice {
 
         Ok(())
     }
+    
+    fn create_committed_buffer<S: AsRef<str>>(
+        dev: &ID3D12Device,
+        heap_type: D3D12_HEAP_TYPE,
+        size: usize,
+        initial_state: D3D12_RESOURCE_STATES,
+        name: S,
+    ) -> anyhow::Result<ID3D12Resource> {
+        let name = name.as_ref();
+        anyhow::ensure!(size > 0, "Buffer size must be > 0 ({name})");
 
-    pub fn create_upload_buffer<S: AsRef<str>>(dev: &ID3D12Device, size: usize, name: S) -> anyhow::Result<ID3D12Resource> {
-        let heap = D3D12_HEAP_PROPERTIES {
-            Type: D3D12_HEAP_TYPE_UPLOAD,
-            ..Default::default()
-        };
+        let heap = D3D12_HEAP_PROPERTIES { Type: heap_type, ..Default::default() };
         let desc = D3D12_RESOURCE_DESC {
             Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
             Width: size as u64,
             Height: 1,
             DepthOrArraySize: 1,
             MipLevels: 1,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
+            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
             Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
             ..Default::default()
         };
         let mut buf: Option<ID3D12Resource> = None;
         unsafe {
-            dev.CreateCommittedResource(
-                &heap,
-                D3D12_HEAP_FLAG_NONE,
-                &desc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                None,
-                &mut buf,
-            )?;
+            dev.CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, initial_state, None, &mut buf)?;
         }
-        let buf = buf.ok_or_else(|| anyhow::Error::msg("Failed to create a buffer"))?;
-        // naming for debug
-        let name = format!("Brine::{}", name.as_ref());
-        let hstring = HSTRING::from(name);
-        unsafe {
-            buf.SetName(&hstring);
-        }
+        let buf = buf.ok_or_else(|| anyhow!("Failed to create buffer {name}"))?;
+        unsafe { buf.SetName(&HSTRING::from(format!("Brine::{name}")))? };
+        Ok(buf)
+    }
+
+    /// creates an UPLOAD type buffer that lives on the RAM (slow !! but can write ig)
+    pub fn create_upload_buffer<S: AsRef<str>>(dev: &ID3D12Device, size: usize, name: S) -> anyhow::Result<ID3D12Resource> {
+        Self::create_committed_buffer(dev, D3D12_HEAP_TYPE_UPLOAD, size, D3D12_RESOURCE_STATE_GENERIC_READ, name)
+    }
+
+    /// creates a DEFAULT type buffer that lives on the VRAM
+    pub fn create_default_buffer<S: AsRef<str>>(
+        &self,
+        data: &[u8],
+        final_state: D3D12_RESOURCE_STATES,
+        name: S,
+    ) -> anyhow::Result<ID3D12Resource> {
+        let name = name.as_ref();
+        let buf = Self::create_committed_buffer(
+            &self.device, D3D12_HEAP_TYPE_DEFAULT, data.len(), D3D12_RESOURCE_STATE_COMMON, name,
+        )?;
+        let staging = self.create_buffer(data, format!("Staging>>{name}"))?;
+
+        self.execute_now(|cmd| unsafe {
+            cmd.CopyBufferRegion(&buf, 0, &staging, 0, data.len() as u64);
+            cmd.ResourceBarrier(&[transition_barrier(&buf, D3D12_RESOURCE_STATE_COPY_DEST, final_state)]);
+        })?;
+
         Ok(buf)
     }
 
