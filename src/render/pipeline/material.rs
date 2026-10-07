@@ -32,8 +32,8 @@ impl MaterialParams {
                 GpuMaterial {
                     textures: [tex, 0, 0, 0, 0, 0, 0, 0],
                     unique_params: [
-                        color.x, color.y, color.z, scroll_speed,
-                        0., 0., 0., 0.,
+                        color.x, color.y, color.z, color.w,
+                        scroll_speed, 0., 0., 0.,
                         0., 0., 0., 0.,
                         0., 0., 0., 0.,
                     ],

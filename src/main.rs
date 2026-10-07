@@ -4,7 +4,7 @@ mod render;
 mod time;
 mod wrappers;
 
-use crate::assets::{load_assimp_scene, MaterialDefinition};
+use crate::assets::{load_assimp_scene, load_obj_mesh, MaterialDefinition};
 use crate::input::KeyCode;
 use crate::render::builtin::{Vertex2, Vertex3, VertexPhong};
 use crate::render::camera::Camera;
@@ -51,7 +51,17 @@ fn main() -> anyhow::Result<()> {
         input: Vertex3::LAYOUT,
         ..Default::default()
     };
+    let unlit_desc = PipelineDesc {
+        name: "Unlit",
+        shader: "UnlitScroll.hlsl".into(),
+        input: Vertex3::LAYOUT,
+        ..Default::default()
+    };
     let phong = pipeline_mgr.create(&gd, &shaders, phong_desc)?;
+    let unlit = pipeline_mgr.create(&gd, &shaders, unlit_desc)?;
+
+    // unlit sphere
+    let sphere = load_assimp_scene(&gd, "assets/models/Sphere.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
 
     // sponza !!
     let sponza_old = load_assimp_scene(&gd, "assets/sponza_old/Sponza.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
@@ -164,15 +174,14 @@ fn main() -> anyhow::Result<()> {
         // globals
         let globals_va = alloc.push(&globals)?;
 
-
         let rs = pipeline_mgr.root_sig();
         rs.bind(cmd, globals_va, gd.srv_heap_start()?);
-        pipeline_mgr.get(phong).bind(cmd);
 
         let mut objects = Vec::new();
         let mut materials = Vec::new();
         let mut draws = Vec::new();
         let mut material_id = 0;
+        // sponza
         for (mesh_idx, model) in &sponza_old.mesh_indices {
             let (mesh, mat_idx) = &sponza_old.meshes[*mesh_idx];
             let Some(material) = sponza_old.materials.get(mat_idx) else { continue };
@@ -191,7 +200,24 @@ fn main() -> anyhow::Result<()> {
                 specular_k: 0.7,
             }.to_gpu_material());
             material_id += 1;
-            draws.push(mesh);
+            draws.push((mesh, phong));
+        }
+        // sphere
+        for (mesh_idx, model) in &sphere.mesh_indices {
+            let (mesh, mat_idx) = &sphere.meshes[*mesh_idx];
+            let Some(material) = sphere.materials.get(mat_idx) else { continue };
+            objects.push(ObjectData {
+                model: *model,
+                material_id,
+                _pad: [0; 3]
+            });
+            materials.push(MaterialParams::ScrollingTex {
+                tex: material.texture.index(),
+                color: Vec4::ONE,
+                scroll_speed: 1.0,
+            }.to_gpu_material());
+            material_id += 1;
+            draws.push((mesh, unlit));
         }
 
         // objects (model + material id)
@@ -201,7 +227,12 @@ fn main() -> anyhow::Result<()> {
         // materials (material props)
         let materials_va = alloc.push_slice(&materials, 16)?;
         rs.set_materials(cmd, materials_va);
-        for (i, mesh) in draws.iter().enumerate() {
+        let mut bound = None;
+        for (i, (mesh, pso)) in draws.iter().enumerate() {
+            if bound != Some(*pso) {
+                pipeline_mgr.get(*pso).bind(cmd);
+                bound = Some(*pso);
+            }
             rs.set_draw_index(cmd, i as u32);
             mesh.draw(cmd);
         }
