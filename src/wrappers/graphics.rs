@@ -2,6 +2,7 @@
 
 pub mod frames;
 pub mod alloc;
+pub mod descriptor;
 
 use glam::Vec4;
 use std::cell::{Cell, RefCell};
@@ -18,6 +19,7 @@ use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2, DXGI_CREATE_FACTORY_FLA
 use windows::Win32::System::Threading::{CreateEventW, INFINITE, WaitForSingleObject};
 use windows::core::{Interface, HSTRING, PCWSTR};
 use crate::wrappers::graphics::alloc::FrameAllocator;
+use crate::wrappers::graphics::descriptor::DescriptorHeap;
 use crate::wrappers::graphics::frames::FrameContext;
 
 #[derive(Debug)]
@@ -119,10 +121,7 @@ impl GraphicsDevice {
     fn current_bb_handle(&self) -> anyhow::Result<D3D12_CPU_DESCRIPTOR_HANDLE> {
         let res = self.resources()?;
 
-        let mut handle = unsafe { res.rtv_heap.GetCPUDescriptorHandleForHeapStart() };
-        handle.ptr += (*res.bb_index.borrow() * res.render_target_desc_size) as usize;
-
-        Ok(handle)
+        Ok(res.rtv.cpu(res.bb_rtv[*res.bb_index.borrow() as usize]))
     }
 
     #[inline(always)]
@@ -133,12 +132,8 @@ impl GraphicsDevice {
 
     #[inline(always)]
     fn dsv(&self) -> anyhow::Result<D3D12_CPU_DESCRIPTOR_HANDLE> {
-        unsafe {
-            Ok(self
-                .resources()?
-                .dsv_heap
-                .GetCPUDescriptorHandleForHeapStart())
-        }
+        let res = self.resources()?;
+        Ok(res.dsv.cpu(res.depth_dsv))
     }
 
     pub fn prepare_rt(&self) -> anyhow::Result<()> {
@@ -166,7 +161,7 @@ impl GraphicsDevice {
             res.command_list.RSSetViewports(&[res.viewport]);
             res.command_list.RSSetScissorRects(&[res.scissor_rect]);
             res.command_list
-                .SetDescriptorHeaps(&[Some(res.srv_heap.clone())]);
+                .SetDescriptorHeaps(&[Some(res.srv.raw().clone())]);
             res.command_list
                 .OMSetRenderTargets(1, Some(&rtv), true, Some(&dsv));
         }
@@ -202,26 +197,16 @@ impl GraphicsDevice {
         Ok(&self.resources()?.command_list)
     }
 
-    pub fn create_srv(
-        &self,
-    ) -> anyhow::Result<(D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE, u32)> {
-        let res = self.resources()?;
-        let i = res.srv_next.get();
-        if i >= Self::SRV_HEAP_SIZE {
-            return Err(anyhow::Error::msg("The SRV heap is full!"));
-        }
+    pub fn srv_heap(&self) -> anyhow::Result<&DescriptorHeap> {
+        Ok(&self.resources()?.srv)
+    }
 
-        res.srv_next.set(i + 1);
-        let offset = i * res.cbv_srv_uav_desc_size;
-        let (mut cpu, mut gpu) = unsafe {
-            (
-                res.srv_heap.GetCPUDescriptorHandleForHeapStart(),
-                res.srv_heap.GetGPUDescriptorHandleForHeapStart(),
-            )
-        };
-        cpu.ptr += offset as usize;
-        gpu.ptr += offset as u64;
-        Ok((cpu, gpu, i))
+    pub fn dsv_heap(&self) -> anyhow::Result<&DescriptorHeap> {
+        Ok(&self.resources()?.dsv)
+    }
+
+    pub fn rtv_heap(&self) -> anyhow::Result<&DescriptorHeap> {
+        Ok(&self.resources()?.rtv)
     }
 
     pub fn execute_now(&self, f: impl FnOnce(&ID3D12GraphicsCommandList)) -> anyhow::Result<()> {
@@ -306,9 +291,9 @@ impl GraphicsDevice {
         let (buffers, depth) = Self::size_dependent(
             &self.device,
             &res.swapchain,
-            &res.rtv_heap,
-            res.render_target_desc_size,
-            &res.dsv_heap,
+            &res.rtv,
+            &res.dsv,
+            res.bb_rtv,
             width,
             height,
         )?;
@@ -321,7 +306,7 @@ impl GraphicsDevice {
     }
 
     pub fn srv_heap_start(&self) -> anyhow::Result<D3D12_GPU_DESCRIPTOR_HANDLE> {
-        Ok(unsafe { self.resources()?.srv_heap.GetGPUDescriptorHandleForHeapStart() })
+        Ok(self.resources()?.srv.gpu(0))
     }
 
     pub fn setup_resources(
@@ -411,17 +396,19 @@ impl GraphicsDevice {
         let bb_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
 
         // heaps
-        let rtv_heap = Self::create_heap(dev, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, Self::SWAPCHAIN_BUFFER_COUNT, false)?;
-        let dsv_heap = Self::create_heap(dev, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false)?;
-        let srv_heap = Self::create_heap(dev, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, Self::SRV_HEAP_SIZE, true)?;
+        let rtv = DescriptorHeap::new(dev, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 64, false, "RTV")?;
+        let dsv = DescriptorHeap::new(dev, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 16, false, "DSV")?;
+        let srv = DescriptorHeap::new(dev, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 65536, true, "SRV")?;
+        let bb_rtv = [rtv.alloc()?, rtv.alloc()?];
+        let depth_dsv = dsv.alloc()?;
 
         // swapchain
         let (swapchain_buffer, depth_stencil_buffer) = Self::size_dependent(
             &self.device,
             &swapchain,
-            &rtv_heap,
-            render_target_desc_size,
-            &dsv_heap,
+            &rtv,
+            &dsv,
+            bb_rtv,
             width,
             height,
         )?;
@@ -431,9 +418,6 @@ impl GraphicsDevice {
         self.resources = Some(GraphicsResources {
             fence,
             fence_event,
-            render_target_desc_size,
-            depth_stencil_desc_size,
-            cbv_srv_uav_desc_size,
             command_queue,
             upload_alloc,
             command_list,
@@ -441,13 +425,13 @@ impl GraphicsDevice {
             swapchain,
             bb_index: RefCell::new(bb_index),
 
-            rtv_heap,
             swapchain_buffer,
-            dsv_heap,
             depth_stencil_buffer,
-
-            srv_heap,
-            srv_next: Cell::new(0),
+            rtv,
+            dsv,
+            srv,
+            bb_rtv,
+            depth_dsv,
 
             viewport,
             scissor_rect,
@@ -514,25 +498,6 @@ impl GraphicsDevice {
         Ok(buf)
     }
 
-    fn create_heap(
-        dev: &ID3D12Device,
-        ty: D3D12_DESCRIPTOR_HEAP_TYPE,
-        count: u32,
-        shader_visible: bool,
-    ) -> anyhow::Result<ID3D12DescriptorHeap> {
-        let desc = D3D12_DESCRIPTOR_HEAP_DESC {
-            Type: ty,
-            NumDescriptors: count,
-            Flags: if shader_visible {
-                D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE
-            } else {
-                D3D12_DESCRIPTOR_HEAP_FLAG_NONE
-            },
-            NodeMask: 0,
-        };
-        Ok(unsafe { dev.CreateDescriptorHeap(&desc)? })
-    }
-
     pub fn frame_context(&self) -> anyhow::Result<&FrameContext> {
         let res = self.resources()?;
         Ok(&res.frames[res.frame_index.get()])
@@ -541,18 +506,16 @@ impl GraphicsDevice {
     fn size_dependent(
         dev: &ID3D12Device,
         swapchain: &IDXGISwapChain3,
-        rtv_heap: &ID3D12DescriptorHeap,
-        rtv_size: u32,
-        dsv_heap: &ID3D12DescriptorHeap,
+        rtv: &DescriptorHeap,
+        dsv: &DescriptorHeap,
+        bb_rtv: [u32; 2],
         width: u32,
         height: u32,
     ) -> anyhow::Result<(Vec<ID3D12Resource>, ID3D12Resource)> {
-        let mut rtv = unsafe { rtv_heap.GetCPUDescriptorHandleForHeapStart() };
         let mut buffers = Vec::with_capacity(GraphicsDevice::SWAPCHAIN_BUFFER_COUNT as usize);
-        for i in 0..GraphicsDevice::SWAPCHAIN_BUFFER_COUNT {
-            let buf: ID3D12Resource = unsafe { swapchain.GetBuffer(i)? };
-            unsafe { dev.CreateRenderTargetView(&buf, None, rtv) };
-            rtv.ptr += rtv_size as usize;
+        for (i, slot) in bb_rtv.iter().enumerate() {
+            let buf: ID3D12Resource = unsafe { swapchain.GetBuffer(i as u32)? };
+            unsafe { dev.CreateRenderTargetView(&buf, None, rtv.cpu(*slot)) };
             buffers.push(buf);
         }
 
@@ -598,7 +561,7 @@ impl GraphicsDevice {
         let depth =
             depth.ok_or_else(|| anyhow::anyhow!("Failed to create a depth stencil buffer!"))?;
         unsafe {
-            dev.CreateDepthStencilView(&depth, None, dsv_heap.GetCPUDescriptorHandleForHeapStart())
+            dev.CreateDepthStencilView(&depth, None, dsv.cpu(0))
         };
 
         Ok((buffers, depth))
@@ -640,10 +603,6 @@ pub struct GraphicsResources {
     fence: ID3D12Fence,
     fence_event: HANDLE,
 
-    render_target_desc_size: u32,
-    depth_stencil_desc_size: u32,
-    cbv_srv_uav_desc_size: u32,
-
     command_queue: ID3D12CommandQueue,
     command_list: ID3D12GraphicsCommandList,
     frames: Vec<FrameContext>,
@@ -654,13 +613,13 @@ pub struct GraphicsResources {
     swapchain: IDXGISwapChain3,
     bb_index: RefCell<u32>,
 
-    rtv_heap: ID3D12DescriptorHeap,
+    rtv: DescriptorHeap, // 64
+    dsv: DescriptorHeap, // 16
+    srv: DescriptorHeap, // 65356
+    bb_rtv: [u32; 2],
+    depth_dsv: u32,
     swapchain_buffer: Vec<ID3D12Resource>,
-    dsv_heap: ID3D12DescriptorHeap,
     depth_stencil_buffer: ID3D12Resource,
-
-    srv_heap: ID3D12DescriptorHeap,
-    srv_next: Cell<u32>,
 
     viewport: D3D12_VIEWPORT,
     scissor_rect: RECT,

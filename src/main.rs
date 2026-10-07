@@ -4,6 +4,7 @@ mod render;
 mod time;
 mod wrappers;
 
+use asset_importer::TextureType;
 use crate::assets::{load_assimp_scene, load_obj_mesh, MaterialDefinition};
 use crate::input::KeyCode;
 use crate::render::builtin::{Vertex2, Vertex3, VertexPhong};
@@ -16,9 +17,11 @@ use crate::wrappers::event::WindowEvent;
 use crate::wrappers::graphics::GraphicsDevice;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
+use windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 use crate::assets::shaders::ShaderStorage;
 use crate::render::pipeline::desc::PipelineDesc;
-use crate::render::pipeline::material::MaterialParams;
+use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
+use crate::render::texture::Texture;
 use crate::render::vertex::Vertex;
 
 const WIDTH: u32 = 800;
@@ -60,11 +63,38 @@ fn main() -> anyhow::Result<()> {
     let phong = pipeline_mgr.create(&gd, &shaders, phong_desc)?;
     let unlit = pipeline_mgr.create(&gd, &shaders, unlit_desc)?;
 
+    let white_tex = Texture::from_rgba8(&gd, 1, 1, &[255; 4])?;
+
+    let mut materials: Vec<GpuMaterial> = Vec::new();
     // unlit sphere
-    let sphere = load_assimp_scene(&gd, "assets/models/Sphere.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
+    let sphere = load_assimp_scene(
+        &gd, "assets/models/Sphere.gltf",
+        white_tex.index(), &mut materials,
+        |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
+        |mat, tex| MaterialParams::ScrollingTex {
+            tex,
+            color: Vec4::ONE,
+            scroll_speed: 1.0,
+        }.to_gpu_material()
+    )?;
 
     // sponza !!
-    let sponza_old = load_assimp_scene(&gd, "assets/sponza_old/Sponza.gltf", |pos, norm, uv, _col| Vertex3::new(pos, norm, uv))?;
+    let sponza_old = load_assimp_scene(
+        &gd, "assets/sponza_old/Sponza.gltf",
+        white_tex.index(), &mut materials,
+        |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
+        |mat, tex| MaterialParams::Phong {
+            tex,
+            ambient: Vec3::new(0.15, 0.15, 0.15),
+            diffuse: Vec3::ONE,
+            specular: Vec3::ONE,
+            shininess: 32.0,
+            diffuse_k: 0.4,
+            specular_k: 0.7,
+        }.to_gpu_material()
+    )?;
+
+    let materials_buf = gd.create_default_buffer(bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
 
     let mut cam = Camera::new(
         WIDTH,
@@ -178,45 +208,25 @@ fn main() -> anyhow::Result<()> {
         rs.bind(cmd, globals_va, gd.srv_heap_start()?);
 
         let mut objects = Vec::new();
-        let mut materials = Vec::new();
         let mut draws = Vec::new();
-        let mut material_id = 0;
         // sponza
         for (mesh_idx, model) in &sponza_old.mesh_indices {
-            let (mesh, mat_idx) = &sponza_old.meshes[*mesh_idx];
-            let Some(material) = sponza_old.materials.get(mat_idx) else { continue };
+            let (mesh, material) = &sponza_old.meshes[*mesh_idx];
             objects.push(ObjectData {
                 model: *model,
-                material_id,
+                material_id: *material,
                 _pad: [0; 3]
             });
-            materials.push(MaterialParams::Phong {
-                tex: material.texture.index(),
-                ambient: Vec3::new(0.15, 0.15, 0.15),
-                diffuse: Vec3::ONE,
-                specular: Vec3::ONE,
-                shininess: 32.0,
-                diffuse_k: 0.4,
-                specular_k: 0.7,
-            }.to_gpu_material());
-            material_id += 1;
             draws.push((mesh, phong));
         }
         // sphere
         for (mesh_idx, model) in &sphere.mesh_indices {
-            let (mesh, mat_idx) = &sphere.meshes[*mesh_idx];
-            let Some(material) = sphere.materials.get(mat_idx) else { continue };
+            let (mesh, material) = &sphere.meshes[*mesh_idx];
             objects.push(ObjectData {
                 model: *model,
-                material_id,
+                material_id: *material,
                 _pad: [0; 3]
             });
-            materials.push(MaterialParams::ScrollingTex {
-                tex: material.texture.index(),
-                color: Vec4::ONE,
-                scroll_speed: 1.0,
-            }.to_gpu_material());
-            material_id += 1;
             draws.push((mesh, unlit));
         }
 
@@ -225,8 +235,7 @@ fn main() -> anyhow::Result<()> {
         rs.set_objects(cmd, objects_va);
 
         // materials (material props)
-        let materials_va = alloc.push_slice(&materials, 16)?;
-        rs.set_materials(cmd, materials_va);
+        rs.set_materials(cmd, unsafe { materials_buf.GetGPUVirtualAddress() });
         let mut bound = None;
         for (i, (mesh, pso)) in draws.iter().enumerate() {
             if bound != Some(*pso) {

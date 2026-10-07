@@ -11,7 +11,8 @@ use std::path::Path;
 use anyhow::bail;
 use asset_importer::postprocess::PostProcessSteps;
 use asset_importer::TextureType;
-use tobj::LoadOptions;
+use tobj::{LoadOptions, Material};
+use crate::render::pipeline::material::GpuMaterial;
 use crate::render::texture::Texture;
 
 #[derive(Debug)]
@@ -23,38 +24,41 @@ pub struct MaterialDefinition {
 pub struct LoadedScene {
     pub mesh_indices: Vec<(usize, Mat4)>,
     pub meshes: Vec<(Mesh, u32)>,
-    pub materials: HashMap<u32, MaterialDefinition>,
+    pub textures: Vec<Texture>,
 }
 
 pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
     gd: &GraphicsDevice,
     path: P,
-    make_vert: impl Fn(Vec3, Vec3, Vec2, Vec4) -> V
+    white_tex: u32,
+    materials: &mut Vec<GpuMaterial>,
+    make_vert: impl Fn(Vec3, Vec3, Vec2, Vec4) -> V,
+    make_material: impl Fn(&asset_importer::material::Material, u32) -> GpuMaterial,
 ) -> anyhow::Result<LoadedScene> {
     let pathbuf = path.as_ref().to_path_buf();
 
     let scene = asset_importer::Importer::new().read_file(path)
         .with_post_process(PostProcessSteps::TRIANGULATE | PostProcessSteps::FLIP_UVS | PostProcessSteps::GEN_SMOOTH_NORMALS)
         .import()?;
-    let mut materials = HashMap::<u32, MaterialDefinition>::new();
-    let mut i = 0;
+    let base = materials.len() as u32;
+    let mut textures = Vec::<Texture>::new();
     for material in scene.materials() {
-        if material.texture_count(TextureType::BaseColor) > 0 {
-            // loading texture
-            let path_parent = pathbuf.parent().unwrap();
-            println!("LOADING {}", material.texture(TextureType::BaseColor, 0).unwrap().path);
-            let mut tex_file = File::open(path_parent.join(material.texture(TextureType::BaseColor, 0).unwrap().path))?;
-            let mut buf = Vec::with_capacity(1024 * 1024);
-            tex_file.read_to_end(&mut buf)?;
+        let albedo = match material.texture(TextureType::BaseColor, 0) {
+            Some(t) => {
+                let path_parent = pathbuf.parent().unwrap();
+                println!("Loading texture: {}", t.path);
+                let mut tex_file = File::open(path_parent.join(t.path))?;
+                let mut buf = Vec::with_capacity(1024 * 1024);
+                tex_file.read_to_end(&mut buf)?;
 
-            let tex = Texture::load(gd, &buf)?;
-
-            materials.insert(i, MaterialDefinition {
-                index: i,
-                texture: tex,
-            });
-        }
-        i += 1;
+                let tex = Texture::load(gd, &buf)?;
+                let idx = tex.index();
+                textures.push(tex);
+                idx
+            },
+            None => white_tex,
+        };
+        materials.push(make_material(&material, albedo));
     }
 
     let built: Vec<(Mesh, u32)> = scene.meshes().map(|mesh| {
@@ -77,7 +81,7 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
             let vert = make_vert(positions[i], normals[i], uvs[i], Vec4::ONE);
             vertices.push(vert);
         }
-        Mesh::new(gd, &vertices, &indices).map(|it| (it, mesh.material_index() as u32))
+        Mesh::new(gd, &vertices, &indices).map(|it| (it, base + mesh.material_index() as u32))
     }).collect::<anyhow::Result<_>>()?;
 
     let mut out = Vec::new();
@@ -95,7 +99,7 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
     Ok(LoadedScene {
         mesh_indices: out,
         meshes: built,
-        materials,
+        textures,
     })
 }
 

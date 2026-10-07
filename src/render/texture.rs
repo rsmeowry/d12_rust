@@ -44,7 +44,7 @@ impl Texture {
         unsafe {
             dev.CreateCommittedResource(
                 &heap,
-                D3D12_HEAP_FLAG_ALLOW_WRITE_WATCH,
+                D3D12_HEAP_FLAG_NONE,
                 &desc,
                 D3D12_RESOURCE_STATE_RENDER_TARGET,
                 None,
@@ -53,7 +53,7 @@ impl Texture {
         }
 
         let tex = tex.ok_or_else(|| anyhow::Error::msg("Could not create texture!"))?;
-        let (cpu, _gpu, idx) = gd.create_srv()?;
+        let idx = gd.srv_heap()?.alloc()?;
         unsafe {
             tex.SetName(&HSTRING::from(format!("Brine::RenderTex_{:04x}", idx)))?;
         }
@@ -103,7 +103,7 @@ impl Texture {
             )?;
         }
         let tex = tex.ok_or_else(|| anyhow::Error::msg("Could not create texture!"))?;
-        let (cpu, _gpu, idx) = gd.create_srv()?;
+        let idx = gd.srv_heap()?.alloc()?;
         unsafe {
             tex.SetName(&HSTRING::from(format!("Brine::Tex2D_{:04x}", idx)))?;
         }
@@ -153,7 +153,7 @@ impl Texture {
             )]);
         })?;
 
-        unsafe { dev.CreateShaderResourceView(&tex, None, cpu) };
+        unsafe { dev.CreateShaderResourceView(&tex, None, gd.srv_heap()?.cpu(idx)) };
 
         Ok(Self {
             _res: tex,
