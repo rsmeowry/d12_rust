@@ -1,19 +1,17 @@
 pub mod shaders;
 
-use std::collections::HashMap;
-use std::fs::File;
 use crate::render::mesh::Mesh;
-use crate::render::vertex::Vertex;
-use crate::wrappers::graphics::GraphicsDevice;
-use glam::{Mat4, Vec2, Vec3, Vec4};
-use std::io::{Cursor, Read};
-use std::path::Path;
-use anyhow::bail;
-use asset_importer::postprocess::PostProcessSteps;
-use asset_importer::TextureType;
-use tobj::{LoadOptions, Material};
 use crate::render::pipeline::material::GpuMaterial;
 use crate::render::texture::Texture;
+use crate::render::vertex::Vertex;
+use crate::wrappers::graphics::GraphicsDevice;
+use asset_importer::postprocess::PostProcessSteps;
+use asset_importer::TextureType;
+use glam::{Mat4, Vec2, Vec3, Vec4};
+use std::fs::File;
+use std::io::{Cursor, Read};
+use std::path::Path;
+use tobj::LoadOptions;
 
 #[derive(Debug)]
 pub struct MaterialDefinition {
@@ -53,7 +51,7 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
 
                 let tex_name: &Path = t.path.as_ref();
                 let tex_name = tex_name.file_name().unwrap();
-                let tex = Texture::load(gd, &buf, tex_name.to_str().unwrap())?;
+                let tex = Texture::load(gd, &buf, true, tex_name.to_str().unwrap())?;
                 let idx = tex.srv_ptr();
                 textures.push(tex);
                 idx

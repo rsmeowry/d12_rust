@@ -19,7 +19,7 @@ impl Camera {
         let fov_rad = fov_deg.to_radians();
         let aspect = width as f32 / height as f32;
         let view = glam::camera::lh::view::look_to_mat4(pos, rot.mul_vec3(Vec3::Z), Vec3::Y);
-        let proj = glam::camera::lh::proj::directx::perspective(fov_rad, aspect, 0.1, 100.);
+        let proj = Self::projection(aspect, fov_rad);
         Self {
             fov_rad,
             aspect,
@@ -43,7 +43,7 @@ impl Camera {
 
     pub fn set_fov(&mut self, fov_deg: f32) {
         self.fov_rad = fov_deg.to_radians();
-        self.proj = Self::projection(self.fov_rad, self.aspect);
+        self.proj = Self::projection(self.aspect, self.fov_rad);
         self.view_proj = self.proj * self.view;
     }
 

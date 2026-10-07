@@ -4,27 +4,27 @@ mod render;
 mod time;
 mod wrappers;
 
-use asset_importer::TextureType;
-use crate::assets::{load_assimp_scene, load_obj_mesh, MaterialDefinition};
+use crate::assets::shaders::ShaderStorage;
+use crate::assets::load_assimp_scene;
 use crate::input::KeyCode;
 use crate::render::builtin::{Vertex2, Vertex3, VertexPhong};
 use crate::render::camera::Camera;
-use crate::render::cbuffer::ConstBuffer;
 use crate::render::mesh::Mesh;
-use crate::render::pipeline::{Globals, Pipeline, PipelineManager};
+use crate::render::pipeline::desc::PipelineDesc;
+use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
+use crate::render::pipeline::{Globals, PipelineManager};
+use crate::render::texture::Texture;
+use crate::render::vertex::Vertex;
 use crate::time::Time;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::graphics::GraphicsDevice;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
-use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
-use crate::assets::shaders::ShaderStorage;
-use crate::render::pipeline::desc::PipelineDesc;
-use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
-use crate::render::texture::Texture;
-use crate::render::vertex::Vertex;
+use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+
+pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -45,26 +45,32 @@ fn main() -> anyhow::Result<()> {
 
     let mut gd = GraphicsDevice::new()?;
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
+    // white texture must be the first one always !!
+    let white_tex = Texture::from_rgba8(&gd, 1, 1, &[255; 4], false, "builtin/WHITE")?;
+
     let mut depth = Texture::depth(&gd, WIDTH, HEIGHT, "SceneDepth")?;
-    let mut scene_color = Texture::render_target(&gd, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, WIDTH, HEIGHT, Vec4::new(0.4, 0.5, 0.9, 1.), "SceneColor")?;
+    let mut scene_color = Texture::render_target(&gd, GraphicsDevice::BB_RTV_FORMAT, WIDTH, HEIGHT, Vec4::new(0.4, 0.5, 0.9, 1.), "SceneColor")?;
 
     let mut shaders = ShaderStorage::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/shaders"));
     shaders.compile()?;
 
     let mut pipeline_mgr = PipelineManager::new(&gd)?;
     let phong_desc = PipelineDesc {
+        rts: vec![SCENE_FORMAT],
         name: "Phong",
         shader: "PhongTex.hlsl".into(),
         input: Vertex3::LAYOUT,
         ..Default::default()
     };
     let unlit_desc = PipelineDesc {
+        rts: vec![SCENE_FORMAT],
         name: "Unlit",
         shader: "UnlitScroll.hlsl".into(),
         input: Vertex3::LAYOUT,
         ..Default::default()
     };
     let blit_desc = PipelineDesc {
+        rts: vec![GraphicsDevice::BB_RTV_FORMAT],
         name: "Blit",
         shader: "Blit.hlsl".into(),
         input: &[],
@@ -76,8 +82,7 @@ fn main() -> anyhow::Result<()> {
     let unlit = pipeline_mgr.create(&gd, &shaders, unlit_desc)?;
     let blit = pipeline_mgr.create(&gd, &shaders, blit_desc)?;
 
-    let white_tex = Texture::from_rgba8(&gd, 1, 1, &[255; 4], "builtin/WHITE")?;
-    let checker_tex = Texture::from_rgba8(&gd, 32, 32, &debug_checker_tex(32, 32), "builtin/CHECKER")?;
+    let checker_tex = Texture::from_rgba8(&gd, 32, 32, &debug_checker_tex(32, 32), false, "builtin/CHECKER")?;
 
     let mut materials: Vec<GpuMaterial> = Vec::new();
     // unlit sphere
@@ -85,7 +90,7 @@ fn main() -> anyhow::Result<()> {
         &gd, "assets/models/Sphere.gltf",
         white_tex.srv_ptr(), &mut materials,
         |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
-        |mat, tex| MaterialParams::ScrollingTex {
+        |_mat, tex| MaterialParams::ScrollingTex {
             tex,
             color: Vec4::ONE,
             scroll_speed: 1.0,
@@ -97,13 +102,13 @@ fn main() -> anyhow::Result<()> {
         &gd, "assets/sponza_old/Sponza.gltf",
         white_tex.srv_ptr(), &mut materials,
         |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
-        |mat, tex| MaterialParams::Phong {
+        |_mat, tex| MaterialParams::Phong {
             tex,
-            ambient: Vec3::new(0.3, 0.3, 0.3),
+            ambient: Vec3::new(0.05, 0.05, 0.05),
             diffuse: Vec3::ONE,
             specular: Vec3::ONE,
             shininess: 32.0,
-            diffuse_k: 0.4,
+            diffuse_k: 0.3,
             specular_k: 0.7,
         }.to_gpu_material()
     )?;
@@ -128,7 +133,6 @@ fn main() -> anyhow::Result<()> {
         light_dir: Vec3::new(-0.4, -0.8, 0.5).normalize(),
         light_col: Vec4::new(1.0, 0.9, 0.9, 1.0),
     };
-    let globals_cbuf = ConstBuffer::<Globals>::new(&gd, &globals)?;
 
     let mut camera_y = 0.;
     let mut last_title_update: f32 = 0.;
@@ -199,7 +203,6 @@ fn main() -> anyhow::Result<()> {
             for tex in &mut sponza_old.textures {
                 tex.resize(&gd, 32, 32)?;
             }
-            pipeline_mgr.rebuild_all(&gd, &shaders)?;
         }
 
         if let Some(size) = new_size {
@@ -219,11 +222,10 @@ fn main() -> anyhow::Result<()> {
 
         gd.prepare_rt()?;
         gd.set_render_targets(&[&scene_color], Some(&depth))?;
-        gd.clear(&scene_color);
+        gd.clear(&scene_color)?;
         gd.clear(&depth)?;
 
         globals.camera_pos = cam.pos();
-        globals_cbuf.write(gd.frame_index()?, &globals);
         let cmd = gd.command_list()?;
 
         // frame allocator

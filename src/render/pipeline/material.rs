@@ -1,4 +1,4 @@
-﻿use glam::{Vec3, Vec3Swizzles, Vec4};
+﻿use glam::{Vec3, Vec4};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
