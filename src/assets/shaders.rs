@@ -1,20 +1,18 @@
-﻿use std::collections::HashMap;
+﻿use crate::render::pipeline::blob_bytes;
+use anyhow::anyhow;
+use rapidhash::v3::rapidhash_v3;
+use serde::{Deserialize, Serialize};
+use skip_bom::{BomType, SkipEncodingBom};
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use anyhow::anyhow;
-use asset_importer::material::BlendMode::Default;
-use rapidhash::v3::rapidhash_v3;
-use serde::{Deserialize, Serialize};
-use skip_bom::{BomType, SkipEncodingBom};
 use walkdir::WalkDir;
-use windows::core::{s, HSTRING, PCSTR};
+use windows::core::{s, PCSTR};
 use windows::Win32::Foundation::E_FAIL;
+use windows::Win32::Graphics::Direct3D::Fxc::{D3DCompile, D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION};
 use windows::Win32::Graphics::Direct3D::{ID3DBlob, ID3DInclude, ID3DInclude_Impl, D3D_INCLUDE_TYPE};
-use windows::Win32::Graphics::Direct3D12::D3D12_SHADER_BYTECODE;
-use windows::Win32::Graphics::Direct3D::Fxc::{D3DCompile, D3DCOMPILE_DEBUG};
-use crate::render::pipeline::blob_bytes;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ShaderMetadata {
@@ -29,7 +27,7 @@ enum ShaderTarget {
     },
     Vertex {
         entry: String,
-    }
+    },
 }
 
 impl ShaderTarget {
@@ -143,16 +141,26 @@ impl ShaderStorage {
 
     fn check_dirty(&mut self, path: &PathBuf, bytes: &Vec<u8>) {
         let hash = rapidhash_v3(&bytes);
-        if let Some(old_shader) = self.shaders.get(path) && old_shader.hash != hash {
-            self.dirty_files.push(path.clone());
+        if let Some(old_shader) = self.shaders.get(path) {
+            if old_shader.hash != hash {
+                // have it compiled, dont have the newest version. recompile
+                self.dirty_files.push(path.clone());
+                self.shaders.insert(path.clone(), ShaderPair {
+                    hash,
+                    compiled_blobs: HashMap::new(),
+                    metadata: ShaderMetadata::default(),
+                });
+            }
+            // have it compiled and its fine. dont recompile
         } else {
+            // don't have it. compile from anew
             self.dirty_files.push(path.clone());
+            self.shaders.insert(path.clone(), ShaderPair {
+                hash,
+                compiled_blobs: HashMap::new(),
+                metadata: ShaderMetadata::default(),
+            });
         }
-        self.shaders.insert(path.clone(), ShaderPair {
-            hash,
-            compiled_blobs: HashMap::new(),
-            metadata: ShaderMetadata::default(),
-        });
     }
 
     fn compile_single(&mut self, path: PathBuf, bytes: Vec<u8>) -> anyhow::Result<()> {
@@ -185,6 +193,9 @@ impl ShaderStorage {
                     &*include,
                     PCSTR::from_raw(entry.as_ptr()),
                     target_name,
+                    #[cfg(debug_assertions)]
+                    (D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION),
+                    #[cfg(not(debug_assertions))]
                     0,
                     0,
                     &mut code,

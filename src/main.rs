@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
     let mut gd = GraphicsDevice::new()?;
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
 
-    let mut shaders = ShaderStorage::new(r#"C:\Users\rose\RustroverProjects\d12_rust\assets\shaders"#);
+    let mut shaders = ShaderStorage::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/shaders"));
     shaders.compile()?;
 
     let mut pipeline_mgr = PipelineManager::new();
