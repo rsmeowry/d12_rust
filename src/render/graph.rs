@@ -1,10 +1,9 @@
-﻿use std::collections::HashSet;
-use windows::Win32::Graphics::Direct3D12::{D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON};
-use crate::render::graph::builder::PassBuilder;
-use crate::render::graph::pass::{Pass, PassCtx, ResLoad};
+﻿use crate::render::graph::pass::{Pass, PassCtx, ResLoad};
 use crate::render::graph::res::{GraphResources, ResId};
 use crate::render::texture::Texture;
 use crate::wrappers::graphics::GraphicsDevice;
+use std::collections::HashSet;
+use windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 
 pub mod pass;
 pub mod res;

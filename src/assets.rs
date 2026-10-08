@@ -11,7 +11,6 @@ use asset_importer::TextureType;
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use image::RgbaImage;
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]

@@ -13,7 +13,7 @@ struct Glyph {
 
 StructuredBuffer<Glyph> g_Glyphs : register(t1);
 
-static const float GLYPH_COUNT = 89.0;
+static const float GLYPH_COUNT = 128.0;
 static const float2 CORNERS[6] = {
     float2(0, 0), float2(1, 0), float2(0, 1),
     float2(0, 1), float2(1, 0), float2(1, 1)

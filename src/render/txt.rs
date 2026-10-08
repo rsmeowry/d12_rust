@@ -1,23 +1,16 @@
 ﻿use crate::render::texture::{MipCount, Texture};
 use crate::wrappers::graphics::batching::UploadBatch;
-use font8x8::UnicodeFonts;
 use glam::{Vec2, Vec4};
 
-const ALL_CHARS: &'static str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:;=@!#$%^&*()_+-><[]\"\'/?,. ";
-
 pub fn build_ascii_texture(batch: &mut UploadBatch) -> anyhow::Result<Texture> {
-    // getting chars
-    let glyphs = ALL_CHARS.chars().map(|it| font8x8::BASIC_FONTS.get(it).unwrap()).collect::<Vec<_>>();
-
     // ALL_CHARS.len() * 32 by 8 texture
-    let line_length = ALL_CHARS.len() * 8 * 4;
-    let mut out_pixels: [u8; ALL_CHARS.len() * 8 * 4 * 8] = [0; ALL_CHARS.len() * 8 * 4 * 8];
-    for (char_idx, char) in glyphs.iter().enumerate() {
-        for (line_idx, line) in char.iter().enumerate() {
+    let mut out_pixels: [u8; font8x8::BASIC_UNICODE.len() * 8 * 4 * 8] = [0; font8x8::BASIC_UNICODE.len() * 8 * 4 * 8];
+    for (char_idx, char) in font8x8::BASIC_UNICODE.iter().enumerate() {
+        for (line_idx, line) in char.1.iter().enumerate() {
             for bit in 0..8 {
                 if *line & 1 << bit != 0 {
                     let x = char_idx * 8 + bit;
-                    let i = (line_idx * ALL_CHARS.len() * 8 + x) * 4;
+                    let i = (line_idx * font8x8::BASIC_UNICODE.len() * 8 + x) * 4;
                     out_pixels[i + 0] = 255;
                     out_pixels[i + 1] = 255;
                     out_pixels[i + 2] = 255;
@@ -27,7 +20,7 @@ pub fn build_ascii_texture(batch: &mut UploadBatch) -> anyhow::Result<Texture> {
         }
     }
 
-    Texture::from_rgba8(batch, (ALL_CHARS.len() * 8) as u32, 8, &out_pixels, false, MipCount::Limit(1), "Font")
+    Texture::from_rgba8(batch, (font8x8::BASIC_UNICODE.len() * 8) as u32, 8, &out_pixels, false, MipCount::Limit(1), "Font")
 }
 
 #[repr(C)]
@@ -57,11 +50,10 @@ fn calc_right_position(text: &str, width: u32, scale: f32) -> Vec2 {
 
 fn calc_text_layout(out: &mut Vec<Glyph>, text: &str, pos: Vec2, scale: f32, color: Vec4) {
     let mut p = pos;
-    let unknown = ALL_CHARS.find('?').unwrap();
     for c in text.chars() {
         if c == '\n' { p = Vec2::new(pos.x, p.y + 8. * scale); continue; }
         if c != ' ' {
-            let code = if c.is_ascii() { ALL_CHARS.find(c).unwrap() } else { unknown };
+            let code = if c.is_ascii() { c as u32 } else { '?' as u32 };
             out.push(Glyph { pos: p, scale, code: code as u32, color });
         }
         p.x += 8. * scale;

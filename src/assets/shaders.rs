@@ -11,8 +11,10 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use windows::core::{s, PCSTR};
 use windows::Win32::Foundation::E_FAIL;
-use windows::Win32::Graphics::Direct3D::Fxc::{D3DCompile, D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION};
+use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::{ID3DBlob, ID3DInclude, ID3DInclude_Impl, D3D_INCLUDE_TYPE};
+#[cfg(debug_assertions)]
+use windows::Win32::Graphics::Direct3D::Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ShaderMetadata {
@@ -60,6 +62,7 @@ struct ShaderPair {
 pub struct ShaderStorage {
     root_dir: PathBuf,
     lib_shaders: HashMap<PathBuf, String>,
+    lib_hashes: HashMap<PathBuf, u64>,
     shaders: HashMap<PathBuf, ShaderPair>,
     staging_shaders: HashMap<PathBuf, ShaderPair>,
     dirty_files: Vec<PathBuf>,
@@ -70,6 +73,7 @@ impl ShaderStorage {
         Self {
             root_dir: root_dir.as_ref().to_path_buf(),
             lib_shaders: HashMap::new(),
+            lib_hashes: HashMap::new(),
             shaders: HashMap::new(),
             staging_shaders: HashMap::new(),
             dirty_files: vec![],
@@ -89,8 +93,12 @@ impl ShaderStorage {
     }
 
     pub fn compile(&mut self) -> anyhow::Result<()> {
-        let mut files = HashMap::new();
+        self.lib_shaders.clear();
         self.dirty_files.clear();
+
+        let mut files = HashMap::new();
+        let mut all_dirty = false;
+        let mut new_lib_hashes = HashMap::new();
         // first sweep: collecting all ./lib shaders
         for child in WalkDir::new(&self.root_dir.join("lib"))
             .into_iter()
@@ -100,7 +108,17 @@ impl ShaderStorage {
             let mut str = String::new();
             let mut reader = SkipEncodingBom::new(BomType::all(), File::open(&buf)?);
             reader.read_to_string(&mut str)?;
-            self.lib_shaders.insert(buf, str);
+            let new_hash = rapidhash_v3(&str.as_bytes());
+            if let Some(old_hash) = self.lib_hashes.get(&buf) {
+                if *old_hash != new_hash {
+                    all_dirty = true;
+                }
+            } else {
+                all_dirty = true;
+            }
+
+            self.lib_shaders.insert(buf.clone(), str);
+            new_lib_hashes.insert(buf, new_hash);
         }
 
         // second sweep: marking dirty files and collecting a file map
@@ -125,8 +143,10 @@ impl ShaderStorage {
 
         // third sweep: actually compiling shaders
         for (path, bytes) in files {
-            self.compile_single(path, bytes)?;
+            self.compile_single(path, bytes, all_dirty)?;
         }
+
+        self.lib_hashes = new_lib_hashes;
 
         Ok(())
     }
@@ -163,9 +183,9 @@ impl ShaderStorage {
         }
     }
 
-    fn compile_single(&mut self, path: PathBuf, bytes: Vec<u8>) -> anyhow::Result<()> {
+    fn compile_single(&mut self, path: PathBuf, bytes: Vec<u8>, force: bool) -> anyhow::Result<()> {
         // if we are clean, ignoring
-        if !self.dirty_files.contains(&path) {
+        if !self.dirty_files.contains(&path) && !force {
             return Ok(())
         }
 

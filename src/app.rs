@@ -49,7 +49,6 @@ pub struct App {
     fps: u32,
 
     window: NativeWindow,
-    width: u32,
 
     use_wireframe: bool,
 }
@@ -69,7 +68,7 @@ impl App {
         })?;
         let wireframe = renderer.create_pipeline(PipelineDesc {
             rts: vec![SCENE_FORMAT],
-            name: "Phong",
+            name: "WireFrame",
             shader: "PhongTex.hlsl".into(),
             input: Vertex3::LAYOUT,
             wireframe: true,
@@ -188,7 +187,6 @@ impl App {
             fps: 0,
 
             window,
-            width: WIDTH,
 
             use_wireframe: false,
         })
@@ -229,7 +227,6 @@ impl App {
             self.renderer.resize(w, h)?;
             self.cam.resize(w, h);
             self.globals.resolution = Vec2::new(w as f32, h as f32);
-            self.width = w;
         }
         Ok(true)
     }
@@ -302,7 +299,7 @@ impl App {
         }
         let glyphs = display_text(
             &format!("FPS: {}", self.fps),
-            self.width, 1.5, Vec4::new(1.0, 1.0, 0.0, 1.0), true);
+            self.globals.resolution.x as u32, 1.0, Vec4::new(1.0, 1.0, 0.0, 1.0), true);
 
         self.renderer.begin_frame(&self.globals)?;
         let objects_va = self.renderer.upload_objects(&objects)?;

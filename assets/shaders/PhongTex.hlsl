@@ -64,6 +64,9 @@ float4 frag(Varyings i) : SV_Target {
     float3 R = reflect(-L, N);
 
     float4 albedo = g_Tex2D[mat.albedoTex].Sample(AnisoWrap, i.uv);
+
+    clip(albedo.a - 0.5);
+
     float3 ambient = albedo.xyz * mat.ambientColor * lightCol;
 
     float diffuseFactor = max(dot(N, L), 0.0f);
