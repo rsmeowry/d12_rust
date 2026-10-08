@@ -56,15 +56,22 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
         };
     }
 
-    let mut texture_mips: Vec<anyhow::Result<Vec<RgbaImage>>> = std::thread::scope(|s| {
-        let handles = texture_paths.iter()
-            .map(|(p, _srgb, mip)| s.spawn(move || -> anyhow::Result<_> {
-                println!("LOADING TEXTURE: {p:?}");
-                let img = image::open(p)?.to_rgba8();
-                Ok(build_mips(img, *mip))
-            })).collect::<Vec<_>>();
-        handles.into_iter().map(|h| h.join().unwrap()).collect()
-    });
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let mut texture_mips: Vec<anyhow::Result<Vec<RgbaImage>>> = Vec::new();
+    for chunk in texture_paths.chunks(threads) {
+        let got: Vec<anyhow::Result<Vec<RgbaImage>>> = std::thread::scope(|s| {
+            let handles = chunk.iter()
+                .map(|(p, _srgb, mip)| s.spawn(move || -> anyhow::Result<_> {
+                    println!("Loading texture: {p:?}");
+                    let img = image::open(p)?.to_rgba8();
+                    Ok(build_mips(img, *mip))
+                })).collect::<Vec<_>>();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        texture_mips.extend(got);
+        println!("Done loading texture chunk!")
+    }
+
 
     let mut textures: Vec<Texture> = Vec::with_capacity(texture_mips.len());
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
