@@ -4,7 +4,7 @@ use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT;
 use crate::render::texture::Texture;
 use crate::wrappers::graphics::GraphicsDevice;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ResId(usize);
 
 #[derive(Debug, Clone)]
