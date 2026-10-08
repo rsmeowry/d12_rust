@@ -49,7 +49,7 @@ fn main() -> anyhow::Result<()> {
     let mut upload_batch = gd.begin_upload()?;
 
     // white texture must be the first one always !!
-    let white_tex = Texture::from_rgba8(&mut upload_batch, 1, 1, &[255; 4], false, "builtin/WHITE")?;
+    let white_tex = Texture::from_rgba8(&mut upload_batch, 1, 1, &[255; 4], false, 1, "builtin/WHITE")?;
 
     let mut depth = Texture::depth(&gd, WIDTH, HEIGHT, "SceneDepth")?;
     let mut scene_color = Texture::render_target(&gd, GraphicsDevice::BB_RTV_FORMAT, WIDTH, HEIGHT, Vec4::new(0.4, 0.5, 0.9, 1.), "SceneColor")?;
@@ -87,7 +87,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut materials: Vec<GpuMaterial> = Vec::new();
 
-    let checker_tex = Texture::from_rgba8(&mut upload_batch, 32, 32, &debug_checker_tex(32, 32), false, "builtin/CHECKER")?;
+    let checker_tex = Texture::from_rgba8(&mut upload_batch, 32, 32, &debug_checker_tex(32, 32), false, 6, "builtin/CHECKER")?;
     // unlit sphere
     let sphere = load_assimp_scene(
         &gd, &mut upload_batch, "assets/models/Sphere.gltf",

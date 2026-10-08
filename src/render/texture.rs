@@ -2,6 +2,7 @@ use crate::wrappers::graphics::{transition_barrier, GraphicsDevice};
 use anyhow::{anyhow, ensure};
 use glam::Vec4;
 use std::cell::Cell;
+use image::RgbaImage;
 use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT};
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_D32_FLOAT, DXGI_FORMAT_D32_FLOAT_S8X24_UINT, DXGI_FORMAT_R24G8_TYPELESS, DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_R32G8X24_TYPELESS, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS, DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_SAMPLE_DESC};
@@ -19,7 +20,8 @@ pub struct TextureDesc {
     pub kind: TextureKind,
     pub width: u32,
     pub height: u32,
-    pub format: DXGI_FORMAT
+    pub format: DXGI_FORMAT,
+    pub mips: u32
 }
 
 #[derive(Debug)]
@@ -55,27 +57,29 @@ impl Texture {
     }
 
     pub fn render_target(gd: &GraphicsDevice, format: DXGI_FORMAT, w: u32, h: u32, clear: Vec4, name: &str) -> anyhow::Result<Self> {
-        Self::new(gd, TextureDesc { format, width: w, height: h, kind: TextureKind::RenderTarget(clear) }, name)
+        Self::new(gd, TextureDesc { format, width: w, height: h, kind: TextureKind::RenderTarget(clear), mips: 1 }, name)
     }
 
     pub fn depth(gd: &GraphicsDevice, w: u32, h: u32, name: &str) -> anyhow::Result<Self> {
-        Self::new(gd, TextureDesc { format: DXGI_FORMAT_D32_FLOAT, width: w, height: h, kind: TextureKind::Depth }, name)
+        Self::new(gd, TextureDesc { format: DXGI_FORMAT_D32_FLOAT, width: w, height: h, kind: TextureKind::Depth, mips: 1 }, name)
     }
 
     pub fn load(batch: &mut UploadBatch<'_>, bytes: &[u8], srgb: bool, name: &str) -> anyhow::Result<Self> {
         let img = image::load_from_memory(bytes)?.to_rgba8();
-        Self::from_rgba8(batch, img.width(), img.height(), &img, srgb, name)
+        Self::from_rgba8(batch, img.width(), img.height(), &img, srgb, mip_count(img.width(), img.height()), name)
     }
 
-    pub fn from_rgba8(batch: &mut UploadBatch<'_>, width: u32, height: u32, bytes: &[u8], srgb: bool, name: &str) -> anyhow::Result<Self> {
+    pub fn from_rgba8(batch: &mut UploadBatch<'_>, width: u32, height: u32, bytes: &[u8], srgb: bool, mips: u32, name: &str) -> anyhow::Result<Self> {
         ensure!(bytes.len() == (width * height * 4) as usize, "Invalid rgba8 buffer size! got {} but needed {}", bytes.len(), width * height * 4);
         let base = Self::new(batch.gd(), TextureDesc {
             kind: TextureKind::SampleSource,
             width,
             height,
             format: if srgb { DXGI_FORMAT_R8G8B8A8_UNORM_SRGB } else { DXGI_FORMAT_R8G8B8A8_UNORM },
+            mips
         }, name)?;
-        base.upload(batch, bytes)?;
+        let mips = build_mips(RgbaImage::from_raw(width, height, bytes.to_vec()).unwrap());
+        base.upload(batch, &mips)?;
         Ok(base)
     }
 
@@ -109,7 +113,7 @@ impl Texture {
 
     pub fn rewrite(&mut self, batch: &mut UploadBatch, new_width: u32, new_height: u32, new_data_rgba8: &[u8]) -> anyhow::Result<()> {
         self.resize(batch.gd(), new_width, new_height)?;
-        self.upload(batch, new_data_rgba8)
+        self.upload(batch, &build_mips(RgbaImage::from_raw(new_width, new_height, new_data_rgba8.to_vec()).unwrap()))
     }
 
     fn load_resources(gd: &GraphicsDevice, desc: &TextureDesc, name: &str) -> anyhow::Result<(ID3D12Resource, D3D12_RESOURCE_STATES)> {
@@ -137,7 +141,7 @@ impl Texture {
             Width: desc.width as u64,
             Height: desc.height,
             DepthOrArraySize: 1,
-            MipLevels: 1,
+            MipLevels: desc.mips as u16,
             Format: fmt.resource,
             SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
             Flags: flags,
@@ -165,7 +169,7 @@ impl Texture {
                 ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
                 Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                 Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
-                    Texture2D: D3D12_TEX2D_SRV { MipLevels: 1, ..Default::default() }
+                    Texture2D: D3D12_TEX2D_SRV { MipLevels: u32::MAX, ..Default::default() }
                 }
             };
             dev.CreateShaderResourceView(&self.res, Some(&srv), gd.srv_heap()?.cpu(self.srv_ptr));
@@ -187,48 +191,53 @@ impl Texture {
         Ok(())
     }
 
-    fn upload(&self, batch: &mut UploadBatch<'_>, pixels: &[u8]) -> anyhow::Result<()> {
+    fn upload(&self, batch: &mut UploadBatch<'_>, mips: &[RgbaImage]) -> anyhow::Result<()> {
         let desc = unsafe { self.res.GetDesc() };
+        let n = desc.MipLevels as usize;
+        anyhow::ensure!(mips.len() == n, "{}: {} mips given, resource has {}", self.name, mips.len(), n);
 
-        let mut footprint = D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default();
-        let mut num_rows = 0u32;
-        let mut row_size = 0u64;
+        let mut fps = vec![D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default(); n];
+        let mut num_rows = vec![0u32; n];
+        let mut row_size = vec![0u64; n];
         let mut total = 0u64; // needed staging buffer size
         unsafe {
             batch.gd().device().GetCopyableFootprints(
-                &desc, 0, 1, 0,
-                Some(&mut footprint),
-                Some(&mut num_rows),
-                Some(&mut row_size),
+                &desc, 0, n as u32, 0,
+                Some(fps.as_mut_ptr()),
+                Some(num_rows.as_mut_ptr()),
+                Some(row_size.as_mut_ptr()),
                 Some(&mut total),
             );
         }
 
-        let pitch = footprint.Footprint.RowPitch as usize;
-        let row = row_size as usize;
-        anyhow::ensure!(pixels.len() == row * num_rows as usize, "Expected {} bytes, got {}", row * num_rows as usize, pixels.len());
-
-        let (staging, base, dest) = batch.alloc(total as usize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT as usize)?;
-        for (y, src) in pixels.chunks_exact(row).enumerate() {
-            unsafe {
-                std::ptr::copy_nonoverlapping(src.as_ptr(), dest.add(footprint.Offset as usize + y * pitch), row);
-            }
-        }
-        footprint.Offset += base;
+        let (staging, base, dest) = batch.alloc(total as usize, 512)?;
 
         let cmd = batch.cmd();
-        unsafe {
-            let dst = D3D12_TEXTURE_COPY_LOCATION {
-                pResource: std::mem::transmute_copy(&self.res),
-                Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 { SubresourceIndex: 0 },
-            };
-            let src = D3D12_TEXTURE_COPY_LOCATION {
-                pResource: std::mem::transmute_copy(&staging),
-                Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 { PlacedFootprint: footprint },
-            };
-            cmd.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
+        for (i, mip) in mips.iter().enumerate() {
+            let pitch = fps[i].Footprint.RowPitch as usize;
+            let row = row_size[i] as usize;
+
+            let mip_dst = unsafe { dest.add(fps[i].Offset as usize) };
+            for (y, src) in mip.as_raw().chunks_exact(row).enumerate() {
+                unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), mip_dst.add(y * pitch), row) };
+            }
+        }
+        for (i, mip_fp) in fps.iter().enumerate() {
+            let mut fp = *mip_fp;
+            fp.Offset += base;
+            unsafe {
+                let dst = D3D12_TEXTURE_COPY_LOCATION {
+                    pResource: std::mem::transmute_copy(&self.res),
+                    Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                    Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 { SubresourceIndex: i as u32 },
+                };
+                let src = D3D12_TEXTURE_COPY_LOCATION {
+                    pResource: std::mem::transmute_copy(&staging),
+                    Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                    Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 { PlacedFootprint: fp },
+                };
+                cmd.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
+            }
         }
         self.transition(cmd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         Ok(())
@@ -253,4 +262,18 @@ fn formats(desc: &TextureDesc) -> Formats {
         },
         _ => Formats { resource: f, srv: f, target: f },
     }
+}
+
+fn build_mips(img: RgbaImage) -> Vec<RgbaImage> {
+    let mut mips = vec![img];
+    while let Some(prev) = mips.last().filter(|m| m.width() > 1 || m.height() > 1) {
+        let (w, h) = ((prev.width() / 2).max(1), (prev.height() / 2).max(1));
+        let next = image::imageops::resize(prev, w, h, image::imageops::FilterType::Triangle);
+        mips.push(next);
+    }
+    mips
+}
+
+fn mip_count(w: u32, h: u32) -> u32 {
+    32 - w.max(h).leading_zeros()
 }
