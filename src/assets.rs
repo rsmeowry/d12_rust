@@ -2,7 +2,7 @@ pub mod shaders;
 
 use crate::render::mesh::Mesh;
 use crate::render::pipeline::material::GpuMaterial;
-use crate::render::texture::Texture;
+use crate::render::texture::{MipCount, Texture};
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 use asset_importer::postprocess::PostProcessSteps;
@@ -53,7 +53,7 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
 
                 let tex_name: &Path = t.path.as_ref();
                 let tex_name = tex_name.file_name().unwrap();
-                let tex = Texture::load(batch, &buf, true, tex_name.to_str().unwrap())?;
+                let tex = Texture::load(batch, &buf, true, MipCount::All, tex_name.to_str().unwrap())?;
                 let idx = tex.srv_ptr();
                 textures.push(tex);
                 idx

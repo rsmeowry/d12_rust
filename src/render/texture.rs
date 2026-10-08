@@ -64,21 +64,20 @@ impl Texture {
         Self::new(gd, TextureDesc { format: DXGI_FORMAT_D32_FLOAT, width: w, height: h, kind: TextureKind::Depth, mips: 1 }, name)
     }
 
-    pub fn load(batch: &mut UploadBatch<'_>, bytes: &[u8], srgb: bool, name: &str) -> anyhow::Result<Self> {
+    pub fn load(batch: &mut UploadBatch<'_>, bytes: &[u8], srgb: bool, mips: MipCount, name: &str) -> anyhow::Result<Self> {
         let img = image::load_from_memory(bytes)?.to_rgba8();
-        Self::from_rgba8(batch, img.width(), img.height(), &img, srgb, mip_count(img.width(), img.height()), name)
+        Self::from_rgba8(batch, img.width(), img.height(), &img, srgb, mips, name)
     }
 
-    pub fn from_rgba8(batch: &mut UploadBatch<'_>, width: u32, height: u32, bytes: &[u8], srgb: bool, mips: u32, name: &str) -> anyhow::Result<Self> {
-        ensure!(bytes.len() == (width * height * 4) as usize, "Invalid rgba8 buffer size! got {} but needed {}", bytes.len(), width * height * 4);
+    pub fn from_rgba8(batch: &mut UploadBatch<'_>, width: u32, height: u32, bytes: &[u8], srgb: bool, mips: MipCount, name: &str) -> anyhow::Result<Self> {
+        let mips = build_mips(RgbaImage::from_raw(width, height, bytes.to_vec())
+            .ok_or_else(|| anyhow!("Invalid rgba8 buffer size for texture {name}"))?, mips);
         let base = Self::new(batch.gd(), TextureDesc {
             kind: TextureKind::SampleSource,
-            width,
-            height,
+            width, height,
             format: if srgb { DXGI_FORMAT_R8G8B8A8_UNORM_SRGB } else { DXGI_FORMAT_R8G8B8A8_UNORM },
-            mips
+            mips: mips.len() as u32,
         }, name)?;
-        let mips = build_mips(RgbaImage::from_raw(width, height, bytes.to_vec()).unwrap());
         base.upload(batch, &mips)?;
         Ok(base)
     }
@@ -111,9 +110,12 @@ impl Texture {
         Ok(())
     }
 
-    pub fn rewrite(&mut self, batch: &mut UploadBatch, new_width: u32, new_height: u32, new_data_rgba8: &[u8]) -> anyhow::Result<()> {
+    pub fn rewrite(&mut self, batch: &mut UploadBatch, new_width: u32, new_height: u32, new_data_rgba8: &[u8], mips: MipCount) -> anyhow::Result<()> {
+        let mips = build_mips(RgbaImage::from_raw(new_width, new_height, new_data_rgba8.to_vec()).ok_or_else(|| anyhow!("Invalid size for texture {}!", self.name))?, mips);
+        self.desc.mips = mips.len() as u32;
+        self.desc.width = 0;
         self.resize(batch.gd(), new_width, new_height)?;
-        self.upload(batch, &build_mips(RgbaImage::from_raw(new_width, new_height, new_data_rgba8.to_vec()).unwrap()))
+        self.upload(batch, &mips)
     }
 
     fn load_resources(gd: &GraphicsDevice, desc: &TextureDesc, name: &str) -> anyhow::Result<(ID3D12Resource, D3D12_RESOURCE_STATES)> {
@@ -264,9 +266,18 @@ fn formats(desc: &TextureDesc) -> Formats {
     }
 }
 
-fn build_mips(img: RgbaImage) -> Vec<RgbaImage> {
+pub enum MipCount {
+    All,
+    Limit(u32)
+}
+
+fn build_mips(img: RgbaImage, mips: MipCount) -> Vec<RgbaImage> {
+    let max = match mips { MipCount::All => u32::MAX, MipCount::Limit(v) => v}.clamp(1, mip_count(img.width(), img.height()));
     let mut mips = vec![img];
-    while let Some(prev) = mips.last().filter(|m| m.width() > 1 || m.height() > 1) {
+    while let Some(prev) =
+        mips.last().filter(|m| m.width() > 1 || m.height() > 1)
+        && (mips.len() as u32) < max
+    {
         let (w, h) = ((prev.width() / 2).max(1), (prev.height() / 2).max(1));
         let next = image::imageops::resize(prev, w, h, image::imageops::FilterType::Triangle);
         mips.push(next);

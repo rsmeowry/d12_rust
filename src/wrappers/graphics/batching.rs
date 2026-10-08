@@ -37,7 +37,7 @@ impl<'a> UploadBatch<'a> {
 
     pub fn finish(mut self) -> anyhow::Result<()> {
         self.submit_and_wait()?;
-        self.gd.resources()?.upload_open.replace(true);
+        self.gd.resources()?.upload_open.replace(false);
         Ok(())
     }
 

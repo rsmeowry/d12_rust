@@ -37,3 +37,6 @@ features = [
     "Win32_Security",
     "Win32_Graphics_Direct3D_Fxc"
 ]
+
+[profile.dev.package.image]
+opt-level = 3
