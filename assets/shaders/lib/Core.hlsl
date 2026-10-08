@@ -9,3 +9,7 @@ cbuffer Globals : register(b1) {
     float _pad2;
     float4 lightCol;
 };
+
+RWTexture2D<float4> g_RWTex2D[] : register(u0, space1);
+RWByteAddressBuffer g_RWBuffers[] : register(u0, space2);
+RWByteAddressBuffer g_RWScratch : register(u0);
