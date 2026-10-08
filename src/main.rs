@@ -22,7 +22,10 @@ use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE};
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+use crate::render::graph::FrameGraph;
+use crate::render::graph::pass::ResLoad;
+use crate::render::graph::res::{GraphResources, ResSize};
 use crate::wrappers::graphics::batching::UploadBatch;
 
 pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
@@ -51,8 +54,10 @@ fn main() -> anyhow::Result<()> {
     // white texture must be the first one always !!
     let white_tex = Texture::from_rgba8(&mut upload_batch, 1, 1, &[255; 4], false, MipCount::All, "builtin/WHITE")?;
 
-    let mut depth = Texture::depth(&gd, WIDTH, HEIGHT, "SceneDepth")?;
-    let mut scene_color = Texture::render_target(&gd, GraphicsDevice::BB_RTV_FORMAT, WIDTH, HEIGHT, Vec4::new(0.4, 0.5, 0.9, 1.), "SceneColor")?;
+    // for render graph
+    let mut graph_resources = GraphResources::new(WIDTH, HEIGHT);
+    let depth = graph_resources.depth(&gd, "SceneDepth", ResSize::FitScreen)?;
+    let scene_color = graph_resources.color(&gd, "SceneColor", DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, Vec4::new(0.4, 0.5, 0.9, 1.), ResSize::FitScreen)?;
 
     let mut shaders = ShaderStorage::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/shaders"));
     shaders.compile()?;
@@ -216,8 +221,7 @@ fn main() -> anyhow::Result<()> {
 
         if let Some(size) = new_size {
             gd.resize(size.0, size.1)?;
-            depth.resize(&gd, size.0, size.1)?;
-            scene_color.resize(&gd, size.0, size.1)?;
+            graph_resources.on_resize(&gd, size.0, size.1)?;
 
             globals.resolution = Vec2::new(size.0 as f32, size.1 as f32);
             cam.resize(size.0, size.1);
@@ -230,9 +234,6 @@ fn main() -> anyhow::Result<()> {
         globals.view_proj = cam.view_proj();
 
         gd.prepare_rt()?;
-        gd.set_render_targets(&[&scene_color], Some(&depth))?;
-        gd.clear(&scene_color)?;
-        gd.clear(&depth)?;
 
         globals.camera_pos = cam.pos();
         let cmd = gd.command_list()?;
@@ -271,31 +272,45 @@ fn main() -> anyhow::Result<()> {
 
         // objects (model + material id)
         let objects_va = alloc.push_slice(&objects, 16)?;
-        rs.set_objects(cmd, objects_va);
-
         // materials (material props)
-        rs.set_materials(cmd, unsafe { materials_buf.GetGPUVirtualAddress() });
-        let mut bound = None;
-        for (i, (mesh, pso)) in draws.iter().enumerate() {
-            if bound != Some(*pso) {
-                pipeline_mgr.get(*pso).bind(cmd);
-                bound = Some(*pso);
-            }
-            rs.set_draw_index(cmd, i as u32);
-            mesh.draw(cmd);
-        }
+        let materials_va = unsafe { materials_buf.GetGPUVirtualAddress() };
 
-        // blitting scene_color to view
-        scene_color.transition(cmd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        gd.bind_backbuffer(None)?;
-        pipeline_mgr.get(blit).bind(cmd);
-        rs.set_draw_index(cmd, scene_color.srv_ptr());
-        unsafe {
-            cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cmd.DrawInstanced(3, 1, 0, 0);
-        }
+        let mut graph = FrameGraph::new();
+        graph
+            .add_pass("DrawScene")
+            .writes_depth(depth, ResLoad::Clear)
+            .writes(scene_color, ResLoad::Clear)
+            .exec(|ctx| {
+                rs.set_objects(ctx.cmd, objects_va);
+                rs.set_materials(ctx.cmd, materials_va);
+                let mut bound = None;
+                for (i, (mesh, pso)) in draws.iter().enumerate() {
+                    if bound != Some(*pso) {
+                        pipeline_mgr.get(*pso).bind(cmd);
+                        bound = Some(*pso);
+                    }
+                    rs.set_draw_index(cmd, i as u32);
+                    mesh.draw(cmd);
+                }
 
+                Ok(())
+            });
+        graph.add_pass("Blit")
+            .reads(scene_color)
+            .uses_backbuffer()
+            .exec(|ctx| {
+                pipeline_mgr.get(blit).bind(ctx.cmd);
+                rs.set_draw_index(ctx.cmd, ctx.srv_ptr(scene_color)?);
+                unsafe {
+                    ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    ctx.cmd.DrawInstanced(3, 1, 0, 0);
+                }
+                Ok(())
+            });
+
+        graph.execute(&gd, &graph_resources)?;
         gd.display_rt()?;
+
         frames += 1;
         if time.game_time() - 1. > last_title_update {
             last_title_update = time.game_time();
