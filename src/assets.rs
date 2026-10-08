@@ -12,6 +12,7 @@ use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::Path;
 use tobj::LoadOptions;
+use crate::wrappers::graphics::batching::UploadBatch;
 
 #[derive(Debug)]
 pub struct MaterialDefinition {
@@ -27,6 +28,7 @@ pub struct LoadedScene {
 
 pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
     gd: &GraphicsDevice,
+    batch: &mut UploadBatch<'_>,
     path: P,
     white_tex: u32,
     materials: &mut Vec<GpuMaterial>,
@@ -51,7 +53,7 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
 
                 let tex_name: &Path = t.path.as_ref();
                 let tex_name = tex_name.file_name().unwrap();
-                let tex = Texture::load(gd, &buf, true, tex_name.to_str().unwrap())?;
+                let tex = Texture::load(batch, &buf, true, tex_name.to_str().unwrap())?;
                 let idx = tex.srv_ptr();
                 textures.push(tex);
                 idx
@@ -81,7 +83,7 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
             let vert = make_vert(positions[i], normals[i], uvs[i], Vec4::ONE);
             vertices.push(vert);
         }
-        Mesh::new(gd, &vertices, &indices).map(|it| (it, base + mesh.material_index() as u32))
+        Mesh::new(gd, batch, &vertices, &indices).map(|it| (it, base + mesh.material_index() as u32))
     }).collect::<anyhow::Result<_>>()?;
 
     let mut out = Vec::new();
@@ -101,64 +103,4 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
         meshes: built,
         textures,
     })
-}
-
-pub fn load_obj_mesh<V: Vertex>(
-    gd: &GraphicsDevice,
-    bytes: &[u8],
-    make_vert: impl Fn(Vec3, Vec3, Vec2, Vec4) -> V,
-) -> anyhow::Result<Mesh> {
-    let mut c = Cursor::new(bytes);
-    let (models, _mats) = tobj::load_obj_buf(
-        &mut c,
-        &LoadOptions {
-            triangulate: true,
-            single_index: true,
-            ..Default::default()
-        },
-        |_| tobj::load_mtl_buf(&mut Cursor::new(vec![])),
-    )?;
-
-    let mesh = &models.first().unwrap().mesh;
-    let vertex_cnt = mesh.positions.len() / 3;
-    let mut vertices: Vec<V> = Vec::with_capacity(vertex_cnt);
-
-    for i in 0..vertex_cnt {
-        let pos = Vec3::new(
-            mesh.positions[i * 3],
-            mesh.positions[i * 3 + 1],
-            mesh.positions[i * 3 + 2],
-        );
-
-        let normal = if !mesh.normals.is_empty() {
-            Vec3::new(
-                mesh.normals[i * 3],
-                mesh.normals[i * 3 + 1],
-                mesh.normals[i * 3 + 2],
-            )
-        } else {
-            Vec3::ZERO
-        };
-
-        let uv = if !mesh.texcoords.is_empty() {
-            Vec2::new(mesh.texcoords[i * 2], 1.0 - mesh.texcoords[i * 2 + 1])
-        } else {
-            Vec2::ZERO
-        };
-
-        let col = if !mesh.vertex_color.is_empty() {
-            Vec4::new(
-                mesh.vertex_color[i * 3],
-                mesh.vertex_color[i * 3 + 1],
-                mesh.vertex_color[i * 3 + 2],
-                1.0,
-            )
-        } else {
-            Vec4::new(0.5, 0.6, 0.75, 1.)
-        };
-
-        vertices.push(make_vert(pos, normal, uv, col));
-    }
-
-    Mesh::new(gd, &vertices, &mesh.indices)
 }

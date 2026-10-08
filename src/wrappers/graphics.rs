@@ -3,6 +3,7 @@
 pub mod frames;
 pub mod alloc;
 pub mod descriptor;
+pub mod batching;
 
 use glam::Vec4;
 use std::cell::{Cell, RefCell};
@@ -18,6 +19,7 @@ use windows::Win32::System::Threading::{CreateEventW, INFINITE, WaitForSingleObj
 use windows::core::{Interface, HSTRING, PCWSTR};
 use crate::render::texture::{Texture, TextureKind};
 use crate::wrappers::graphics::alloc::FrameAllocator;
+use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::descriptor::DescriptorHeap;
 use crate::wrappers::graphics::frames::FrameContext;
 
@@ -443,6 +445,7 @@ impl GraphicsDevice {
             frames,
             swapchain,
             bb_index: RefCell::new(bb_index),
+            upload_staging: FrameAllocator::new(&dev, 64 * 1024 * 1024)?,
 
             swapchain_buffer,
             rtv,
@@ -497,6 +500,7 @@ impl GraphicsDevice {
     /// creates a DEFAULT type buffer that lives on the VRAM
     pub fn create_default_buffer<S: AsRef<str>>(
         &self,
+        batch: &mut UploadBatch<'_>,
         data: &[u8],
         final_state: D3D12_RESOURCE_STATES,
         name: S,
@@ -505,12 +509,12 @@ impl GraphicsDevice {
         let buf = Self::create_committed_buffer(
             &self.device, D3D12_HEAP_TYPE_DEFAULT, data.len(), D3D12_RESOURCE_STATE_COMMON, name,
         )?;
-        let staging = self.create_buffer(data, format!("Staging>>{name}"))?;
-
-        self.execute_now(|cmd| unsafe {
-            cmd.CopyBufferRegion(&buf, 0, &staging, 0, data.len() as u64);
-            cmd.ResourceBarrier(&[transition_barrier(&buf, D3D12_RESOURCE_STATE_COPY_DEST, final_state)]);
-        })?;
+        let (staging, off, ptr) = batch.alloc(data.len(), 16)?;
+        unsafe {
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            batch.cmd().CopyBufferRegion(&buf, 0, &staging, off, data.len() as u64);
+            batch.cmd().ResourceBarrier(&[transition_barrier(&buf, D3D12_RESOURCE_STATE_COPY_DEST, final_state)]);
+        }
 
         Ok(buf)
     }
@@ -615,6 +619,7 @@ pub struct GraphicsResources {
     frame_index: Cell<usize>,
     upload_alloc: ID3D12CommandAllocator,
     upload_list: ID3D12GraphicsCommandList,
+    upload_staging: FrameAllocator, // 64 mb
 
     swapchain: IDXGISwapChain3,
     bb_index: RefCell<u32>,

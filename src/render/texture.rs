@@ -3,8 +3,9 @@ use anyhow::{anyhow, ensure};
 use glam::Vec4;
 use std::cell::Cell;
 use windows::core::HSTRING;
-use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT};
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_D32_FLOAT, DXGI_FORMAT_D32_FLOAT_S8X24_UINT, DXGI_FORMAT_R24G8_TYPELESS, DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_R32G8X24_TYPELESS, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS, DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_SAMPLE_DESC};
+use crate::wrappers::graphics::batching::UploadBatch;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum TextureKind {
@@ -61,20 +62,20 @@ impl Texture {
         Self::new(gd, TextureDesc { format: DXGI_FORMAT_D32_FLOAT, width: w, height: h, kind: TextureKind::Depth }, name)
     }
 
-    pub fn load(gd: &GraphicsDevice, bytes: &[u8], srgb: bool, name: &str) -> anyhow::Result<Self> {
+    pub fn load(batch: &mut UploadBatch<'_>, bytes: &[u8], srgb: bool, name: &str) -> anyhow::Result<Self> {
         let img = image::load_from_memory(bytes)?.to_rgba8();
-        Self::from_rgba8(gd, img.width(), img.height(), &img, srgb, name)
+        Self::from_rgba8(batch, img.width(), img.height(), &img, srgb, name)
     }
 
-    pub fn from_rgba8(gd: &GraphicsDevice, width: u32, height: u32, bytes: &[u8], srgb: bool, name: &str) -> anyhow::Result<Self> {
+    pub fn from_rgba8(batch: &mut UploadBatch<'_>, width: u32, height: u32, bytes: &[u8], srgb: bool, name: &str) -> anyhow::Result<Self> {
         ensure!(bytes.len() == (width * height * 4) as usize, "Invalid rgba8 buffer size! got {} but needed {}", bytes.len(), width * height * 4);
-        let base = Self::new(gd, TextureDesc {
+        let base = Self::new(batch.gd(), TextureDesc {
             kind: TextureKind::SampleSource,
             width,
             height,
             format: if srgb { DXGI_FORMAT_R8G8B8A8_UNORM_SRGB } else { DXGI_FORMAT_R8G8B8A8_UNORM },
         }, name)?;
-        base.upload(&gd, bytes)?;
+        base.upload(batch, bytes)?;
         Ok(base)
     }
 
@@ -104,6 +105,11 @@ impl Texture {
         self.state.set(state);
         self.write_views(gd)?;
         Ok(())
+    }
+
+    pub fn rewrite(&mut self, batch: &mut UploadBatch, new_width: u32, new_height: u32, new_data_rgba8: &[u8]) -> anyhow::Result<()> {
+        self.resize(batch.gd(), new_width, new_height)?;
+        self.upload(batch, new_data_rgba8)
     }
 
     fn load_resources(gd: &GraphicsDevice, desc: &TextureDesc, name: &str) -> anyhow::Result<(ID3D12Resource, D3D12_RESOURCE_STATES)> {
@@ -181,7 +187,7 @@ impl Texture {
         Ok(())
     }
 
-    fn upload(&self, gd: &GraphicsDevice, pixels: &[u8]) -> anyhow::Result<()> {
+    fn upload(&self, batch: &mut UploadBatch<'_>, pixels: &[u8]) -> anyhow::Result<()> {
         let desc = unsafe { self.res.GetDesc() };
 
         let mut footprint = D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default();
@@ -189,7 +195,7 @@ impl Texture {
         let mut row_size = 0u64;
         let mut total = 0u64; // needed staging buffer size
         unsafe {
-            gd.device().GetCopyableFootprints(
+            batch.gd().device().GetCopyableFootprints(
                 &desc, 0, 1, 0,
                 Some(&mut footprint),
                 Some(&mut num_rows),
@@ -202,26 +208,29 @@ impl Texture {
         let row = row_size as usize;
         anyhow::ensure!(pixels.len() == row * num_rows as usize, "Expected {} bytes, got {}", row * num_rows as usize, pixels.len());
 
-        let mut staging = vec![0u8; total as usize];
+        let (staging, base, dest) = batch.alloc(total as usize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT as usize)?;
         for (y, src) in pixels.chunks_exact(row).enumerate() {
-            staging[y * pitch..y * pitch + row].copy_from_slice(src);
+            unsafe {
+                std::ptr::copy_nonoverlapping(src.as_ptr(), dest.add(footprint.Offset as usize + y * pitch), row);
+            }
         }
-        let upload = gd.create_buffer(&staging, format!("Staging>>{:4x}", rand::random::<u32>()))?;
+        footprint.Offset += base;
 
-        gd.execute_now(|cmd| unsafe {
+        let cmd = batch.cmd();
+        unsafe {
             let dst = D3D12_TEXTURE_COPY_LOCATION {
                 pResource: std::mem::transmute_copy(&self.res),
                 Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
                 Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 { SubresourceIndex: 0 },
             };
             let src = D3D12_TEXTURE_COPY_LOCATION {
-                pResource: std::mem::transmute_copy(&upload),
+                pResource: std::mem::transmute_copy(&staging),
                 Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
                 Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 { PlacedFootprint: footprint },
             };
             cmd.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
-            self.transition(cmd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        })?;
+        }
+        self.transition(cmd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         Ok(())
     }
 }

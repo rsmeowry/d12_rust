@@ -23,6 +23,7 @@ use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE};
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+use crate::wrappers::graphics::batching::UploadBatch;
 
 pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 
@@ -45,8 +46,10 @@ fn main() -> anyhow::Result<()> {
 
     let mut gd = GraphicsDevice::new()?;
     gd.setup_resources(window.handle(), WIDTH, HEIGHT)?;
+    let mut upload_batch = gd.begin_upload()?;
+
     // white texture must be the first one always !!
-    let white_tex = Texture::from_rgba8(&gd, 1, 1, &[255; 4], false, "builtin/WHITE")?;
+    let white_tex = Texture::from_rgba8(&mut upload_batch, 1, 1, &[255; 4], false, "builtin/WHITE")?;
 
     let mut depth = Texture::depth(&gd, WIDTH, HEIGHT, "SceneDepth")?;
     let mut scene_color = Texture::render_target(&gd, GraphicsDevice::BB_RTV_FORMAT, WIDTH, HEIGHT, Vec4::new(0.4, 0.5, 0.9, 1.), "SceneColor")?;
@@ -82,12 +85,12 @@ fn main() -> anyhow::Result<()> {
     let unlit = pipeline_mgr.create(&gd, &shaders, unlit_desc)?;
     let blit = pipeline_mgr.create(&gd, &shaders, blit_desc)?;
 
-    let checker_tex = Texture::from_rgba8(&gd, 32, 32, &debug_checker_tex(32, 32), false, "builtin/CHECKER")?;
-
     let mut materials: Vec<GpuMaterial> = Vec::new();
+
+    let checker_tex = Texture::from_rgba8(&mut upload_batch, 32, 32, &debug_checker_tex(32, 32), false, "builtin/CHECKER")?;
     // unlit sphere
     let sphere = load_assimp_scene(
-        &gd, "assets/models/Sphere.gltf",
+        &gd, &mut upload_batch, "assets/models/Sphere.gltf",
         white_tex.srv_ptr(), &mut materials,
         |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
         |_mat, tex| MaterialParams::ScrollingTex {
@@ -99,7 +102,7 @@ fn main() -> anyhow::Result<()> {
 
     // sponza !!
     let mut sponza_old = load_assimp_scene(
-        &gd, "assets/sponza_old/Sponza.gltf",
+        &gd, &mut upload_batch, "assets/sponza_old/Sponza.gltf",
         white_tex.srv_ptr(), &mut materials,
         |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
         |_mat, tex| MaterialParams::Phong {
@@ -113,7 +116,9 @@ fn main() -> anyhow::Result<()> {
         }.to_gpu_material()
     )?;
 
-    let materials_buf = gd.create_default_buffer(bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
+    let materials_buf = gd.create_default_buffer(&mut upload_batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
+
+    upload_batch.finish()?;
 
     let mut cam = Camera::new(
         WIDTH,
@@ -200,9 +205,12 @@ fn main() -> anyhow::Result<()> {
 
         if window.input().was_released(KeyCode::F6) {
             gd.flush_command_queue()?;
+            let checker = debug_checker_tex(32, 32);
+            let mut batch = gd.begin_upload()?;
             for tex in &mut sponza_old.textures {
-                tex.resize(&gd, 32, 32)?;
+                tex.rewrite(&mut batch, 32, 32, &checker)?;
             }
+            batch.finish()?;
         }
 
         if let Some(size) = new_size {
@@ -307,7 +315,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 #[allow(unused)]
-fn cube_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
+fn cube_mesh(gd: &GraphicsDevice, upload: &mut UploadBatch<'_>) -> anyhow::Result<Mesh> {
     let vertices = [
         Vertex2::new(Vec3::new(-1.0, -1.0, -1.0), Vec4::new(0.0, 1.0, 0.0, 1.0)),
         Vertex2::new(Vec3::new(-1.0, 1.0, -1.0), Vec4::new(1.0, 0.0, 0.0, 1.0)),
@@ -328,7 +336,7 @@ fn cube_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
         4, 0, 3,  4, 3, 7,
     ];
 
-    Mesh::new(gd, &vertices, &indices)
+    Mesh::new(gd, upload, &vertices, &indices)
 }
 
 fn debug_checker_tex(w: u32, h: u32) -> Vec<u8> {
@@ -341,7 +349,7 @@ fn debug_checker_tex(w: u32, h: u32) -> Vec<u8> {
 }
 
 #[allow(unused)]
-fn cube_mesh_phong(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
+fn cube_mesh_phong(gd: &GraphicsDevice, upload: &mut UploadBatch<'_>) -> anyhow::Result<Mesh> {
     let col = Vec4::new(0.5, 0.6, 0.75, 1.);
     let vertices = [
         VertexPhong::new(Vec3::new(-1.0, -1.0, -1.0), Vec3::new(0., 0., -1.), col),
@@ -379,11 +387,11 @@ fn cube_mesh_phong(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
         20, 21, 22, 20, 22, 23, // bottom
     ];
 
-    Mesh::new(gd, &vertices, &indices)
+    Mesh::new(gd, upload, &vertices, &indices)
 }
 
 #[allow(unused)]
-fn tri_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
+fn tri_mesh(gd: &GraphicsDevice, upload: &mut UploadBatch<'_>) -> anyhow::Result<Mesh> {
     let vertices = [
         Vertex2 {
             pos: [0.0, 0.5, 0.5],
@@ -401,5 +409,5 @@ fn tri_mesh(gd: &GraphicsDevice) -> anyhow::Result<Mesh> {
 
     let indices = [0, 1, 2];
 
-    Mesh::new(gd, &vertices, &indices)
+    Mesh::new(gd, upload, &vertices, &indices)
 }
