@@ -13,6 +13,7 @@ pub struct PipelineDesc {
     pub blend: Blend,
     pub cull: D3D12_CULL_MODE,
     pub topology: D3D12_PRIMITIVE_TOPOLOGY_TYPE,
+    pub wireframe: bool
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -58,6 +59,7 @@ impl Default for PipelineDesc {
             blend: Blend::Opaque,
             cull: D3D12_CULL_MODE_BACK,
             topology: D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+            wireframe: false,
         }
     }
 }

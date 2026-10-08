@@ -29,6 +29,7 @@ pub struct App {
     scene_color: ResId,
     scene_depth: ResId,
     phong: PipelineId,
+    wireframe: PipelineId,
     unlit: PipelineId,
     blit: PipelineId,
     text: PipelineId,
@@ -49,6 +50,8 @@ pub struct App {
 
     window: NativeWindow,
     width: u32,
+
+    use_wireframe: bool,
 }
 
 impl App {
@@ -62,6 +65,14 @@ impl App {
             name: "Phong",
             shader: "PhongTex.hlsl".into(),
             input: Vertex3::LAYOUT,
+            ..Default::default()
+        })?;
+        let wireframe = renderer.create_pipeline(PipelineDesc {
+            rts: vec![SCENE_FORMAT],
+            name: "Phong",
+            shader: "PhongTex.hlsl".into(),
+            input: Vertex3::LAYOUT,
+            wireframe: true,
             ..Default::default()
         })?;
         let unlit = renderer.create_pipeline(PipelineDesc {
@@ -157,6 +168,7 @@ impl App {
             scene_color,
             scene_depth,
             phong,
+            wireframe,
             unlit,
             blit,
             text,
@@ -177,6 +189,8 @@ impl App {
 
             window,
             width: WIDTH,
+
+            use_wireframe: false,
         })
     }
 
@@ -266,6 +280,10 @@ impl App {
             batch.finish()?;
         }
 
+        if input.was_released(KeyCode::F7) {
+            self.use_wireframe = !self.use_wireframe;
+        }
+
         self.globals.time = self.time.game_time();
         self.globals.delta_time = dt;
         self.globals.view_proj = self.cam.view_proj();
@@ -276,7 +294,8 @@ impl App {
     fn draw(&mut self) -> anyhow::Result<()> {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
-        for (scene, pso) in [(&self.sphere, self.unlit), (&self.sponza, self.phong)] {
+        let (phong, unlit) = if self.use_wireframe { (self.wireframe, self.wireframe) } else { (self.phong, self.unlit) };
+        for (scene, pso) in [(&self.sphere, unlit), (&self.sponza, phong)] {
             let (obj, meshes) = scene.to_objects_and_draws();
             objects.extend(obj);
             draws.extend(meshes.into_iter().map(|m| (m, pso)));

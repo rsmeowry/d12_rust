@@ -10,7 +10,7 @@ use anyhow::anyhow;
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D::ID3DBlob;
-use windows::Win32::Graphics::Direct3D12::{ID3D12Device, ID3D12GraphicsCommandList, ID3D12PipelineState, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DEPTH_WRITE_MASK_ZERO, D3D12_FILL_MODE_SOLID, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_ELEMENT_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_RASTERIZER_DESC, D3D12_SHADER_BYTECODE};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Device, ID3D12GraphicsCommandList, ID3D12PipelineState, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DEPTH_WRITE_MASK_ZERO, D3D12_FILL_MODE_SOLID, D3D12_FILL_MODE_WIREFRAME, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_ELEMENT_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_RASTERIZER_DESC, D3D12_SHADER_BYTECODE};
 use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,7 +79,7 @@ impl Pipeline {
                 NumElements: desc.input.len() as u32,
             },
             RasterizerState: D3D12_RASTERIZER_DESC {
-                FillMode: D3D12_FILL_MODE_SOLID,
+                FillMode: if desc.wireframe { D3D12_FILL_MODE_WIREFRAME } else { D3D12_FILL_MODE_SOLID },
                 CullMode: desc.cull,
                 DepthClipEnable: true.into(),
                 ..Default::default()
