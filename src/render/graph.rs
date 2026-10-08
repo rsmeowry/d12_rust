@@ -22,7 +22,6 @@ impl<'a> FrameGraph<'a> {
     pub fn execute(self, gd: &GraphicsDevice, res: &GraphResources) -> anyhow::Result<()> {
         let cmd = gd.command_list()?;
         for pass in self.cull_passes() {
-            println!("Executing pass {}", pass.name);
             // transition all into readable state
             for r in &pass.reads {
                 res.get(*r)?.transition(cmd, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);

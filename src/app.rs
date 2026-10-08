@@ -14,6 +14,7 @@ use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::{Globals, PipelineId};
 use crate::render::renderer::{ObjectData, Renderer, SCENE_FORMAT};
 use crate::render::texture::{MipCount, Texture};
+use crate::render::txt::{build_ascii_texture, display_text};
 use crate::render::vertex::Vertex;
 use crate::time::Time;
 use crate::wrappers::event::WindowEvent;
@@ -30,8 +31,10 @@ pub struct App {
     phong: PipelineId,
     unlit: PipelineId,
     blit: PipelineId,
+    text: PipelineId,
 
     _white_tex: Texture,
+    text_tex: Texture,
     materials_buf: ID3D12Resource,
     sphere: LoadedScene,
     sponza: LoadedScene,
@@ -42,8 +45,10 @@ pub struct App {
     time: Time,
     last_title_update: f32,
     frames: u32,
+    fps: u32,
 
     window: NativeWindow,
+    width: u32,
 }
 
 impl App {
@@ -75,12 +80,23 @@ impl App {
             cull: D3D12_CULL_MODE_NONE,
             ..Default::default()
         })?;
+        let text = renderer.create_pipeline(PipelineDesc {
+            rts: vec![GraphicsDevice::BB_RTV_FORMAT],
+            name: "Text",
+            shader: "Text.hlsl".into(),
+            input: &[],
+            depth: None,
+            cull: D3D12_CULL_MODE_NONE,
+            ..Default::default()
+        })?;
 
         let gd = &renderer.gd;
         let mut batch = gd.begin_upload()?;
 
         // white texture must be the first one always !!
         let white_tex = Texture::from_rgba8(&mut batch, 1, 1, &[255; 4], false, MipCount::All, "builtin/WHITE")?;
+
+        let text_tex = build_ascii_texture(&mut batch)?;
 
         let scene_color = renderer.gr.color(gd, "SceneColor", SCENE_FORMAT, Vec4::new(0.2, 0.3, 0.6, 1.0), ResSize::FitScreen)?;
         let scene_depth = renderer.gr.depth(gd, "SceneDepth", ResSize::FitScreen)?;
@@ -143,8 +159,10 @@ impl App {
             phong,
             unlit,
             blit,
+            text,
 
             _white_tex: white_tex,
+            text_tex,
             materials_buf,
             sphere,
             sponza,
@@ -155,8 +173,10 @@ impl App {
             time,
             last_title_update: 0.,
             frames: 0,
+            fps: 0,
 
             window,
+            width: WIDTH,
         })
     }
 
@@ -168,7 +188,7 @@ impl App {
             self.frames += 1;
             if self.time.game_time() - 1. > self.last_title_update {
                 self.last_title_update = self.time.game_time();
-                self.window.set_title(format!("A DirectX12 Renderer | FPS: {}", self.frames))?;
+                self.fps = self.frames;
                 self.frames = 0;
             }
 
@@ -195,6 +215,7 @@ impl App {
             self.renderer.resize(w, h)?;
             self.cam.resize(w, h);
             self.globals.resolution = Vec2::new(w as f32, h as f32);
+            self.width = w;
         }
         Ok(true)
     }
@@ -260,10 +281,16 @@ impl App {
             objects.extend(obj);
             draws.extend(meshes.into_iter().map(|m| (m, pso)));
         }
+        let glyphs = display_text(
+            &format!("FPS: {}", self.fps),
+            self.width, 1.5, Vec4::new(1.0, 1.0, 0.0, 1.0), true);
 
         self.renderer.begin_frame(&self.globals)?;
         let objects_va = self.renderer.upload_objects(&objects)?;
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
+
+        let glyphs_va = self.renderer.upload_slice(bytemuck::cast_slice(&glyphs), 16)?;
+        let text_tex = self.text_tex.srv_ptr();
 
         let rs = self.renderer.rs();
         let pipelines = self.renderer.pipelines();
@@ -299,6 +326,20 @@ impl App {
                 unsafe {
                     ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                     ctx.cmd.DrawInstanced(3, 1, 0, 0);
+                }
+                Ok(())
+            });
+
+        // debug text pass
+        graph.add_pass("TextOverlay")
+            .uses_backbuffer()
+            .exec(|ctx| {
+                pipelines.get(self.text).bind(ctx.cmd);
+                rs.set_objects(ctx.cmd, glyphs_va);
+                rs.set_draw_index(ctx.cmd, text_tex);
+                unsafe {
+                    ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    ctx.cmd.DrawInstanced(6, glyphs.len() as u32, 0, 0);
                 }
                 Ok(())
             });

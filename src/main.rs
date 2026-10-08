@@ -1,3 +1,5 @@
+extern crate core;
+
 pub mod assets;
 pub mod input;
 pub mod render;

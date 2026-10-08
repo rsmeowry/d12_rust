@@ -1,20 +1,18 @@
 pub mod shaders;
 
-use std::collections::HashMap;
 use crate::render::mesh::Mesh;
 use crate::render::pipeline::material::GpuMaterial;
 use crate::render::texture::{build_mips, MipCount, Texture};
 use crate::render::vertex::Vertex;
+use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
 use asset_importer::postprocess::PostProcessSteps;
-use asset_importer::{Material, TextureType};
+use asset_importer::TextureType;
 use glam::{Mat4, Vec2, Vec3, Vec4};
-use std::fs::File;
-use std::io::{Cursor, Read};
-use std::path::{Path, PathBuf};
 use image::RgbaImage;
-use tobj::LoadOptions;
-use crate::wrappers::graphics::batching::UploadBatch;
+use std::collections::HashMap;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct MaterialDefinition {

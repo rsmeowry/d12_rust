@@ -80,6 +80,10 @@ impl Renderer {
         self.gd.frame_context()?.frame_alloc.push_slice(objects, 16)
     }
 
+    pub fn upload_slice(&self, slice: &[u8], align: usize) -> anyhow::Result<u64> {
+        self.gd.frame_context()?.frame_alloc.push_slice(slice, align)
+    }
+
     // executes the graph and presents
     pub fn execute_graph(&self, graph: FrameGraph) -> anyhow::Result<()> {
         graph.execute(&self.gd, &self.gr)?;
