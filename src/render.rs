@@ -5,3 +5,4 @@ pub mod pipeline;
 pub mod texture;
 pub mod vertex;
 pub mod graph;
+pub mod renderer;

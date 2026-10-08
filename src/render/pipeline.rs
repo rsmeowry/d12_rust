@@ -1,4 +1,4 @@
-mod signature;
+pub mod signature;
 pub mod desc;
 pub mod material;
 
