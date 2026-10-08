@@ -69,6 +69,17 @@ impl Texture {
         Self::from_rgba8(batch, img.width(), img.height(), &img, srgb, mips, name)
     }
 
+    pub fn load_from_mips(batch: &mut UploadBatch<'_>, mips: &[RgbaImage], srgb: bool, name: &str) -> anyhow::Result<Self> {
+        let base = Self::new(batch.gd(), TextureDesc {
+            kind: TextureKind::SampleSource,
+            width: mips[0].width(), height: mips[0].height(),
+            format: if srgb { DXGI_FORMAT_R8G8B8A8_UNORM_SRGB } else { DXGI_FORMAT_R8G8B8A8_UNORM },
+            mips: mips.len() as u32,
+        }, name)?;
+        base.upload(batch, &mips)?;
+        Ok(base)
+    }
+
     pub fn from_rgba8(batch: &mut UploadBatch<'_>, width: u32, height: u32, bytes: &[u8], srgb: bool, mips: MipCount, name: &str) -> anyhow::Result<Self> {
         let mips = build_mips(RgbaImage::from_raw(width, height, bytes.to_vec())
             .ok_or_else(|| anyhow!("Invalid rgba8 buffer size for texture {name}"))?, mips);
@@ -266,12 +277,13 @@ fn formats(desc: &TextureDesc) -> Formats {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum MipCount {
     All,
     Limit(u32)
 }
 
-fn build_mips(img: RgbaImage, mips: MipCount) -> Vec<RgbaImage> {
+pub fn build_mips(img: RgbaImage, mips: MipCount) -> Vec<RgbaImage> {
     let max = match mips { MipCount::All => u32::MAX, MipCount::Limit(v) => v}.clamp(1, mip_count(img.width(), img.height()));
     let mut mips = vec![img];
     while let Some(prev) =

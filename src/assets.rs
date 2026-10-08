@@ -1,16 +1,18 @@
 pub mod shaders;
 
+use std::collections::HashMap;
 use crate::render::mesh::Mesh;
 use crate::render::pipeline::material::GpuMaterial;
-use crate::render::texture::{MipCount, Texture};
+use crate::render::texture::{build_mips, MipCount, Texture};
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 use asset_importer::postprocess::PostProcessSteps;
-use asset_importer::TextureType;
+use asset_importer::{Material, TextureType};
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use std::fs::File;
 use std::io::{Cursor, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use image::RgbaImage;
 use tobj::LoadOptions;
 use crate::wrappers::graphics::batching::UploadBatch;
 
@@ -41,26 +43,50 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
         .with_post_process(PostProcessSteps::TRIANGULATE | PostProcessSteps::FLIP_UVS | PostProcessSteps::GEN_SMOOTH_NORMALS)
         .import()?;
     let base = materials.len() as u32;
-    let mut textures = Vec::<Texture>::new();
+    let mut texture_paths: Vec<(PathBuf, bool, MipCount)> = Vec::new();
+
     for material in scene.materials() {
-        let albedo = match material.texture(TextureType::BaseColor, 0) {
+        match material.texture(TextureType::BaseColor, 0) {
             Some(t) => {
                 let path_parent = pathbuf.parent().unwrap();
-                println!("Loading texture: {}", t.path);
-                let mut tex_file = File::open(path_parent.join(&t.path))?;
-                let mut buf = Vec::with_capacity(1024 * 1024);
-                tex_file.read_to_end(&mut buf)?;
-
-                let tex_name: &Path = t.path.as_ref();
-                let tex_name = tex_name.file_name().unwrap();
-                let tex = Texture::load(batch, &buf, true, MipCount::All, tex_name.to_str().unwrap())?;
-                let idx = tex.srv_ptr();
-                textures.push(tex);
-                idx
-            },
-            None => white_tex,
+                texture_paths.push((path_parent.join(&t.path), true, MipCount::All));
+            }
+            None => {
+            }
         };
-        materials.push(make_material(&material, albedo));
+    }
+
+    let mut texture_mips: Vec<anyhow::Result<Vec<RgbaImage>>> = std::thread::scope(|s| {
+        let handles = texture_paths.iter()
+            .map(|(p, _srgb, mip)| s.spawn(move || -> anyhow::Result<_> {
+                println!("LOADING TEXTURE: {p:?}");
+                let img = image::open(p)?.to_rgba8();
+                Ok(build_mips(img, *mip))
+            })).collect::<Vec<_>>();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+
+    let mut textures: Vec<Texture> = Vec::with_capacity(texture_mips.len());
+    let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
+    for ((path, srgb, _mips), tex_mips) in texture_paths.iter().zip(texture_mips.into_iter()) {
+        let tex_mips = tex_mips?;
+        let loaded = Texture::load_from_mips(batch, &tex_mips, *srgb, path.file_name().unwrap().to_str().unwrap())?;
+        let idx = textures.len();
+        textures.push(loaded);
+        by_path.insert(path.to_path_buf(), idx);
+    }
+
+    for material in scene.materials() {
+        match material.texture(TextureType::BaseColor, 0) {
+            Some(t) => {
+                let path_parent = pathbuf.parent().unwrap();
+                let idx = *by_path.get(&path_parent.join(&t.path)).unwrap();
+                materials.push(make_material(&material, textures[idx].srv_ptr()));
+            }
+            None => {
+                materials.push(make_material(&material, white_tex));
+            }
+        };
     }
 
     let built: Vec<(Mesh, u32)> = scene.meshes().map(|mesh| {
