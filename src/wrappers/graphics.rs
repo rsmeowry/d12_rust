@@ -248,16 +248,9 @@ impl GraphicsDevice {
     }
 
     pub fn execute_now(&self, f: impl FnOnce(&ID3D12GraphicsCommandList)) -> anyhow::Result<()> {
-        let res = self.resources()?;
-        unsafe {
-            res.upload_alloc.Reset()?;
-            res.upload_list.Reset(&res.upload_alloc, None)?;
-            f(&res.upload_list);
-            res.upload_list.Close()?;
-            res.command_queue
-                .ExecuteCommandLists(&[Some(res.upload_list.cast()?)]);
-        }
-        self.flush_command_queue()
+        let batch = self.begin_upload()?;
+        f(batch.cmd());
+        batch.finish()
     }
 
     pub fn create_buffer<S: AsRef<str>>(&self, data: &[u8], name: S) -> anyhow::Result<ID3D12Resource> {
@@ -446,6 +439,7 @@ impl GraphicsDevice {
             swapchain,
             bb_index: RefCell::new(bb_index),
             upload_staging: FrameAllocator::new(&dev, 64 * 1024 * 1024)?,
+            upload_open: Cell::new(false),
 
             swapchain_buffer,
             rtv,
@@ -620,6 +614,7 @@ pub struct GraphicsResources {
     upload_alloc: ID3D12CommandAllocator,
     upload_list: ID3D12GraphicsCommandList,
     upload_staging: FrameAllocator, // 64 mb
+    upload_open: Cell<bool>,
 
     swapchain: IDXGISwapChain3,
     bb_index: RefCell<u32>,

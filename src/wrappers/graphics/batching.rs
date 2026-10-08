@@ -36,7 +36,9 @@ impl<'a> UploadBatch<'a> {
     }
 
     pub fn finish(mut self) -> anyhow::Result<()> {
-        self.submit_and_wait()
+        self.submit_and_wait()?;
+        self.gd.resources()?.upload_open.replace(true);
+        Ok(())
     }
 
     fn submit_and_wait(&mut self) -> anyhow::Result<()> {
@@ -45,7 +47,7 @@ impl<'a> UploadBatch<'a> {
             res.upload_list.Close()?;
             res.command_queue.ExecuteCommandLists(&[Some(res.upload_list.cast()?)]);
         }
-        self.gd.flush_command_queue();
+        self.gd.flush_command_queue()?;
         self.not_fitting.clear();
 
         Ok(())
@@ -56,7 +58,7 @@ impl<'a> UploadBatch<'a> {
         res.upload_staging.reset();
         unsafe {
             res.upload_alloc.Reset()?;
-            res.upload_list.Reset(&res.upload_alloc, None);
+            res.upload_list.Reset(&res.upload_alloc, None)?;
         }
         Ok(())
     }
@@ -65,6 +67,7 @@ impl<'a> UploadBatch<'a> {
 impl GraphicsDevice {
     pub fn begin_upload(&self) -> anyhow::Result<UploadBatch<'_>> {
         let res = self.resources()?;
+        anyhow::ensure!(!res.upload_open.replace(true), "Cant open two upload batches at once!");
         res.upload_staging.reset();
         unsafe {
             res.upload_alloc.Reset()?;
