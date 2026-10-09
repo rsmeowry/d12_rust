@@ -1,10 +1,10 @@
 use std::fs::File;
 use std::io::Read;
-use glam::{Quat, Vec2, Vec3, Vec4};
+use glam::{EulerRot, Quat, Vec2, Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use crate::assets::{load_assimp_scene, LoadedScene};
-use crate::input::KeyCode;
+use crate::input::{InputDevice, KeyCode};
 use crate::render::builtin::Vertex3;
 use crate::render::camera::Camera;
 use crate::render::graph::FrameGraph;
@@ -52,7 +52,6 @@ pub struct App {
     sponza: LoadedScene,
 
     cam: Camera,
-    camera_y: f32,
     globals: Globals,
     time: Time,
     last_title_update: f32,
@@ -63,11 +62,13 @@ pub struct App {
 
     use_wireframe: bool,
     dbg_view: u32,
+    controller: ControllerInfo
 }
 
 impl App {
     pub fn new() -> anyhow::Result<Self> {
         let window = NativeWindow::create(WindowProps::default())?;
+        window.set_cursor_locked(true)?;
         let time = Time::new()?;
         let mut renderer = Renderer::new(window.handle(), WIDTH, HEIGHT)?;
 
@@ -225,7 +226,6 @@ impl App {
             spot_light_mesh,
 
             cam,
-            camera_y: 0.,
             globals,
             time,
             last_title_update: 0.,
@@ -235,7 +235,8 @@ impl App {
             window,
 
             use_wireframe: false,
-            dbg_view: 0
+            dbg_view: 0,
+            controller: ControllerInfo::default()
         })
     }
 
@@ -279,32 +280,17 @@ impl App {
     }
 
     fn update(&mut self) -> anyhow::Result<()> {
+        self.handle_camera_movement();
+
         let input = self.window.input();
         let dt = self.time.delta_time();
 
-        if input.is_pressed(KeyCode::H) {
-            println!("{:?} {:?}", dt, self.time.game_time());
+        if input.is_pressed(KeyCode::Escape) {
+            self.window.set_cursor_locked(false)?;
         }
 
-        if input.is_held(KeyCode::Left) {
-            self.camera_y -= dt * 50.;
-            self.cam.set_rot(Quat::from_rotation_y(self.camera_y.to_radians()));
-        }
-
-        if input.is_held(KeyCode::Right) {
-            self.camera_y += dt * 50.;
-            self.cam.set_rot(Quat::from_rotation_y(self.camera_y.to_radians()));
-        }
-
-        let (right, forward) = (self.cam.rot().mul_vec3(Vec3::X), self.cam.rot().mul_vec3(Vec3::Z));
-        for (key, dir) in [
-            (KeyCode::A, -right), (KeyCode::D, right),
-            (KeyCode::W, forward), (KeyCode::S, -forward),
-            (KeyCode::Space, Vec3::Y), (KeyCode::V, -Vec3::Y),
-        ] {
-            if input.is_held(key) {
-                self.cam.set_pos(self.cam.pos() + dir * dt);
-            }
+        if input.is_pressed(KeyCode::LeftButton) {
+            self.window.set_cursor_locked(true)?;
         }
 
         if input.was_released(KeyCode::F5) {
@@ -493,6 +479,38 @@ impl App {
 
         self.renderer.execute_graph(graph)
     }
+
+    fn handle_camera_movement(&mut self) {
+        let input = self.window.input();
+        self.controller.yaw += (input.mouse_delta().x * MOUSE_SENSITIVITY).to_radians();
+        self.controller.pitch += (input.mouse_delta().y * MOUSE_SENSITIVITY).to_radians();
+        self.controller.pitch = self.controller.pitch.clamp(-MAX_PITCH, MAX_PITCH);
+        self.cam.set_rot(Quat::from_euler(EulerRot::YXZ, self.controller.yaw, self.controller.pitch, 0.));
+
+        let camera_rot_2d = Quat::from_rotation_y(self.controller.yaw);
+        let left = camera_rot_2d * Vec3::NEG_X;
+        let right = -left;
+        let front = camera_rot_2d * Vec3::Z;
+        let back = -front;
+
+        let btn_axis = vec![
+            (KeyCode::A, left),
+            (KeyCode::D, right),
+            (KeyCode::W, front),
+            (KeyCode::S, back),
+            (KeyCode::Space, 2. * Vec3::Y),
+            (KeyCode::LeftControl, 2. * Vec3::NEG_Y)
+        ];
+
+        let mut pos = self.cam.pos();
+        let move_speed = MOVE_SPEED * (if input.is_held(KeyCode::LeftShift) { SHIFT_MUL } else { 1.0 }) * self.time.delta_time();
+        for (btn, axis) in btn_axis {
+            if input.is_held(btn) {
+                pos += axis * move_speed;
+            }
+        }
+        self.cam.set_pos(pos);
+    }
 }
 
 fn debug_checker_tex(w: u32, h: u32) -> Vec<u8> {
@@ -510,4 +528,24 @@ struct BlitProperties {
     pub source_tex: u32,
     pub dither_tex: u32,
     pub _pad: [u32; 18]
+}
+
+const MOUSE_SENSITIVITY: f32 = 1.0;
+const MAX_PITCH: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
+const MOVE_SPEED: f32 = 2.0;
+const SHIFT_MUL: f32 = 2.0;
+
+#[derive(Debug, Clone)]
+struct ControllerInfo {
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+impl Default for ControllerInfo {
+    fn default() -> Self {
+        Self {
+            yaw: 40f32.to_radians(),
+            pitch: 30f32.to_radians(),
+        }
+    }
 }

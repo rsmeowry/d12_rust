@@ -1,10 +1,11 @@
+use std::cell::Cell;
 use crate::input::{InputDevice, KeyCode};
 use crate::wrappers::event::{InputEvent, WindowEvent};
 use flume::{Receiver, Sender};
 use num_enum::TryFromPrimitive;
 use std::os::raw::c_void;
 use std::thread::JoinHandle;
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::{
     GetRawInputData, HRAWINPUT, MOUSE_MOVE_ABSOLUTE, RAWINPUT, RAWINPUTDEVICE,
@@ -13,8 +14,10 @@ use windows::Win32::UI::Input::{
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, PCWSTR};
+use windows::Win32::Graphics::Gdi::MapWindowPoints;
 
 const WM_APP_DESTROY: u32 = WM_APP + 1;
+const WM_APP_CURSOR_LOCK: u32 = WM_APP + 2;
 
 #[derive(Debug, Clone)]
 pub struct WindowProps {
@@ -44,6 +47,7 @@ unsafe impl Send for SendHwnd {}
 struct WindowState {
     pub tx: Sender<WindowEvent>,
     pub input_tx: Sender<InputEvent>,
+    pub cursor_locked: Cell<bool>
 }
 
 pub struct NativeWindow {
@@ -140,6 +144,7 @@ impl NativeWindow {
         let state = WindowState {
             tx: event_tx,
             input_tx,
+            cursor_locked: Cell::new(false),
         };
         let thread_handle = std::thread::spawn(move || {
             let h_instance: HINSTANCE = unsafe {
@@ -195,6 +200,13 @@ impl NativeWindow {
 
         Ok(())
     }
+
+    pub fn set_cursor_locked(&self, locked: bool) -> anyhow::Result<()> {
+        unsafe {
+            PostMessageW(Some(self.hwnd.0), WM_APP_CURSOR_LOCK, WPARAM(locked as usize), LPARAM(0))?;
+        }
+        Ok(())
+    }
 }
 
 impl Drop for NativeWindow {
@@ -238,6 +250,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                         height: h,
                     })
                     .expect("Failed to send event");
+                apply_cursor_clip(hwnd, state.cursor_locked.get());
                 LRESULT(0)
             }
             WM_CLOSE => {
@@ -277,6 +290,22 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                                 })
                                 .expect("Failed to send input event");
                         }
+                        let flags = m.Anonymous.Anonymous.usButtonFlags as u32;
+                        const BUTTONS: [(u32, u32, KeyCode); 5] = [
+                            (RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP, KeyCode::LeftButton),
+                            (RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP, KeyCode::RightButton),
+                            (RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP, KeyCode::MiddleButton),
+                            (RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, KeyCode::MouseButtonX1),
+                            (RI_MOUSE_BUTTON_5_DOWN, RI_MOUSE_BUTTON_5_UP, KeyCode::MouseButtonX2),
+                        ];
+                        for (down_flag, up_flag, key) in BUTTONS {
+                            if flags & down_flag != 0 {
+                                state.input_tx.send(InputEvent::Key { key, down: true }).expect("Failed to send input event");
+                            }
+                            if flags & up_flag != 0 {
+                                state.input_tx.send(InputEvent::Key { key, down: false }).expect("Failed to send input event");
+                            }
+                        }
                     } else if raw.header.dwType == RIM_TYPEKEYBOARD.0 {
                         let k = raw.data.keyboard;
                         let down = (k.Flags as u32 & RI_KEY_BREAK) == 0;
@@ -293,13 +322,49 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                 DefWindowProcW(hwnd, msg, wparam, lparam)
             }
             WM_KILLFOCUS => {
-                state
-                    .input_tx
-                    .send(InputEvent::LoseFocus)
-                    .expect("Failed to send input event");
+                let _ = ClipCursor(None);
+                state.input_tx.send(InputEvent::LoseFocus).expect("Failed to send input event");
                 LRESULT(0)
             }
+            WM_APP_CURSOR_LOCK => {
+                let locked = wparam.0 == 1;
+                state.cursor_locked.set(locked);
+                apply_cursor_clip(hwnd, locked);
+                SetCursor(if locked { None } else { LoadCursorW(None, IDC_ARROW).ok() });
+                LRESULT(0)
+            },
+            WM_SETCURSOR if state.cursor_locked.get() && (lparam.0 & 0xFFFF) as u32 == HTCLIENT => {
+                SetCursor(None);
+                LRESULT(1)
+            },
+            WM_MOVE => {
+                apply_cursor_clip(hwnd, state.cursor_locked.get());
+                LRESULT(0)
+            },
+            WM_ACTIVATE => {
+                if (wparam.0 & 0xFFFF) as u32 != WA_INACTIVE {
+                    apply_cursor_clip(hwnd, state.cursor_locked.get());
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            },
             _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+        }
+    }
+}
+
+fn apply_cursor_clip(hwnd: HWND, locked: bool) {
+    if !locked {
+        unsafe {
+            let _ = ClipCursor(None);
+        }
+        return;
+    }
+    let mut rc = RECT::default();
+    unsafe {
+        if GetClientRect(hwnd, &mut rc).is_ok() {
+            let mut pts = [POINT { x: rc.left, y: rc.top }, POINT { x: rc.right, y: rc.bottom }];
+            MapWindowPoints(Some(hwnd), None, &mut pts);
+            let _ = ClipCursor(Some(&RECT { left: pts[0].x, top: pts[0].y, right: pts[1].x, bottom: pts[1].y }));
         }
     }
 }
