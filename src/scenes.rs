@@ -2,9 +2,7 @@
 
 use crate::render::graph::FrameGraph;
 use crate::render::renderer::Renderer;
-use crate::render::vertex::Vertex;
 use crate::time::Time;
-use std::io::Read;
 
 pub trait Scene: Sized {
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self>;
