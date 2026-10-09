@@ -16,6 +16,8 @@ impl RootSignature {
     pub const ROOT_UAV: u32 = 6; // u0 space0 - root uav buffer
     pub const UAV_TEX2D: u32 = 7; // u0 space1 - writeable tex2ds
     pub const UAV_BUF: u32 = 8; // u0 space2 - RWByteAddressBuffer[]
+    pub const PASS_DATA: u32 = 9; // b2 - root cbv for pass data
+    pub const LIGHTS_DATA: u32 = 10; // t3 - root srv for lights
 
     pub fn new(dev: &ID3D12Device) -> anyhow::Result<Self> {
         let tex2d_range = D3D12_DESCRIPTOR_RANGE {
@@ -148,6 +150,29 @@ impl RootSignature {
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
             },
+            // b2 - pass data
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_CBV,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    Descriptor: D3D12_ROOT_DESCRIPTOR {
+                        ShaderRegister: 2,
+                        RegisterSpace: 0,
+                    },
+                },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+            },
+            // t3 - lights
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_SRV,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    Descriptor: D3D12_ROOT_DESCRIPTOR {
+                        ShaderRegister: 3,
+                        RegisterSpace: 0,
+                    }
+                },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL
+            },
+
         ];
 
         let samplers = [
@@ -211,6 +236,14 @@ impl RootSignature {
 
     pub fn set_draw_index(&self, cmd: &ID3D12GraphicsCommandList, index: u32) {
         unsafe { cmd.SetGraphicsRoot32BitConstant(Self::DRAW, index, 0) };
+    }
+
+    pub fn set_pass(&self, cmd: &ID3D12GraphicsCommandList, pass: u64) {
+        unsafe { cmd.SetGraphicsRootConstantBufferView(Self::PASS_DATA, pass) }
+    }
+
+    pub fn set_lights(&self, cmd: &ID3D12GraphicsCommandList, lights_va: u64) {
+        unsafe { cmd.SetGraphicsRootShaderResourceView(Self::LIGHTS_DATA, lights_va) };
     }
 }
 

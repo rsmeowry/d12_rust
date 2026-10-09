@@ -1,6 +1,6 @@
 use glam::Mat4;
 use windows::Win32::Foundation::HWND;
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
 use crate::assets::LoadedScene;
 use crate::assets::shaders::ShaderStorage;
 use crate::render::graph::FrameGraph;
@@ -11,7 +11,10 @@ use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::signature::RootSignature;
 use crate::wrappers::graphics::GraphicsDevice;
 
-pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16G16B16A16_FLOAT;
+pub const GB_NORMALS: DXGI_FORMAT = DXGI_FORMAT_R10G10B10A2_UNORM;
+pub const GB_ALBEDO: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+pub const GB_MATERIAL: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]

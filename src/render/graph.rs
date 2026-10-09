@@ -1,4 +1,4 @@
-﻿use crate::render::graph::pass::{Pass, PassCtx, ResLoad};
+﻿use crate::render::graph::pass::{DepthUse, Pass, PassCtx, ResLoad};
 use crate::render::graph::res::{GraphResources, ResId};
 use crate::render::texture::Texture;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -27,13 +27,13 @@ impl<'a> FrameGraph<'a> {
             }
 
             let colors: Vec<&Texture> = pass.writes_color.iter().map(|it| res.get(it.0)).collect::<anyhow::Result<_>>()?;
-            let depth = pass.writes_depth.iter().map(|it| res.get(it.0)).next().transpose()?;
+            let depth = pass.uses_depth.iter().map(|it| res.get(it.0)).next().transpose()?;
             if pass.has_side_effects {
                 gd.bind_backbuffer(depth)?;
             } else if !colors.is_empty() || depth.is_some() {
-                gd.set_render_targets(&colors, depth)?;
+                gd.set_render_targets(&colors, depth, pass.uses_depth.iter().map(|it| it.1 == DepthUse::Test).any(|it| it))?;
             }
-            for (id, load) in pass.writes_color.iter().chain(pass.writes_depth.iter()) {
+            for (id, load) in pass.writes_color.iter().chain(writes_depth(&pass).iter()) {
                 if *load == ResLoad::Clear {
                     gd.clear(res.get(*id)?)?;
                 }
@@ -49,19 +49,31 @@ impl<'a> FrameGraph<'a> {
 
         for (i, pass) in self.passes.iter().enumerate().rev() {
             // going from back to front
-            let writes = pass.writes_color.iter().chain(pass.writes_depth.iter());
+            let depth = writes_depth(&pass);
+            let writes = pass.writes_color.iter().chain(depth.iter());
             let is_needed = pass.has_side_effects || writes.clone().any(|it| needed_res.contains(&it.0));
             if !is_needed {
                 continue;
             }
             alive[i] = true;
-            for (id, _) in pass.writes_color.iter().chain(pass.writes_depth.iter()) {
+            for (id, _) in pass.writes_color.iter().chain(writes_depth(&pass).iter()) {
                 needed_res.remove(id);
+            }
+            if let Some(depth) = pass.uses_depth && depth.1 == DepthUse::Test {
+                needed_res.insert(depth.0);
             }
             needed_res.extend(pass.reads.iter().copied());
             needed_res.extend(writes.filter(|it| it.1 == ResLoad::Preserve).map(|it| it.0))
         }
 
         self.passes.into_iter().zip(alive).filter_map(|it| it.1.then_some(it.0)).collect()
+    }
+}
+
+fn writes_depth(pass: &Pass) -> Vec<(ResId, ResLoad)> {
+    if let Some(d) = pass.uses_depth && let DepthUse::Write(load) = d.1 {
+        vec![(d.0, load)]
+    } else {
+        vec![]
     }
 }

@@ -53,4 +53,13 @@ impl Mesh {
             cmd.DrawIndexedInstanced(self.indices, 1, 0, 0, 0);
         }
     }
+
+    pub fn draw_instanced(&self, cmd: &ID3D12GraphicsCommandList, instances: u32) {
+        unsafe {
+            cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            cmd.IASetVertexBuffers(0, Some(&[self.vbv]));
+            cmd.IASetIndexBuffer(Some(&self.ibv));
+            cmd.DrawIndexedInstanced(self.indices, instances, 0, 0, 0);
+        }
+    }
 }

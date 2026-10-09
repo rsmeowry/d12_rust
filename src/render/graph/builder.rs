@@ -1,5 +1,5 @@
 ﻿use crate::render::graph::FrameGraph;
-use crate::render::graph::pass::{Pass, PassCtx, ResLoad};
+use crate::render::graph::pass::{DepthUse, Pass, PassCtx, ResLoad};
 use crate::render::graph::res::ResId;
 
 impl<'a> FrameGraph<'a> {
@@ -20,7 +20,7 @@ pub struct PassBuilder<'g, 'f> {
     name: &'static str,
     reads: Vec<ResId>,
     writes_color: Vec<(ResId, ResLoad)>,
-    writes_depth: Option<(ResId, ResLoad)>,
+    writes_depth: Option<(ResId, DepthUse)>,
     has_side_effects: bool,
 }
 
@@ -36,7 +36,12 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
     }
 
     pub fn writes_depth(mut self, res: ResId, load: ResLoad) -> Self {
-        self.writes_depth = Some((res, load));
+        self.writes_depth = Some((res, DepthUse::Write(load)));
+        self
+    }
+
+    pub fn reads_depth(mut self, res: ResId) -> Self {
+        self.writes_depth = Some((res, DepthUse::Test));
         self
     }
 
@@ -51,7 +56,7 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
             name: self.name,
             reads: self.reads,
             writes_color: self.writes_color,
-            writes_depth: self.writes_depth,
+            uses_depth: self.writes_depth,
             has_side_effects: self.has_side_effects,
             exec: Box::new(exec)
         });

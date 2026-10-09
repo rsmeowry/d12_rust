@@ -81,7 +81,7 @@ impl Pipeline {
             RasterizerState: D3D12_RASTERIZER_DESC {
                 FillMode: if desc.wireframe { D3D12_FILL_MODE_WIREFRAME } else { D3D12_FILL_MODE_SOLID },
                 CullMode: desc.cull,
-                DepthClipEnable: true.into(),
+                DepthClipEnable: desc.depth_clip.into(),
                 ..Default::default()
             },
             SampleMask: u32::MAX,
@@ -126,14 +126,12 @@ impl Pipeline {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Globals {
     pub view_proj: Mat4,
+    pub inv_view_proj: Mat4,
     pub resolution: Vec2,
     pub time: f32,
     pub delta_time: f32,
-    pub light_dir: Vec3,
-    pub _pad1: f32,
     pub camera_pos: Vec3,
     pub _pad2: f32,
-    pub light_col: Vec4,
 }
 
 #[inline]

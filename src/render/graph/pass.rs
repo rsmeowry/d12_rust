@@ -6,7 +6,7 @@ pub struct Pass<'a> {
     pub name: &'static str,
     pub reads: Vec<ResId>,
     pub writes_color: Vec<(ResId, ResLoad)>,
-    pub writes_depth: Option<(ResId, ResLoad)>,
+    pub uses_depth: Option<(ResId, DepthUse)>,
     pub has_side_effects: bool, // if writes to backbuffer
     pub exec: Box<dyn FnOnce(&PassCtx) -> anyhow::Result<()> + 'a>,
 }
@@ -27,10 +27,16 @@ impl<'a> PassCtx<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ResLoad {
     Clear,
     Preserve
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DepthUse {
+    Write(ResLoad),
+    Test
 }
 
 pub enum Target {

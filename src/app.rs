@@ -1,5 +1,5 @@
 use glam::{Quat, Vec2, Vec3, Vec4};
-use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use crate::assets::{load_assimp_scene, LoadedScene};
 use crate::input::KeyCode;
@@ -8,11 +8,12 @@ use crate::render::camera::Camera;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::{ResId, ResSize};
+use crate::render::lights::{light_cone, unit_sphere, GpuLight, LightingPass, LIGHT_POINT, LIGHT_SPOT};
 use crate::render::mesh::Mesh;
-use crate::render::pipeline::desc::PipelineDesc;
+use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::{Globals, PipelineId};
-use crate::render::renderer::{ObjectData, Renderer, SCENE_FORMAT};
+use crate::render::renderer::{ObjectData, Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
 use crate::render::texture::{MipCount, Texture};
 use crate::render::txt::{build_ascii_texture, display_text};
 use crate::render::vertex::Vertex;
@@ -28,16 +29,23 @@ pub struct App {
     renderer: Renderer,
     scene_color: ResId,
     scene_depth: ResId,
-    phong: PipelineId,
+    scene_normals: ResId,
+    scene_albedo: ResId,
+    scene_material: ResId,
+    gpass: PipelineId,
     wireframe: PipelineId,
     unlit: PipelineId,
     blit: PipelineId,
     text: PipelineId,
+    lights: PipelineId,
+    lights_fullscreen: PipelineId,
 
     _white_tex: Texture,
     text_tex: Texture,
     materials_buf: ID3D12Resource,
-    sphere: LoadedScene,
+
+    point_light_mesh: Mesh,
+    spot_light_mesh: Mesh,
     sponza: LoadedScene,
 
     cam: Camera,
@@ -51,6 +59,7 @@ pub struct App {
     window: NativeWindow,
 
     use_wireframe: bool,
+    dbg_view: u32,
 }
 
 impl App {
@@ -59,17 +68,18 @@ impl App {
         let time = Time::new()?;
         let mut renderer = Renderer::new(window.handle(), WIDTH, HEIGHT)?;
 
-        let phong = renderer.create_pipeline(PipelineDesc {
-            rts: vec![SCENE_FORMAT],
-            name: "Phong",
-            shader: "PhongTex.hlsl".into(),
+        let gbuffer_rts = vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT];
+        let gpass = renderer.create_pipeline(PipelineDesc {
+            rts: gbuffer_rts.clone(),
+            name: "GPass",
+            shader: "deferred/GPass.hlsl".into(),
             input: Vertex3::LAYOUT,
             ..Default::default()
         })?;
         let wireframe = renderer.create_pipeline(PipelineDesc {
-            rts: vec![SCENE_FORMAT],
+            rts: gbuffer_rts.clone(),
             name: "WireFrame",
-            shader: "PhongTex.hlsl".into(),
+            shader: "deferred/GPass.hlsl".into(),
             input: Vertex3::LAYOUT,
             wireframe: true,
             ..Default::default()
@@ -99,6 +109,31 @@ impl App {
             cull: D3D12_CULL_MODE_NONE,
             ..Default::default()
         })?;
+        let lights = renderer.create_pipeline(PipelineDesc {
+            rts: vec![SCENE_FORMAT],
+            cull: D3D12_CULL_MODE_FRONT,
+            depth: Some(Depth {
+                format: GraphicsDevice::DS_FORMAT,
+                func: D3D12_COMPARISON_FUNC_LESS_EQUAL,
+                write: false,
+            }),
+            depth_clip: false,
+            blend: Blend::Additive,
+            input: Vertex3::LAYOUT,
+            name: "Lights",
+            shader: "deferred/Lights.hlsl".into(),
+            ..Default::default()
+        })?;
+        let lights_fullscreen = renderer.create_pipeline(PipelineDesc {
+            rts: vec![SCENE_FORMAT],
+            name: "LightsFullscreen",
+            shader: "deferred/LightsFullscreen.hlsl".into(),
+            input: &[],
+            depth: None,
+            cull: D3D12_CULL_MODE_NONE,
+            blend: Blend::Additive,
+            ..Default::default()
+        })?;
 
         let gd = &renderer.gd;
         let mut batch = gd.begin_upload()?;
@@ -110,19 +145,15 @@ impl App {
 
         let scene_color = renderer.gr.color(gd, "SceneColor", SCENE_FORMAT, Vec4::new(0.2, 0.3, 0.6, 1.0), ResSize::FitScreen)?;
         let scene_depth = renderer.gr.depth(gd, "SceneDepth", ResSize::FitScreen)?;
+        let scene_albedo = renderer.gr.color(gd, "SceneAlbedo", GB_ALBEDO, Vec4::ZERO, ResSize::FitScreen)?;
+        let scene_material = renderer.gr.color(gd, "SceneSpecular", GB_MATERIAL, Vec4::ZERO, ResSize::FitScreen)?;
+        let scene_normals = renderer.gr.color(gd, "SceneNormals", GB_NORMALS, Vec4::ZERO, ResSize::FitScreen)?;
 
         let mut materials = Vec::new();
-        // unlit sphere
-        let sphere = load_assimp_scene(
-            gd, &mut batch, "assets/models/Sphere.gltf",
-            white_tex.srv_ptr(), &mut materials,
-            |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
-            |_mat, tex| MaterialParams::ScrollingTex {
-                tex,
-                color: Vec4::ONE,
-                scroll_speed: 1.0,
-            }.to_gpu_material()
-        )?;
+        let point_light_mesh = unit_sphere(8, 8);
+        let point_light_mesh = Mesh::new(&gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1)?;
+        let spot_light_mesh = light_cone(8);
+        let spot_light_mesh = Mesh::new(&gd, &mut batch, &spot_light_mesh.0, &spot_light_mesh.1)?;
 
         // sponza !!
         let sponza = load_assimp_scene(
@@ -131,11 +162,11 @@ impl App {
             |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
             |_mat, tex| MaterialParams::Phong {
                 tex,
-                ambient: Vec3::new(0.05, 0.05, 0.05),
+                ambient: Vec3::new(0.03, 0.03, 0.03),
                 diffuse: Vec3::ONE,
                 specular: Vec3::ONE,
                 shininess: 32.0,
-                diffuse_k: 0.3,
+                diffuse_k: 0.4,
                 specular_k: 0.7,
             }.to_gpu_material()
         )?;
@@ -152,31 +183,36 @@ impl App {
         );
         let globals = Globals {
             view_proj: cam.view_proj(),
+            inv_view_proj: cam.view_proj().inverse(),
             resolution: Vec2::new(WIDTH as f32, HEIGHT as f32),
             time: 0.0,
             delta_time: 0.0,
-            _pad1: 0.0,
             _pad2: 0.0,
             camera_pos: cam.pos(),
-            light_dir: Vec3::new(-0.4, -0.8, 0.5).normalize(),
-            light_col: Vec4::new(1.0, 0.9, 0.9, 1.0),
         };
 
         Ok(Self {
             renderer,
             scene_color,
             scene_depth,
-            phong,
+            scene_albedo,
+            scene_normals,
+            scene_material,
+
+            gpass,
             wireframe,
             unlit,
             blit,
             text,
+            lights,
+            lights_fullscreen,
 
             _white_tex: white_tex,
             text_tex,
             materials_buf,
-            sphere,
             sponza,
+            point_light_mesh,
+            spot_light_mesh,
 
             cam,
             camera_y: 0.,
@@ -189,6 +225,7 @@ impl App {
             window,
 
             use_wireframe: false,
+            dbg_view: 0
         })
     }
 
@@ -281,9 +318,14 @@ impl App {
             self.use_wireframe = !self.use_wireframe;
         }
 
+        if input.was_released(KeyCode::F8) {
+            self.dbg_view = (self.dbg_view + 1) % 4;
+        }
+
         self.globals.time = self.time.game_time();
         self.globals.delta_time = dt;
         self.globals.view_proj = self.cam.view_proj();
+        self.globals.inv_view_proj = self.cam.view_proj().inverse();
         self.globals.camera_pos = self.cam.pos();
         Ok(())
     }
@@ -291,8 +333,8 @@ impl App {
     fn draw(&mut self) -> anyhow::Result<()> {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
-        let (phong, unlit) = if self.use_wireframe { (self.wireframe, self.wireframe) } else { (self.phong, self.unlit) };
-        for (scene, pso) in [(&self.sphere, unlit), (&self.sponza, phong)] {
+        let (phong, unlit) = if self.use_wireframe { (self.wireframe, self.wireframe) } else { (self.gpass, self.unlit) };
+        for (scene, pso) in [(&self.sponza, phong)] {
             let (obj, meshes) = scene.to_objects_and_draws();
             objects.extend(obj);
             draws.extend(meshes.into_iter().map(|m| (m, pso)));
@@ -308,14 +350,45 @@ impl App {
         let glyphs_va = self.renderer.upload_slice(bytemuck::cast_slice(&glyphs), 16)?;
         let text_tex = self.text_tex.srv_ptr();
 
+        let t = self.time.game_time();
+        let mut lights = vec![
+            GpuLight::directional(Vec3::new(-0.4, -0.8, 0.5), Vec3::new(1., 0.95, 0.9), 0.6),
+            GpuLight::point(Vec3::new(4. * t.sin(), 1., -1.2), 6., Vec3::new(1., 0.3, 0.2), 8.),
+            GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
+            GpuLight::point(Vec3::new(2., 2. + 2. * t.cos(), 0.), 8., Vec3::new(0.2, 0.9, 0.2), 8.),
+            GpuLight::spot(Vec3::new(4., 2., -1.), Vec3::NEG_Y, 15., 15., 25.,  Vec3::ONE, 20.),
+        ];
+        lights.sort_by_key(|l| l.kind);
+        let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
+        let first_spot = lights.partition_point(|l| l.kind < LIGHT_SPOT) as u32;
+        let point_count = first_spot - first_point;
+        let spot_count = lights.len() as u32 - first_spot;
+        let lights_va = self.renderer.upload_slice(bytemuck::cast_slice(&lights), 16)?;
+        let gr = &self.renderer.gr;
+        let light_pass_va = self.renderer.upload_slice(bytemuck::bytes_of(&LightingPass {
+            albedo: gr.get(self.scene_albedo)?.srv_ptr(),
+            normal: gr.get(self.scene_normals)?.srv_ptr(),
+            material: gr.get(self.scene_material)?.srv_ptr(),
+            depth: gr.get(self.scene_depth)?.srv_ptr(),
+            dir_count: first_point,
+            debug_view: self.dbg_view,
+            _pad: [0; 2],
+            ambient: Vec3::ONE * 0.07,
+            _pad2: 0.0,
+        }), 256)?;
+
+
         let rs = self.renderer.rs();
         let pipelines = self.renderer.pipelines();
         let mut graph = FrameGraph::new();
 
         // scene draw pass
         graph
-            .add_pass("DrawScene")
+            .add_pass("GPass")
             .writes_depth(self.scene_depth, ResLoad::Clear)
+            .writes(self.scene_albedo, ResLoad::Clear)
+            .writes(self.scene_normals, ResLoad::Clear)
+            .writes(self.scene_material, ResLoad::Clear)
             .writes(self.scene_color, ResLoad::Clear)
             .exec(|ctx| {
                 rs.set_objects(ctx.cmd, objects_va);
@@ -328,6 +401,47 @@ impl App {
                     }
                     rs.set_draw_index(ctx.cmd, i as u32);
                     mesh.draw(ctx.cmd);
+                }
+                Ok(())
+            });
+
+        // directional light
+        graph
+            .add_pass("LightsFullscreen")
+            .reads(self.scene_albedo)
+            .reads(self.scene_normals)
+            .reads(self.scene_material)
+            .reads(self.scene_depth)
+            .writes(self.scene_color, ResLoad::Preserve)
+            .exec(|ctx| {
+                pipelines.get(self.lights_fullscreen).bind(ctx.cmd);
+                rs.set_pass(ctx.cmd, light_pass_va);
+                rs.set_lights(ctx.cmd, lights_va);
+                unsafe {
+                    ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    ctx.cmd.DrawInstanced(3, 1, 0, 0);
+                }
+                Ok(())
+            });
+
+        // lights volumes
+        graph.add_pass("LightVolumes")
+            .reads(self.scene_albedo)
+            .reads(self.scene_normals)
+            .reads(self.scene_material)
+            .reads_depth(self.scene_depth)                     // DSV read-only + SRV
+            .writes(self.scene_color, ResLoad::Preserve)
+            .exec(|ctx| {
+                pipelines.get(self.lights).bind(ctx.cmd);
+                rs.set_pass(ctx.cmd, light_pass_va);
+                rs.set_lights(ctx.cmd, lights_va);
+                if point_count > 0 {
+                    rs.set_draw_index(ctx.cmd, first_point);
+                    self.point_light_mesh.draw_instanced(ctx.cmd, point_count);
+                }
+                if spot_count > 0 {
+                    rs.set_draw_index(ctx.cmd, first_spot);
+                    self.spot_light_mesh.draw_instanced(ctx.cmd, spot_count);
                 }
                 Ok(())
             });
