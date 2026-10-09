@@ -17,6 +17,7 @@ use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 
 pub mod post;
+pub mod util;
 
 #[derive(Debug, Copy, Clone)]
 pub struct GBuffer {

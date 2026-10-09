@@ -1,30 +1,23 @@
 use crate::input::KeyCode;
 use crate::render::camera::Camera;
+use crate::render::deferred::util::DebugTextPass;
 use crate::render::graph::FrameGraph;
-use crate::render::pipeline::desc::PipelineDesc;
-use crate::render::pipeline::{Globals, PipelineId};
+use crate::render::pipeline::Globals;
 use crate::render::renderer::Renderer;
-use crate::render::texture::Texture;
-use crate::render::txt::{build_ascii_texture, display_text};
 use crate::scenes::sponza_lights::SponzaWithLights;
 use crate::scenes::Scene;
 use crate::time::Time;
 use crate::wrappers::event::WindowEvent;
-use crate::wrappers::graphics::GraphicsDevice;
 use crate::wrappers::window::{NativeWindow, WindowProps};
-use glam::{EulerRot, Quat, Vec2, Vec3, Vec4};
-use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-use windows::Win32::Graphics::Direct3D12::D3D12_CULL_MODE_NONE;
+use glam::{EulerRot, Quat, Vec2, Vec3};
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 
 pub struct App {
     renderer: Renderer,
-    text: PipelineId,
 
-    text_tex: Texture,
-
+    text: DebugTextPass,
     scene: SponzaWithLights,
 
     cam: Camera,
@@ -48,23 +41,6 @@ impl App {
         let time = Time::new()?;
         let mut renderer = Renderer::new(window.handle(), WIDTH, HEIGHT)?;
 
-        let text = renderer.create_pipeline(PipelineDesc {
-            rts: vec![GraphicsDevice::BB_RTV_FORMAT],
-            name: "Text",
-            shader: "Text.hlsl".into(),
-            input: &[],
-            depth: None,
-            cull: D3D12_CULL_MODE_NONE,
-            ..Default::default()
-        })?;
-
-        let gd = &renderer.gd;
-        let mut batch = gd.begin_upload()?;
-
-        let text_tex = build_ascii_texture(&mut batch)?;
-
-        batch.finish()?;
-
         let cam = Camera::new(
             WIDTH,
             HEIGHT,
@@ -83,15 +59,13 @@ impl App {
         };
 
         let scene = SponzaWithLights::setup(&mut renderer)?;
+        let text = DebugTextPass::new(&mut renderer)?;
 
         Ok(Self {
             renderer,
 
             text,
-
             scene,
-
-            text_tex,
 
             cam,
             globals,
@@ -184,33 +158,12 @@ impl App {
     }
 
     fn draw(&mut self) -> anyhow::Result<()> {
-        let glyphs = display_text(
-            &format!("FPS: {}", self.fps),
-            self.globals.resolution.x as u32, 1.0, Vec4::new(1.0, 1.0, 0.0, 1.0), true);
-
         self.renderer.begin_frame(&self.globals)?;
-        let glyphs_va = self.renderer.upload_slice(bytemuck::cast_slice(&glyphs), 16)?;
-        let text_tex = self.text_tex.srv_ptr();
-
-        let rs = self.renderer.rs();
-        let pipelines = self.renderer.pipelines();
 
         let mut graph = FrameGraph::new();
 
-        self.scene.build_graph(&self.renderer, &self.time, &mut graph)?;
-
-        graph.add_pass("TextOverlay")
-            .uses_backbuffer()
-            .exec(|ctx| {
-                pipelines.get(self.text).bind(ctx.cmd);
-                rs.set_objects(ctx.cmd, glyphs_va);
-                rs.set_draw_index(ctx.cmd, text_tex);
-                unsafe {
-                    ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-                    ctx.cmd.DrawInstanced(6, glyphs.len() as u32, 0, 0);
-                }
-                Ok(())
-            });
+        self.scene.build_graph(&self.renderer, &self.time, self.use_wireframe, &mut graph)?;
+        self.text.add_pass(format!("FPS: {}", self.fps), self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
 
         graph.execute(&self.renderer.gd, &self.renderer.gr)?;
 

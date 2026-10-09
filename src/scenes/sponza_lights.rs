@@ -69,11 +69,13 @@ impl Scene for SponzaWithLights {
         })
     }
 
-    fn build_graph<'a>(&'a self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    fn build_graph<'a>(&'a self, renderer: &'a Renderer, time: &Time, wireframe: bool, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
 
-        for (scene, pso) in [(&self.sponza, self.gbuffer.gpass)] {
+        let pass = if wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
+
+        for (scene, pso) in [(&self.sponza, pass)] {
             let (obj, meshes) = scene.to_objects_and_draws();
             objects.extend(obj);
             draws.extend(meshes.into_iter().map(|m| (m, pso)));
