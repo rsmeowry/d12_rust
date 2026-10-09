@@ -1,25 +1,20 @@
 ﻿#include <lib/Core.hlsl>
 
-
-struct PostProperties {
-    uint albedo;
-    uint normals;
-    uint materials;
-    uint depth;
-    uint sceneColor;
+Texture2D g_Tex2D[1024] : register(t0, space1);
+SamplerState PointClamp : register(s2);
+SamplerState LinearClamp : register(s1);
+cbuffer PostProperties : register(b2) {
+    uint albedoTex;
+    uint normalTex;
+    uint materialTex;
+    uint depthTex;
+    uint sceneColorTex;
     uint enableSobel;
     uint enableVignette;
     float vignetteStrength;
     uint enablePosterization;
     uint posterizationLevels;
-    uint _objPad[10];
 };
-
-cbuffer DrawConstants : register(b0) { uint drawIndex; }
-Texture2D g_Tex2D[1024] : register(t0, space1);
-SamplerState PointClamp : register(s2);
-SamplerState Linear : register(s0);
-StructuredBuffer<PostProperties> g_Props : register(t1);
 
 struct Varyings { float4 pos : SV_Position; float2 uv : TEXCOORD; };
 
@@ -32,54 +27,50 @@ Varyings vert(uint id : SV_VertexID) {
     return o;
 }
 
-float Luma(float3 c)
-{
-    return dot(c, float3(0.299, 0.587, 0.114));
+int2 ClampPx(int2 p) {
+    return clamp(p, int2(0, 0), int2(resolution) - 1);
+}
+
+float3 NormalAt(int2 p) {
+    return g_Tex2D[normalTex].Load(int3(ClampPx(p), 0)).xyz * 2 - 1;
 }
 
 float4 frag(Varyings i) : SV_Target {
-    PostProperties props = g_Props[drawIndex];
     float2 t = float2(1.0, 1.0) / resolution;
     float2 pos = i.uv * resolution;
-    Texture2D scene = g_Tex2D[props.sceneColor];
-    Texture2D normals = g_Tex2D[props.normals];
-    float4 source = scene.Sample(Linear, i.uv);
+    Texture2D scene = g_Tex2D[sceneColorTex];
+    Texture2D normals = g_Tex2D[normalTex];
+    float4 source = scene.Sample(PointClamp, i.uv);
 
     // hdr to ldr
     source = source / (source + 1);
 
     // vignette
-    if(props.enableVignette == 1) {
-        source = source * pow(1 - distance(i.uv, float2(0.5, 0.5)), props.vignetteStrength);
+    if(enableVignette == 1) {
+        source = source * pow(1 - distance(i.uv, float2(0.5, 0.5)), vignetteStrength);
     }
 
     // posterization
-    if(props.enablePosterization == 1) {
-        float level = props.posterizationLevels;
+    if(enablePosterization == 1) {
+        float level = posterizationLevels;
         source = floor(source * level) / level;
     }
 
     // sobel
-    if(props.enableSobel == 1) {
-        float tl = Luma(normals.Sample(Linear, i.uv + float2(-t.x, -t.y)).rgb);
-        float t0 = Luma(normals.Sample(Linear, i.uv + float2(0.0, -t.y)).rgb);
-        float tr = Luma(normals.Sample(Linear, i.uv + float2(t.x, -t.y)).rgb);
+    if(enableSobel == 1) {
+        float3 tl = NormalAt(pos + int2(-1, -1));
+        float3 tc = NormalAt(pos + int2(0, -1));
+        float3 tr = NormalAt(pos + int2(1, -1));
+        float3 ml = NormalAt(pos + int2(-1, 0));
+        float3 mr = NormalAt(pos + int2(1, 0));
+        float3 bl = NormalAt(pos + int2(-1, 1));
+        float3 bc = NormalAt(pos + int2(0, 1));
+        float3 br = NormalAt(pos + int2(1, 1));
 
-        float ml = Luma(normals.Sample(Linear, i.uv + float2(-t.x, 0.0)).rgb);
-        float mr = Luma(normals.Sample(Linear, i.uv + float2(t.x, 0.0)).rgb);
+        float3 gx = (tr + 2 * mr + br) - (tl + 2 * ml + bl);
+        float3 gy = (bl + 2 * bc + br) - (tl + 2 * tc + tr);
 
-        float bl = Luma(normals.Sample(Linear, i.uv + float2(-t.x, t.y)).rgb);
-        float b0 = Luma(normals.Sample(Linear, i.uv + float2(0.0, t.y)).rgb);
-        float br = Luma(normals.Sample(Linear, i.uv + float2(t.x, t.y)).rgb);
-
-        float gx = -tl - 2.0 * ml - bl + tr + 2.0 * mr + br;
-        float gy = -tl - 2.0 * t0 - tr + bl + 2.0 * b0 + br;
-
-        float edge = sqrt(gx * gx + gy * gy);
-
-        if (edge < 0.00) {
-            edge = 0.0;
-        }
+        float edge = smoothstep(0.4, 1.0, sqrt(dot(gx, gx) + dot(gy, gy)));
 
         source = lerp(source, 0., edge);
     }

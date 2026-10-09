@@ -1,15 +1,11 @@
 ﻿#include <lib/Core.hlsl>
 
-struct BlitProperties {
-    uint sourceTex;
-    uint ditherTex;
-    uint _objPad[18];
-};
-
-cbuffer DrawConstants : register(b0) { uint drawIndex; }
 Texture2D g_Tex2D[1024] : register(t0, space1);
 SamplerState PointClamp : register(s2);
-StructuredBuffer<BlitProperties> g_Props : register(t1);
+cbuffer BlitProperties : register(b2) {
+    uint sourceTex;
+    uint transformHdr;
+}
 
 struct Varyings { float4 pos : SV_Position; float2 uv : TEXCOORD; };
 
@@ -37,9 +33,11 @@ float Bayer4x4(float2 p){
 }
 
 float4 frag(Varyings i) : SV_Target {
-    BlitProperties props = g_Props[drawIndex];
     float2 pos = i.uv * resolution;
     float dither = Bayer4x4(pos);
-    float4 scene = g_Tex2D[props.sourceTex].Sample(PointClamp, i.uv);
+    float4 scene = g_Tex2D[sourceTex].Sample(PointClamp, i.uv);
+    if(transformHdr == 1) {
+        scene = scene / (scene + 1.0);
+    }
     return scene + (dither - 0.5) * DITHER_STRENGTH;
 }

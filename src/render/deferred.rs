@@ -16,6 +16,8 @@ use crate::render::texture::Texture;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 
+pub mod post;
+
 #[derive(Debug, Copy, Clone)]
 pub struct GBuffer {
     pub albedo: ResId,
@@ -62,14 +64,6 @@ impl Renderer {
             gpass_wireframe,
         })
     }
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct BlitProperties {
-    pub source_tex: u32,
-    pub dither_tex: u32,
-    pub _pad: [u32; 18]
 }
 
 #[derive(Debug)]

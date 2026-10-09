@@ -1,36 +1,30 @@
-﻿use glam::{Vec3, Vec4};
-use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-use crate::assets::{load_assimp_scene, LoadedScene};
+﻿use crate::assets::{load_assimp_scene, LoadedScene};
 use crate::render::builtin::Vertex3;
-use crate::render::deferred::{BlitProperties, DeferredLightingPass, GBuffer};
-use crate::render::graph::FrameGraph;
+use crate::render::deferred::{DeferredLightingPass, GBuffer};
 use crate::render::graph::pass::ResLoad;
-use crate::render::graph::res::{ResId, ResSize};
+use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
 use crate::render::mesh::Mesh;
-use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
-use crate::render::renderer::{ObjectData, Renderer, SCENE_FORMAT};
+use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::renderer::{ObjectData, Renderer};
 use crate::scenes::Scene;
 use crate::time::Time;
-use crate::wrappers::graphics::GraphicsDevice;
+use glam::Vec3;
+use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 
 #[derive(Debug)]
 pub struct SponzaWithLights {
     gbuffer: GBuffer,
 
-    post: PipelineId,
-    blit: PipelineId,
-
-    post_intermediate: ResId,
-
     sponza: LoadedScene,
 
     materials_buf: ID3D12Resource,
 
-    lighting: DeferredLightingPass
+    lighting: DeferredLightingPass,
+    post: PostProcessPass,
+    blit: BlitPass
 }
 
 impl Scene for SponzaWithLights {
@@ -60,36 +54,18 @@ impl Scene for SponzaWithLights {
         batch.finish()?;
 
         let gbuffer = renderer.build_gbuffer("deferred/GPass.hlsl")?;
-        let blit = renderer.create_pipeline(PipelineDesc {
-            rts: vec![GraphicsDevice::BB_RTV_FORMAT],
-            name: "Blit",
-            shader: "Blit.hlsl".into(),
-            input: &[],
-            depth: None,
-            cull: D3D12_CULL_MODE_NONE,
-            ..Default::default()
-        })?;
-        let post = renderer.create_pipeline(PipelineDesc {
-            rts: vec![SCENE_FORMAT],
-            name: "Post",
-            shader: "Post.hlsl".into(),
-            input: &[],
-            depth: None,
-            cull: D3D12_CULL_MODE_NONE,
-            ..Default::default()
-        })?;
 
-        let post_intermediate = renderer.gr.color(&renderer.gd, "PostOutput", SCENE_FORMAT, Vec4::ZERO, ResSize::FitScreen)?;
+        let post = PostProcessPass::new(renderer)?;
+        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
         Ok(Self {
             gbuffer,
             blit,
-            post,
-            post_intermediate,
 
             sponza,
             materials_buf,
             lighting,
+            post
         })
     }
 
@@ -117,28 +93,18 @@ impl Scene for SponzaWithLights {
 
         let gr = &renderer.gr;
 
-        let blit_va = renderer.upload_slice(bytemuck::bytes_of(&BlitProperties {
-            source_tex: gr.get(self.post_intermediate)?.srv_ptr(),
-            dither_tex: gr.get(self.post_intermediate)?.srv_ptr(),
-            _pad: [0; 18],
-        }), 16)?;
+        let rs = renderer.rs();
+        let pipelines = renderer.pipelines();
 
-        let post_va = renderer.upload_slice(bytemuck::bytes_of(&PostProperties {
+        let post_props = PostProperties {
             albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
             normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
             materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
             depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
             scene_color: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
             enable_sobel: 1,
-            enable_vignette: 1,
-            vignette_strength: 0.5,
-            enable_posterization: 1,
-            posterization_levels: 32,
-            _pad: [0.; 10],
-        }), 16)?;
-
-        let rs = renderer.rs();
-        let pipelines = renderer.pipelines();
+            ..Default::default()
+        };
 
         // scene draw pass
         graph
@@ -164,56 +130,10 @@ impl Scene for SponzaWithLights {
             });
 
         self.lighting.add_pass(lights, renderer, &self.gbuffer, graph)?;
-
-        graph.add_pass("Post")
-            .reads(self.gbuffer.albedo)
-            .reads(self.gbuffer.normals)
-            .reads(self.gbuffer.materials)
-            .reads(self.gbuffer.scene_color)
-            .reads(self.gbuffer.scene_depth)
-            .writes(self.post_intermediate, ResLoad::Clear)
-            .exec(move |ctx| {
-                pipelines.get(self.post).bind(ctx.cmd);
-                rs.set_objects(ctx.cmd, post_va);
-                rs.set_draw_index(ctx.cmd, 0);
-                unsafe {
-                    ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-                    ctx.cmd.DrawInstanced(3, 1, 0, 0);
-                }
-                Ok(())
-            });
-
-        // blit+present pass
-        graph.add_pass("Blit")
-            .reads(self.post_intermediate)
-            .uses_backbuffer()
-            .exec(move |ctx| {
-                pipelines.get(self.blit).bind(ctx.cmd);
-                rs.set_objects(ctx.cmd, blit_va);
-                rs.set_draw_index(ctx.cmd, 0);
-                unsafe {
-                    ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-                    ctx.cmd.DrawInstanced(3, 1, 0, 0);
-                }
-                Ok(())
-            });
+        self.post.add_pass(post_props, renderer, &self.gbuffer, graph)?;
+        self.blit.add_pass(renderer, graph)?;
 
         Ok(())
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct PostProperties {
-    pub albedo: u32,
-    pub normals: u32,
-    pub materials: u32,
-    pub depth: u32,
-    pub scene_color: u32,
-    pub enable_sobel: u32,
-    pub enable_vignette: u32,
-    pub vignette_strength: f32,
-    pub enable_posterization: u32,
-    pub posterization_levels: u32,
-    pub _pad: [f32; 10]
-}

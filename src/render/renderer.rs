@@ -98,6 +98,10 @@ impl Renderer {
         self.gd.frame_context()?.frame_alloc.push_slice(slice, align)
     }
 
+    pub fn upload_cbuffer<T: bytemuck::Pod>(&self, buf: &T) -> anyhow::Result<u64> {
+        self.gd.frame_context()?.frame_alloc.push(buf)
+    }
+
     // executes the graph and presents
     pub fn execute_graph(&self, graph: FrameGraph) -> anyhow::Result<()> {
         graph.execute(&self.gd, &self.gr)?;
