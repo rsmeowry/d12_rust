@@ -388,6 +388,11 @@ impl App {
             _pad2: 0.,
         }), 256)?;
 
+        let blit_va = self.renderer.upload_slice(bytemuck::bytes_of(&BlitProperties {
+            source_tex: gr.get(self.scene_color)?.srv_ptr(),
+            dither_tex: gr.get(self.scene_color)?.srv_ptr(),
+            _pad: [0; 18],
+        }), 16)?;
 
         let rs = self.renderer.rs();
         let pipelines = self.renderer.pipelines();
@@ -463,7 +468,8 @@ impl App {
             .uses_backbuffer()
             .exec(|ctx| {
                 pipelines.get(self.blit).bind(ctx.cmd);
-                rs.set_draw_index(ctx.cmd, ctx.srv_ptr(self.scene_color)?);
+                rs.set_objects(ctx.cmd, blit_va);
+                rs.set_draw_index(ctx.cmd, 0);
                 unsafe {
                     ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                     ctx.cmd.DrawInstanced(3, 1, 0, 0);
@@ -496,4 +502,12 @@ fn debug_checker_tex(w: u32, h: u32) -> Vec<u8> {
             if (x / 4 + y / 4) % 2 == 0 { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         })
         .collect()
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct BlitProperties {
+    pub source_tex: u32,
+    pub dither_tex: u32,
+    pub _pad: [u32; 18]
 }
