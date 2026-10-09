@@ -1,4 +1,4 @@
-﻿use glam::Vec3;
+﻿use glam::{Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use crate::assets::{load_assimp_scene, LoadedScene};
@@ -6,12 +6,13 @@ use crate::render::builtin::Vertex3;
 use crate::render::deferred::{BlitProperties, DeferredLightingPass, GBuffer};
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
+use crate::render::graph::res::{ResId, ResSize};
 use crate::render::lights::GpuLight;
 use crate::render::mesh::Mesh;
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
-use crate::render::renderer::{ObjectData, Renderer};
+use crate::render::renderer::{ObjectData, Renderer, SCENE_FORMAT};
 use crate::scenes::Scene;
 use crate::time::Time;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -20,7 +21,10 @@ use crate::wrappers::graphics::GraphicsDevice;
 pub struct SponzaWithLights {
     gbuffer: GBuffer,
 
+    post: PipelineId,
     blit: PipelineId,
+
+    post_intermediate: ResId,
 
     sponza: LoadedScene,
 
@@ -65,10 +69,23 @@ impl Scene for SponzaWithLights {
             cull: D3D12_CULL_MODE_NONE,
             ..Default::default()
         })?;
+        let post = renderer.create_pipeline(PipelineDesc {
+            rts: vec![SCENE_FORMAT],
+            name: "Post",
+            shader: "Post.hlsl".into(),
+            input: &[],
+            depth: None,
+            cull: D3D12_CULL_MODE_NONE,
+            ..Default::default()
+        })?;
+
+        let post_intermediate = renderer.gr.color(&renderer.gd, "PostOutput", SCENE_FORMAT, Vec4::ZERO, ResSize::FitScreen)?;
 
         Ok(Self {
             gbuffer,
             blit,
+            post,
+            post_intermediate,
 
             sponza,
             materials_buf,
@@ -90,7 +107,7 @@ impl Scene for SponzaWithLights {
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
 
         let t = time.game_time();
-        let mut lights = vec![
+        let lights = vec![
             GpuLight::directional(Vec3::new(-0.4, -0.8, 0.5), Vec3::new(1., 0.95, 0.9), 0.6),
             GpuLight::point(Vec3::new(4. * t.sin(), 1., -1.2), 6., Vec3::new(1., 0.3, 0.2), 8.),
             GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
@@ -101,9 +118,23 @@ impl Scene for SponzaWithLights {
         let gr = &renderer.gr;
 
         let blit_va = renderer.upload_slice(bytemuck::bytes_of(&BlitProperties {
-            source_tex: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
-            dither_tex: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
+            source_tex: gr.get(self.post_intermediate)?.srv_ptr(),
+            dither_tex: gr.get(self.post_intermediate)?.srv_ptr(),
             _pad: [0; 18],
+        }), 16)?;
+
+        let post_va = renderer.upload_slice(bytemuck::bytes_of(&PostProperties {
+            albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
+            normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
+            materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
+            depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
+            scene_color: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
+            enable_sobel: 1,
+            enable_vignette: 1,
+            vignette_strength: 0.5,
+            enable_posterization: 1,
+            posterization_levels: 32,
+            _pad: [0.; 10],
         }), 16)?;
 
         let rs = renderer.rs();
@@ -134,9 +165,27 @@ impl Scene for SponzaWithLights {
 
         self.lighting.add_pass(lights, renderer, &self.gbuffer, graph)?;
 
+        graph.add_pass("Post")
+            .reads(self.gbuffer.albedo)
+            .reads(self.gbuffer.normals)
+            .reads(self.gbuffer.materials)
+            .reads(self.gbuffer.scene_color)
+            .reads(self.gbuffer.scene_depth)
+            .writes(self.post_intermediate, ResLoad::Clear)
+            .exec(move |ctx| {
+                pipelines.get(self.post).bind(ctx.cmd);
+                rs.set_objects(ctx.cmd, post_va);
+                rs.set_draw_index(ctx.cmd, 0);
+                unsafe {
+                    ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    ctx.cmd.DrawInstanced(3, 1, 0, 0);
+                }
+                Ok(())
+            });
+
         // blit+present pass
         graph.add_pass("Blit")
-            .reads(self.gbuffer.scene_color)
+            .reads(self.post_intermediate)
             .uses_backbuffer()
             .exec(move |ctx| {
                 pipelines.get(self.blit).bind(ctx.cmd);
@@ -151,4 +200,20 @@ impl Scene for SponzaWithLights {
 
         Ok(())
     }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct PostProperties {
+    pub albedo: u32,
+    pub normals: u32,
+    pub materials: u32,
+    pub depth: u32,
+    pub scene_color: u32,
+    pub enable_sobel: u32,
+    pub enable_vignette: u32,
+    pub vignette_strength: f32,
+    pub enable_posterization: u32,
+    pub posterization_levels: u32,
+    pub _pad: [f32; 10]
 }
