@@ -9,6 +9,7 @@ use crate::render::mesh::Mesh;
 use crate::render::pipeline::{Globals, PipelineId, PipelineManager};
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::signature::RootSignature;
+use crate::render::texture::{MipCount, Texture};
 use crate::wrappers::graphics::GraphicsDevice;
 
 pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16G16B16A16_FLOAT;
@@ -27,6 +28,7 @@ pub struct ObjectData {
 pub struct Renderer {
     pub gd: GraphicsDevice,
     pub gr: GraphResources,
+    white_tex: Texture,
     pipeline_mgr: PipelineManager,
     shaders: ShaderStorage,
 }
@@ -39,12 +41,21 @@ impl Renderer {
         let mut shaders = ShaderStorage::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/shaders"));
         shaders.compile()?;
 
+        let mut batch = gd.begin_upload()?;
+        let white_tex = Texture::from_rgba8(&mut batch, 1, 1, &[255; 4], false, MipCount::All, "builtin/WHITE")?;
+        batch.finish();
+
         Ok(Self {
             pipeline_mgr: PipelineManager::new(&gd)?,
             gr: GraphResources::new(width, height),
+            white_tex,
             gd,
             shaders,
         })
+    }
+
+    pub fn white_tex(&self) -> &Texture {
+        &self.white_tex
     }
 
     pub fn rs(&self) -> &RootSignature {

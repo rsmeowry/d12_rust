@@ -19,6 +19,7 @@ pub struct MaterialDefinition {
     pub texture: Texture,
 }
 
+#[derive(Debug)]
 pub struct LoadedScene {
     pub mesh_indices: Vec<(usize, Mat4)>,
     pub meshes: Vec<(Mesh, u32)>,

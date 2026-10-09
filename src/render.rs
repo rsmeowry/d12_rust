@@ -8,3 +8,4 @@ pub mod graph;
 pub mod renderer;
 pub mod txt;
 pub mod lights;
+pub mod deferred;
