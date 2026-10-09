@@ -2,11 +2,11 @@ use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::{transition_barrier, GraphicsDevice};
 use anyhow::anyhow;
 use glam::Vec4;
-use image::RgbaImage;
+use image::{EncodableLayout, RgbaImage};
 use std::cell::Cell;
 use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_FLAG_NONE, D3D12_DSV_FLAG_READ_ONLY_DEPTH, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_D32_FLOAT, DXGI_FORMAT_D32_FLOAT_S8X24_UINT, DXGI_FORMAT_R24G8_TYPELESS, DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_R32G8X24_TYPELESS, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS, DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_SAMPLE_DESC};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_D32_FLOAT, DXGI_FORMAT_D32_FLOAT_S8X24_UINT, DXGI_FORMAT_R24G8_TYPELESS, DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32G8X24_TYPELESS, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS, DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_SAMPLE_DESC};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum TextureKind {
@@ -79,6 +79,7 @@ impl Texture {
             format: if srgb { DXGI_FORMAT_R8G8B8A8_UNORM_SRGB } else { DXGI_FORMAT_R8G8B8A8_UNORM },
             mips: mips.len() as u32,
         }, name)?;
+        let mips = mips.into_iter().map(|it| it.as_bytes()).collect::<Vec<_>>();
         base.upload(batch, &mips)?;
         Ok(base)
     }
@@ -92,8 +93,21 @@ impl Texture {
             format: if srgb { DXGI_FORMAT_R8G8B8A8_UNORM_SRGB } else { DXGI_FORMAT_R8G8B8A8_UNORM },
             mips: mips.len() as u32,
         }, name)?;
+        let mips = mips.iter().map(|it| it.as_bytes()).collect::<Vec<_>>();
         base.upload(batch, &mips)?;
         Ok(base)
+    }
+
+    pub fn from_hdr(batch: &mut UploadBatch, bytes: &[u8], name: &str) -> anyhow::Result<Self> {
+        let img = image::load_from_memory(bytes)?.to_rgba32f();
+        let tex = Self::new(batch.gd(), TextureDesc {
+            kind: TextureKind::SampleSource,
+            width: img.width(), height: img.height(),
+            format: DXGI_FORMAT_R32G32B32A32_FLOAT,
+            mips: 1,
+        }, name)?;
+        tex.upload(batch, &[bytemuck::cast_slice(img.as_raw())])?;
+        Ok(tex)
     }
 
     pub fn srv_ptr(&self) -> u32 { self.srv_ptr }
@@ -130,6 +144,7 @@ impl Texture {
         self.desc.mips = mips.len() as u32;
         self.desc.width = 0;
         self.resize(batch.gd(), new_width, new_height)?;
+        let mips = mips.iter().map(|it| it.as_bytes()).collect::<Vec<_>>();
         self.upload(batch, &mips)
     }
 
@@ -218,7 +233,7 @@ impl Texture {
         Ok(())
     }
 
-    fn upload(&self, batch: &mut UploadBatch<'_>, mips: &[RgbaImage]) -> anyhow::Result<()> {
+    fn upload(&self, batch: &mut UploadBatch<'_>, mips: &[&[u8]]) -> anyhow::Result<()> {
         let desc = unsafe { self.res.GetDesc() };
         let n = desc.MipLevels as usize;
         anyhow::ensure!(mips.len() == n, "{}: {} mips given, resource has {}", self.name, mips.len(), n);
@@ -245,7 +260,7 @@ impl Texture {
             let row = row_size[i] as usize;
 
             let mip_dst = unsafe { dest.add(fps[i].Offset as usize) };
-            for (y, src) in mip.as_raw().chunks_exact(row).enumerate() {
+            for (y, src) in mip.chunks_exact(row).enumerate() {
                 unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), mip_dst.add(y * pitch), row) };
             }
         }

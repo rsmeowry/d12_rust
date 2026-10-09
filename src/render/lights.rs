@@ -48,7 +48,8 @@ pub struct LightingPass {
     pub depth: u32,
     pub dir_count: u32,
     pub debug_view: u32,
-    pub _pad: [u32; 2],
+    pub sky_tex: u32,
+    pub _pad: f32,
     pub ambient: Vec3,
     pub _pad2: f32,
 }

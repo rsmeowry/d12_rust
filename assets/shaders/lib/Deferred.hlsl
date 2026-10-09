@@ -5,7 +5,8 @@
     uint depthTex;
     uint dirCount;
     uint debugView;
-    float2 _pad;
+    uint skyTex;
+    float _pad;
     float3 ambientColor;
     float _alsoPad;
 };

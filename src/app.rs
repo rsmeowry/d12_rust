@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Read;
 use glam::{Quat, Vec2, Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -42,6 +44,7 @@ pub struct App {
 
     _white_tex: Texture,
     text_tex: Texture,
+    sky_tex: Texture,
     materials_buf: ID3D12Resource,
 
     point_light_mesh: Mesh,
@@ -140,6 +143,10 @@ impl App {
 
         // white texture must be the first one always !!
         let white_tex = Texture::from_rgba8(&mut batch, 1, 1, &[255; 4], false, MipCount::All, "builtin/WHITE")?;
+        let mut file = File::open("assets/textures/sky/sky.hdr")?;
+        let mut sky_buf = Vec::new();
+        file.read_to_end(&mut sky_buf)?;
+        let sky_tex = Texture::from_hdr(&mut batch, &sky_buf, "Sky")?;
 
         let text_tex = build_ascii_texture(&mut batch)?;
 
@@ -209,7 +216,10 @@ impl App {
 
             _white_tex: white_tex,
             text_tex,
+            sky_tex,
+
             materials_buf,
+
             sponza,
             point_light_mesh,
             spot_light_mesh,
@@ -372,9 +382,10 @@ impl App {
             depth: gr.get(self.scene_depth)?.srv_ptr(),
             dir_count: first_point,
             debug_view: self.dbg_view,
-            _pad: [0; 2],
+            sky_tex: self.sky_tex.srv_ptr(),
+            _pad: 0.,
             ambient: Vec3::ONE * 0.07,
-            _pad2: 0.0,
+            _pad2: 0.,
         }), 256)?;
 
 
