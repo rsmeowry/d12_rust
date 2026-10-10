@@ -14,6 +14,7 @@ cbuffer PostProperties : register(b2) {
     float vignetteStrength;
     uint enablePosterization;
     uint posterizationLevels;
+    uint enableFlyEye;
 };
 
 struct Varyings { float4 pos : SV_Position; float2 uv : TEXCOORD; };
@@ -35,12 +36,49 @@ float3 NormalAt(int2 p) {
     return g_Tex2D[normalTex].Load(int3(ClampPx(p), 0)).xyz * 2 - 1;
 }
 
+float HexagonSDF(float2 p, float r) {
+    float x = abs(p.x);
+    float y = abs(p.y);
+    return max((x * 0.5 + y * 0.866025),x) - r;
+}
+
+#define EYES 10
+#define FISHEYE_FAC 0.9
 float4 frag(Varyings i) : SV_Target {
     float2 t = float2(1.0, 1.0) / resolution;
     float2 pos = i.uv * resolution;
     Texture2D scene = g_Tex2D[sceneColorTex];
     Texture2D normals = g_Tex2D[normalTex];
-    float4 source = scene.Sample(PointClamp, i.uv);
+
+    float4 source = float4(0, 0, 0, 0);
+
+    if(enableFlyEye == 1) {
+        float2 xy = 2.0 * i.uv - 1.0;
+        float dist = length(xy);
+        float2 uv = i.uv;
+        float resultingDist = 0;
+        float2 newUv = uv;
+
+        if(dist < (2 - FISHEYE_FAC)) {
+            dist = length(xy * FISHEYE_FAC);
+            float z = sqrt(1.0 - dist * dist);
+            float r = atan2(dist, z) / PI;
+            float phi = atan2(xy.y, xy.x);
+
+            uv.x = r * cos(phi) + 0.5;
+            uv.y = r * sin(phi) + 0.5;
+            newUv = frac(uv * EYES);
+            float resultingHex = HexagonSDF(newUv * 2 - 1.0, 0.7);
+            resultingDist = 1.0 - saturate(resultingHex * 4.0);
+        } else {
+            uv = i.uv;
+            resultingDist = 0.0;
+        }
+        source = scene.Sample(PointClamp, newUv);
+        source = lerp(float4(0.0, 0.01, 0.02, 1.0), source, resultingDist);
+    } else {
+        source = scene.Sample(PointClamp, i.uv);
+    }
 
     // hdr to ldr
     source = source / (source + 1);

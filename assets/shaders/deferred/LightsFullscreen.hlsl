@@ -26,7 +26,7 @@ float4 frag(float4 pos : SV_Position) : SV_Target {
     if (debugView == 1)
         return float4(s.albedo, 0);
     if (debugView == 2)
-        return float4(s.normal * 0.5 + 0.5, 0);
+        return float4(s.normal, 0);
     if (debugView == 3)
         return float4(frac(s.pos), 0);
 

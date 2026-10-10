@@ -175,7 +175,7 @@ impl DeferredLightingPass {
             .reads(gbuffer.albedo)
             .reads(gbuffer.normals)
             .reads(gbuffer.materials)
-            .reads_depth(gbuffer.scene_depth)                     // DSV read-only + SRV
+            .reads_depth(gbuffer.scene_depth)
             .writes(gbuffer.scene_color, ResLoad::Preserve)
             .exec(move |ctx| {
                 pipelines.get(self.lights).bind(ctx.cmd);

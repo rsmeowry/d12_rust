@@ -80,6 +80,7 @@ pub struct PostProperties {
     pub vignette_strength: f32,
     pub enable_posterization: u32,
     pub posterization_levels: u32,
+    pub enable_fly_eye: u32,
 }
 
 impl Default for PostProperties {
@@ -95,6 +96,7 @@ impl Default for PostProperties {
             vignette_strength: 1.0,
             enable_posterization: 0,
             posterization_levels: 32,
+            enable_fly_eye: 0,
         }
     }
 }

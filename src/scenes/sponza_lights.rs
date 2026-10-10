@@ -85,13 +85,20 @@ impl Scene for SponzaWithLights {
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
 
         let t = time.game_time();
-        let lights = vec![
+        let mut lights = vec![
             GpuLight::directional(Vec3::new(-0.4, -0.8, 0.5), Vec3::new(1., 0.95, 0.9), 0.6),
-            GpuLight::point(Vec3::new(4. * t.sin(), 1., -1.2), 6., Vec3::new(1., 0.3, 0.2), 8.),
-            GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
-            GpuLight::point(Vec3::new(2., 2. + 2. * t.cos(), 0.), 8., Vec3::new(0.2, 0.9, 0.2), 8.),
-            GpuLight::spot(Vec3::new(4., 2., -1.), Vec3::NEG_Y, 15., 15., 25.,  Vec3::ONE, 20.),
+            // GpuLight::point(Vec3::new(4. * t.sin(), 1., -1.2), 6., Vec3::new(1., 0.3, 0.2), 8.),
+            // GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
+            // GpuLight::point(Vec3::new(2., 2. + 2. * t.cos(), 0.), 8., Vec3::new(0.2, 0.9, 0.2), 8.),
+            // GpuLight::spot(Vec3::new(4., 2., -1.), Vec3::NEG_Y, 15., 15., 25.,  Vec3::ONE, 20.),
         ];
+
+        let mut i = 0;
+
+        while i < 100 {
+            i += 1;
+            lights.push(GpuLight::point(Vec3::new(-8.0 + 0.2 * (i as f32), 3.0 + 4. * (i as f32 + t).sin(), 1.2 * (i as f32).sin()), 6., Vec3::ONE, 4.0));
+        }
 
         let gr = &renderer.gr;
 
@@ -104,7 +111,8 @@ impl Scene for SponzaWithLights {
             materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
             depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
             scene_color: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
-            enable_sobel: 1,
+            enable_sobel: 0,
+            enable_fly_eye: 1,
             ..Default::default()
         };
 
