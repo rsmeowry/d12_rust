@@ -1,4 +1,4 @@
-﻿use crate::assets::{load_assimp_scene, LoadedScene};
+﻿use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
 use crate::render::builtin::Vertex3;
 use crate::render::deferred::{DeferredLightingPass, GBuffer};
 use crate::render::graph::pass::ResLoad;
@@ -34,12 +34,12 @@ impl Scene for SponzaWithLights {
         let mut batch = renderer.gd.begin_upload()?;
 
         let mut materials = Vec::new();
-        let sponza = load_assimp_scene(
+        let sponza = load_assimp_scene::<Vertex3, _>(
             &renderer.gd, &mut batch, "assets/sponza_old/Sponza.gltf",
             renderer.white_tex().srv_ptr(), &mut materials,
-            |pos, norm, uv, _col| Vertex3::new(pos, norm, uv),
+            LoadTex::ALBEDO,
             |_mat, tex| MaterialParams::Phong {
-                tex,
+                tex: tex.albedo,
                 ambient: Vec3::new(0.03, 0.03, 0.03),
                 diffuse: Vec3::ONE,
                 specular: Vec3::ONE,
@@ -53,7 +53,7 @@ impl Scene for SponzaWithLights {
 
         batch.finish()?;
 
-        let gbuffer = renderer.build_gbuffer("deferred/GPass.hlsl")?;
+        let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl")?;
 
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
@@ -95,7 +95,7 @@ impl Scene for SponzaWithLights {
 
         let mut i = 0;
 
-        while i < 100 {
+        while i < 5 {
             i += 1;
             lights.push(GpuLight::point(Vec3::new(-8.0 + 0.2 * (i as f32), 3.0 + 4. * (i as f32 + t).sin(), 1.2 * (i as f32).sin()), 6., Vec3::ONE, 4.0));
         }
@@ -112,7 +112,7 @@ impl Scene for SponzaWithLights {
             depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
             scene_color: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
             enable_sobel: 0,
-            enable_fly_eye: 1,
+            enable_fly_eye: 0,
             ..Default::default()
         };
 

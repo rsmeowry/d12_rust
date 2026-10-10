@@ -32,7 +32,7 @@ pub struct GBuffer {
 }
 
 impl Renderer {
-    pub fn build_gbuffer(&mut self, pass_shader: &'static str) -> anyhow::Result<GBuffer> {
+    pub fn build_gbuffer<V: Vertex>(&mut self, pass_shader: &'static str) -> anyhow::Result<GBuffer> {
         let scene_color = self.gr.color(&self.gd, "SceneColor", SCENE_FORMAT, Vec4::new(0.2, 0.3, 0.6, 1.0), ResSize::FitScreen)?;
         let scene_depth = self.gr.depth(&self.gd, "SceneDepth", ResSize::FitScreen)?;
         let albedo = self.gr.color(&self.gd, "SceneAlbedo", GB_ALBEDO, Vec4::ZERO, ResSize::FitScreen)?;
@@ -43,14 +43,14 @@ impl Renderer {
             rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT],
             name: "GPass",
             shader: pass_shader.into(),
-            input: Vertex3::LAYOUT,
+            input: V::LAYOUT,
             ..Default::default()
         })?;
         let gpass_wireframe = self.create_pipeline(PipelineDesc {
             rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT],
             name: "GPassWireframe",
             shader: pass_shader.into(),
-            input: Vertex3::LAYOUT,
+            input: V::LAYOUT,
             wireframe: true,
             ..Default::default()
         })?;

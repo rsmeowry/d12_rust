@@ -14,11 +14,11 @@ use glam::{EulerRot, Quat, Vec2, Vec3};
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 
-pub struct App {
+pub struct App<S: Scene> {
     renderer: Renderer,
 
     text: DebugTextPass,
-    scene: SponzaWithLights,
+    scene: S,
 
     cam: Camera,
     globals: Globals,
@@ -34,7 +34,7 @@ pub struct App {
     controller: ControllerInfo
 }
 
-impl App {
+impl<S: Scene> App<S> {
     pub fn new() -> anyhow::Result<Self> {
         let window = NativeWindow::create(WindowProps::default())?;
         window.set_cursor_locked(true)?;
@@ -58,7 +58,7 @@ impl App {
             camera_pos: cam.pos(),
         };
 
-        let scene = SponzaWithLights::setup(&mut renderer)?;
+        let scene = S::setup(&mut renderer)?;
         let text = DebugTextPass::new(&mut renderer)?;
 
         Ok(Self {

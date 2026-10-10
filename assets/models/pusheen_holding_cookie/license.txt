@@ -1,0 +1,11 @@
+Model Information:
+* title:	Pusheen Holding Cookie
+* source:	https://sketchfab.com/3d-models/pusheen-holding-cookie-ed67eff3a5d9478d96ffa96ab3607b2c
+* author:	tymondoroszuk (https://sketchfab.com/tymondoroszuk)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Pusheen Holding Cookie" (https://sketchfab.com/3d-models/pusheen-holding-cookie-ed67eff3a5d9478d96ffa96ab3607b2c) by tymondoroszuk (https://sketchfab.com/tymondoroszuk) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

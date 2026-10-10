@@ -42,8 +42,8 @@ float HexagonSDF(float2 p, float r) {
     return max((x * 0.5 + y * 0.866025),x) - r;
 }
 
-#define EYES 10
-#define FISHEYE_FAC 0.9
+#define EYES 8
+#define FISHEYE_FAC 0.8
 float4 frag(Varyings i) : SV_Target {
     float2 t = float2(1.0, 1.0) / resolution;
     float2 pos = i.uv * resolution;
@@ -68,7 +68,7 @@ float4 frag(Varyings i) : SV_Target {
             uv.x = r * cos(phi) + 0.5;
             uv.y = r * sin(phi) + 0.5;
             newUv = frac(uv * EYES);
-            float resultingHex = HexagonSDF(newUv * 2 - 1.0, 0.7);
+            float resultingHex = HexagonSDF(newUv * 2 - 1.0, 0.6);
             resultingDist = 1.0 - saturate(resultingHex * 4.0);
         } else {
             uv = i.uv;

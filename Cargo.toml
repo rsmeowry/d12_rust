@@ -18,6 +18,7 @@ skip_bom = "0.5.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 font8x8 = "0.3.1"
+bitflags = "2.13.2"
 
 [dependencies.windows]
 version = "0.62.2"

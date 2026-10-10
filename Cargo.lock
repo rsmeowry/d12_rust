@@ -293,6 +293,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "asset-importer",
+ "bitflags",
  "bytemuck",
  "flume",
  "font8x8",

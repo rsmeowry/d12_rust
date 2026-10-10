@@ -1,4 +1,5 @@
 ﻿pub mod sponza_lights;
+pub mod tesselated_sample;
 
 use crate::render::graph::FrameGraph;
 use crate::render::renderer::Renderer;

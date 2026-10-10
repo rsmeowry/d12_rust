@@ -30,6 +30,12 @@ enum ShaderTarget {
     Vertex {
         entry: String,
     },
+    Domain {
+        entry: String,
+    },
+    Hull {
+        entry: String
+    }
 }
 
 impl ShaderTarget {
@@ -37,6 +43,8 @@ impl ShaderTarget {
         match self {
             ShaderTarget::Fragment { .. } => ShaderType::Fragment,
             ShaderTarget::Vertex { .. } => ShaderType::Vertex,
+            ShaderTarget::Domain { .. } => ShaderType::Domain,
+            ShaderTarget::Hull { .. } => ShaderType::Hull,
         }
     }
 }
@@ -201,7 +209,9 @@ impl ShaderStorage {
             let hstr = path.file_name().unwrap().to_str().unwrap().bytes().chain(std::iter::once(0)).collect::<Vec<u8>>();
             let (entry, target_name) = match &target {
                 ShaderTarget::Fragment { entry } => (entry, s!("ps_5_1")),
-                ShaderTarget::Vertex { entry } => (entry, s!("vs_5_1"))
+                ShaderTarget::Vertex { entry } => (entry, s!("vs_5_1")),
+                ShaderTarget::Domain { entry } => (entry, s!("ds_5_1")),
+                ShaderTarget::Hull { entry } => (entry, s!("hs_5_1"))
             };
             let entry = entry.bytes().chain(std::iter::once(0)).collect::<Vec<u8>>();
             let r = unsafe {

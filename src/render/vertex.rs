@@ -1,3 +1,4 @@
+use glam::{Vec2, Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D12::{
     D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, D3D12_INPUT_ELEMENT_DESC,
 };
@@ -23,6 +24,17 @@ impl VertexAttr for [f32; 3] {
 }
 impl VertexAttr for [f32; 4] {
     const FORMAT: DXGI_FORMAT = DXGI_FORMAT_R32G32B32A32_FLOAT;
+}
+
+pub trait FromVertexProps {
+    fn from_vertex_props(
+        pos: Vec3,
+        normal: Vec3,
+        tangent: Vec3,
+        binormal: Vec3,
+        uv: Vec2,
+        color: Vec4,
+    ) -> Self;
 }
 
 pub const fn attr(name: &str, format: DXGI_FORMAT, offset: usize) -> D3D12_INPUT_ELEMENT_DESC {

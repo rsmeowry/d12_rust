@@ -3,15 +3,16 @@ pub mod shaders;
 use crate::render::mesh::Mesh;
 use crate::render::pipeline::material::GpuMaterial;
 use crate::render::texture::{build_mips, MipCount, Texture};
-use crate::render::vertex::Vertex;
+use crate::render::vertex::{FromVertexProps, Vertex};
 use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
 use asset_importer::postprocess::PostProcessSteps;
-use asset_importer::TextureType;
+use asset_importer::{Material, TextureType};
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use image::RgbaImage;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use bitflags::{bitflags, bitflags_match};
 
 #[derive(Debug)]
 pub struct MaterialDefinition {
@@ -26,43 +27,74 @@ pub struct LoadedScene {
     pub textures: Vec<Texture>,
 }
 
-pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
+#[derive(Debug)]
+pub struct TextureSet {
+    pub albedo: u32,
+    pub normal: u32,
+    pub roughness: u32,
+    pub metallic: u32,
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct LoadTex: u32 {
+        const ALBEDO = 0b00000001;
+        const NORMAL = 0b00000010;
+        const ROUGHNESS = 0b00000100;
+        const METALLIC = 0b00001000;
+    }
+}
+
+pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
     gd: &GraphicsDevice,
     batch: &mut UploadBatch<'_>,
     path: P,
     white_tex: u32,
     materials: &mut Vec<GpuMaterial>,
-    make_vert: impl Fn(Vec3, Vec3, Vec2, Vec4) -> V,
-    make_material: impl Fn(&asset_importer::material::Material, u32) -> GpuMaterial,
+    load_textures: LoadTex,
+    make_material: impl Fn(&asset_importer::material::Material, TextureSet) -> GpuMaterial,
 ) -> anyhow::Result<LoadedScene> {
     let pathbuf = path.as_ref().to_path_buf();
 
     let scene = asset_importer::Importer::new().read_file(path)
-        .with_post_process(PostProcessSteps::TRIANGULATE | PostProcessSteps::FLIP_UVS | PostProcessSteps::GEN_SMOOTH_NORMALS)
+        .with_post_process(PostProcessSteps::TRIANGULATE |
+            PostProcessSteps::FLIP_UVS |
+            PostProcessSteps::GEN_SMOOTH_NORMALS |
+            PostProcessSteps::CALC_TANGENT_SPACE
+        )
         .import()?;
     let base = materials.len() as u32;
-    let mut texture_paths: Vec<(PathBuf, bool, MipCount)> = Vec::new();
+    let mut texture_paths: Vec<(PathBuf, bool, MipCount, TextureType)> = Vec::new();
 
     for material in scene.materials() {
-        match material.texture(TextureType::BaseColor, 0) {
-            Some(t) => {
-                let path_parent = pathbuf.parent().unwrap();
-                texture_paths.push((path_parent.join(&t.path), true, MipCount::All));
-            }
-            None => {
+        let mut load_single_tex = |mat: &Material, ty: TextureType, flag: LoadTex| {
+            if load_textures.contains(flag) {
+                match material.texture(ty, 0) {
+                    Some(t) => {
+                        let path_parent = pathbuf.parent().unwrap();
+                        texture_paths.push((path_parent.join(&t.path), ty == TextureType::BaseColor, MipCount::All, ty));
+                    }
+                    None => {
+                    }
+                };
             }
         };
+
+        load_single_tex(&material, TextureType::BaseColor, LoadTex::ALBEDO);
+        load_single_tex(&material, TextureType::Normals, LoadTex::NORMAL);
+        load_single_tex(&material, TextureType::DiffuseRoughness, LoadTex::ROUGHNESS);
+        load_single_tex(&material, TextureType::Metalness, LoadTex::METALLIC);
     }
 
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
-    let mut texture_mips: Vec<anyhow::Result<Vec<RgbaImage>>> = Vec::new();
+    let mut texture_mips: Vec<anyhow::Result<(Vec<RgbaImage>, TextureType)>> = Vec::new();
     for chunk in texture_paths.chunks(threads) {
-        let got: Vec<anyhow::Result<Vec<RgbaImage>>> = std::thread::scope(|s| {
+        let got: Vec<anyhow::Result<(Vec<RgbaImage>, TextureType)>> = std::thread::scope(|s| {
             let handles = chunk.iter()
-                .map(|(p, _srgb, mip)| s.spawn(move || -> anyhow::Result<_> {
-                    println!("Loading texture: {p:?}");
+                .map(|(p, _srgb, mip, ty)| s.spawn(move || -> anyhow::Result<_> {
+                    println!("Loading texture: {p:?} of type {ty:?}");
                     let img = image::open(p)?.to_rgba8();
-                    Ok(build_mips(img, *mip))
+                    Ok((build_mips(img, *mip), *ty))
                 })).collect::<Vec<_>>();
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         });
@@ -73,25 +105,47 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
 
     let mut textures: Vec<Texture> = Vec::with_capacity(texture_mips.len());
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
-    for ((path, srgb, _mips), tex_mips) in texture_paths.iter().zip(texture_mips.into_iter()) {
+    for ((path, srgb, _mips, tex_type), tex_mips) in texture_paths.iter().zip(texture_mips.into_iter()) {
         let tex_mips = tex_mips?;
-        let loaded = Texture::load_from_mips(batch, &tex_mips, *srgb, path.file_name().unwrap().to_str().unwrap())?;
+        let loaded = Texture::load_from_mips(batch, &tex_mips.0, *srgb, path.file_name().unwrap().to_str().unwrap())?;
         let idx = textures.len();
         textures.push(loaded);
         by_path.insert(path.to_path_buf(), idx);
     }
 
     for material in scene.materials() {
-        match material.texture(TextureType::BaseColor, 0) {
-            Some(t) => {
-                let path_parent = pathbuf.parent().unwrap();
-                let idx = *by_path.get(&path_parent.join(&t.path)).unwrap();
-                materials.push(make_material(&material, textures[idx].srv_ptr()));
-            }
-            None => {
-                materials.push(make_material(&material, white_tex));
-            }
+        let mut tex_set = TextureSet {
+            albedo: 0,
+            normal: 0,
+            roughness: 0,
+            metallic: 0,
         };
+        for flag in load_textures.iter() {
+            let ty = bitflags_match!(flag, {
+                LoadTex::ALBEDO => TextureType::BaseColor,
+                LoadTex::NORMAL => TextureType::Normals,
+                LoadTex::ROUGHNESS => TextureType::DiffuseRoughness,
+                LoadTex::METALLIC => TextureType::Metalness,
+                _ => TextureType::BaseColor,
+            });
+            let idx = match material.texture(ty, 0) {
+                Some(t) => {
+                    let path_parent = pathbuf.parent().unwrap();
+                    textures[*by_path.get(&path_parent.join(&t.path)).unwrap()].srv_ptr()
+                }
+                None => {
+                    0
+                }
+            } as u32;
+            bitflags_match!(flag, {
+                LoadTex::ALBEDO => tex_set.albedo = idx,
+                LoadTex::NORMAL => tex_set.normal = idx,
+                LoadTex::ROUGHNESS => tex_set.roughness = idx,
+                LoadTex::METALLIC => tex_set.metallic = idx,
+                _ => { },
+            });
+        }
+        materials.push(make_material(&material, tex_set))
     }
 
     let built: Vec<(Mesh, u32)> = scene.meshes().map(|mesh| {
@@ -107,11 +161,19 @@ pub fn load_assimp_scene<V: Vertex, P: AsRef<Path>>(
             .texture_coords(0).iter().flatten()
             .map(|it| Vec2::new(it.x, it.y)).collect::<Vec<_>>();
 
+        let binormals = mesh
+            .bitangents().iter().flatten()
+            .map(|it| Vec3::new(it.x, it.y, it.z)).collect::<Vec<_>>();
+
+        let tangents = mesh
+            .tangents().iter().flatten()
+            .map(|it| Vec3::new(it.x, it.y, it.z)).collect::<Vec<_>>();
+
         let indices = mesh.triangle_indices_iter().collect::<Vec<u32>>();
 
         let mut vertices: Vec<V> = Vec::with_capacity(positions.len());
         for i in 0..positions.len() {
-            let vert = make_vert(positions[i], normals[i], uvs[i], Vec4::ONE);
+            let vert = V::from_vertex_props(positions[i], normals[i], tangents[i], binormals[i], uvs[i], Vec4::ONE);
             vertices.push(vert);
         }
         Mesh::new(gd, batch, &vertices, &indices).map(|it| (it, base + mesh.material_index() as u32))
