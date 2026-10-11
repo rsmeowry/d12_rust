@@ -39,7 +39,7 @@ impl DebugTextPass {
 
     pub fn add_pass<'a, S: Into<String>>(&'a self, text: S, width: usize, renderer: &'a Renderer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
         let glyphs = display_text(
-            &text.into(), width as u32, 1.0,
+            &text.into(), width as u32, 2.0,
             Vec4::new(1.0, 1.0, 0.0, 1.0), true);
         let glyphs_va = renderer.upload_slice(bytemuck::cast_slice(&glyphs), 16)?;
         let text_tex = self.text_tex.srv_ptr();

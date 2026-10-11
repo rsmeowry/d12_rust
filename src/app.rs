@@ -127,12 +127,16 @@ impl<S: Scene> App<S> {
         let input = self.window.input();
         let dt = self.time.delta_time();
 
-        if input.is_pressed(KeyCode::Escape) {
+        if input.was_released(KeyCode::Escape) {
             self.window.set_cursor_locked(false)?;
         }
 
-        if input.is_pressed(KeyCode::F) {
+        if input.was_released(KeyCode::F) {
             self.window.set_cursor_locked(true)?;
+        }
+
+        if input.was_released(KeyCode::F4) {
+            self.window.toggle_fullscreen()?;
         }
 
         if input.was_released(KeyCode::F5) {
@@ -163,7 +167,10 @@ impl<S: Scene> App<S> {
         let mut graph = FrameGraph::new();
 
         self.scene.build_graph(&self.renderer, &self.time, self.use_wireframe, &mut graph)?;
-        self.text.add_pass(format!("FPS: {}", self.fps), self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
+
+        let cam_pos = self.cam.pos();
+
+        self.text.add_pass(format!("FPS: {}\nCamera: {cam_pos:.2}", self.fps), self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
 
         graph.execute(&self.renderer.gd, &self.renderer.gr)?;
 

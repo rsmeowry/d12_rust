@@ -14,10 +14,11 @@ use windows::Win32::UI::Input::{
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, PCWSTR};
-use windows::Win32::Graphics::Gdi::MapWindowPoints;
+use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MapWindowPoints, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST};
 
 const WM_APP_DESTROY: u32 = WM_APP + 1;
 const WM_APP_CURSOR_LOCK: u32 = WM_APP + 2;
+const WM_APP_TOGGLE_FULLSCREEN: u32 = WM_APP + 3;
 
 #[derive(Debug, Clone)]
 pub struct WindowProps {
@@ -47,7 +48,10 @@ unsafe impl Send for SendHwnd {}
 struct WindowState {
     pub tx: Sender<WindowEvent>,
     pub input_tx: Sender<InputEvent>,
-    pub cursor_locked: Cell<bool>
+    pub cursor_locked: Cell<bool>,
+    pub style: Cell<i32>,
+    pub placement: Cell<WINDOWPLACEMENT>,
+    pub is_fullscreen: Cell<bool>,
 }
 
 pub struct NativeWindow {
@@ -145,6 +149,12 @@ impl NativeWindow {
             tx: event_tx,
             input_tx,
             cursor_locked: Cell::new(false),
+            style: Cell::new(0),
+            placement: Cell::new(WINDOWPLACEMENT {
+                length: size_of::<WINDOWPLACEMENT>() as u32,
+                ..Default::default()
+            }),
+            is_fullscreen: Cell::new(false),
         };
         let thread_handle = std::thread::spawn(move || {
             let h_instance: HINSTANCE = unsafe {
@@ -204,6 +214,13 @@ impl NativeWindow {
     pub fn set_cursor_locked(&self, locked: bool) -> anyhow::Result<()> {
         unsafe {
             PostMessageW(Some(self.hwnd.0), WM_APP_CURSOR_LOCK, WPARAM(locked as usize), LPARAM(0))?;
+        }
+        Ok(())
+    }
+
+    pub fn toggle_fullscreen(&self) -> anyhow::Result<()> {
+        unsafe {
+            PostMessageW(Some(self.hwnd.0), WM_APP_TOGGLE_FULLSCREEN, WPARAM(0), LPARAM(0))?;
         }
         Ok(())
     }
@@ -347,6 +364,10 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
                 }
                 DefWindowProcW(hwnd, msg, wparam, lparam)
             },
+            WM_APP_TOGGLE_FULLSCREEN => {
+                toggle_fullscreen(hwnd, state).expect("Failed to toggle fullscreen");
+                LRESULT(1)
+            }
             _ => DefWindowProcW(hwnd, msg, wparam, lparam),
         }
     }
@@ -367,4 +388,51 @@ fn apply_cursor_clip(hwnd: HWND, locked: bool) {
             let _ = ClipCursor(Some(&RECT { left: pts[0].x, top: pts[0].y, right: pts[1].x, bottom: pts[1].y }));
         }
     }
+}
+
+unsafe fn toggle_fullscreen(hwnd: HWND, state: &WindowState) -> windows::core::Result<()> {
+    if !state.is_fullscreen.get() {
+        // save style
+        unsafe {
+            state.style.set(GetWindowLongW(hwnd, GWL_STYLE));
+            let mut placement = WINDOWPLACEMENT::default();
+            GetWindowPlacement(hwnd, &mut placement)?;
+            state.placement.set(placement);
+        }
+
+        unsafe {
+            let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            let mut mi = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            GetMonitorInfoW(monitor, &mut mi).ok()?;
+            let RECT { left, top, right, bottom } = mi.rcMonitor;
+            SetWindowLongW(hwnd, GWL_STYLE, state.style.get() & !(WS_OVERLAPPEDWINDOW.0 as i32));
+            SetWindowPos(
+                hwnd,
+                Some(HWND_TOP),
+                left,
+                top,
+                right - left,
+                bottom - top,
+                SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
+            )?;
+        }
+
+        state.is_fullscreen.set(true);
+    } else {
+        unsafe {
+            SetWindowLongW(hwnd, GWL_STYLE, state.style.get());
+            SetWindowPlacement(hwnd, &state.placement.get())?;
+            SetWindowPos(
+                hwnd,
+                Some(HWND::default()),
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
+            )?;
+        }
+        state.is_fullscreen.set(false);
+    }
+    Ok(())
 }

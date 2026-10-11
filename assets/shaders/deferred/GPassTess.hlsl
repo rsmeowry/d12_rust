@@ -5,7 +5,6 @@
 #define DISP 0.2
 #define OPENGL_NORMAL 0
 
-
 struct ObjectData {
     float4x4 model;
     uint materialId;

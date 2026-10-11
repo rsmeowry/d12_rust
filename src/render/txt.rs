@@ -33,7 +33,7 @@ pub struct Glyph {
 }
 
 pub fn display_text(text: &str, width: u32, scale: f32, color: Vec4, drop_shadow: bool) -> Vec<Glyph> {
-    let pos = calc_right_position(text, width, scale);
+    let pos = Vec2::new(8., 8.); //calc_right_position(text, width, scale);
     let mut glyphs = Vec::with_capacity(text.len());
     if drop_shadow {
         calc_text_layout(&mut glyphs, text, pos + Vec2::new(2., 2.), scale, Vec4::new(0., 0., 0., 1.));
