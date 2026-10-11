@@ -1,5 +1,6 @@
 ﻿use std::cmp::Ordering;
 use glam::{Mat3, Mat4, Vec3, Vec4, Vec4Swizzles};
+use crate::render::perf::octree::{BoxStatus, Octree};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct AABB {
@@ -14,6 +15,10 @@ impl AABB {
             min,
             max
         }
+    }
+
+    pub fn contains_box(&self, o: &AABB) -> bool {
+        self.min.cmple(o.min).all() && o.max.cmple(self.max).all()
     }
 
     pub fn transformed(&self, model: Mat4) -> Self {
@@ -91,22 +96,26 @@ impl Frustum {
     }
 
     pub fn contains(&self, aabb: &AABB, model: Mat4) -> bool {
-        let tf = aabb.transformed(model);
+        self.classify(&aabb.transformed(model)) != BoxStatus::Outside
+    }
+
+    pub fn classify(&self, aabb: &AABB) -> BoxStatus {
+        let mut result = BoxStatus::Inside;
         let planes = &[self.left, self.right, self.top, self.bottom, self.far, self.near];
         for plane in planes {
-            let depth = plane.w;
+            let norm = plane.xyz();
+            let pos = norm.cmpge(Vec3::ZERO);
+            let p = Vec3::select(pos, aabb.max, aabb.min); // farthest along normal (inside)
+            let q = Vec3::select(pos, aabb.min, aabb.max); // opposite
 
-            let pv = Vec3::new(
-                if plane.x >= 0. { tf.max.x } else { tf.min.x },
-                if plane.y >= 0. { tf.max.y } else { tf.min.y },
-                if plane.z >= 0. { tf.max.z } else { tf.min.z }
-            );
-
-            if plane.xyz().dot(pv) + depth < 0. {
-                return false;
+            if norm.dot(p) + plane.w < 0. {
+                return BoxStatus::Outside; // even the inside one is outside lol
+            }
+            if norm.dot(q) + plane.w < 0. {
+                result = BoxStatus::Intersects;
             }
         }
-        return true;
+        return result;
     }
 }
 

@@ -30,8 +30,7 @@ pub struct App<S: Scene> {
 
     window: NativeWindow,
 
-    use_wireframe: bool,
-    dbg_view: u32,
+    opts: RenderOpts,
     controller: ControllerInfo
 }
 
@@ -77,8 +76,7 @@ impl<S: Scene> App<S> {
 
             window,
 
-            use_wireframe: false,
-            dbg_view: 0,
+            opts: RenderOpts::default(),
             controller: ControllerInfo::default()
         })
     }
@@ -147,11 +145,19 @@ impl<S: Scene> App<S> {
         }
 
         if input.was_released(KeyCode::F6) {
-            self.use_wireframe = !self.use_wireframe;
+            self.opts.use_wireframe = !self.opts.use_wireframe;
         }
 
         if input.was_released(KeyCode::F7) {
-            self.dbg_view = (self.dbg_view + 1) % 4;
+            self.opts.debug_view_type = (self.opts.debug_view_type + 1) % 4;
+        }
+
+        if input.was_released(KeyCode::F8) {
+            self.opts.culling_mode = match self.opts.culling_mode {
+                CullingMode::Off => CullingMode::Frustum,
+                CullingMode::Frustum => CullingMode::Octree,
+                CullingMode::Octree => CullingMode::Off,
+            }
         }
 
         self.globals.time = self.time.game_time();
@@ -166,16 +172,19 @@ impl<S: Scene> App<S> {
         self.renderer.begin_frame(&self.globals)?;
 
         let mut graph = FrameGraph::new();
-        let mut debugger = Debugger::default();
 
-        self.scene.build_graph(&self.renderer, &self.time, self.use_wireframe, &mut graph, &mut debugger)?;
+        self.scene.build_graph(&self.renderer, &self.time, &mut graph, &mut self.opts)?;
 
         let cam_pos = self.renderer.cam.pos();
 
-        let mut text = format!("FPS: {}\nCamera: {cam_pos:.2}", self.fps);
-        for line in debugger.debug_lines {
-            text = format!("{text}\n{line}");
+        let mut text = format!("FPS: {}\nCamera: {cam_pos:.2}\nScene: {}", self.fps, S::NAME);
+
+        for line in &self.opts.debug_lines {
+            text.push('\n');
+            text.push_str(&line);
         }
+        self.opts.debug_lines.clear();
+
         self.text.add_pass(text, self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
 
         graph.execute(&self.renderer.gd, &self.renderer.gr)?;
@@ -237,11 +246,22 @@ impl Default for ControllerInfo {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Debugger {
-    debug_lines: Vec<Cow<'static, str>>
+pub enum CullingMode {
+    #[default]
+    Off,
+    Frustum,
+    Octree,
 }
 
-impl Debugger {
+#[derive(Debug, Clone, Default)]
+pub struct RenderOpts {
+    debug_lines: Vec<Cow<'static, str>>,
+    pub culling_mode: CullingMode,
+    pub use_wireframe: bool,
+    pub debug_view_type: u32,
+}
+
+impl RenderOpts {
     pub fn push_debug_line(&mut self, line: Cow<'static, str>) {
         self.debug_lines.push(line);
     }

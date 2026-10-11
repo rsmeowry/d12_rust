@@ -1,13 +1,15 @@
 ﻿pub mod sponza_lights;
 pub mod tesselated_sample;
 
-use crate::app::Debugger;
+use crate::app::RenderOpts;
 use crate::render::graph::FrameGraph;
 use crate::render::renderer::Renderer;
 use crate::time::Time;
 
 pub trait Scene: Sized {
+    const NAME: &'static str;
+
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self>;
-    fn build_graph<'a>(&'a self, renderer: &'a Renderer, time: &Time, wireframe: bool, graph: &mut FrameGraph<'a>, debugger: &mut Debugger) -> anyhow::Result<()>;
+    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()>;
 }
 

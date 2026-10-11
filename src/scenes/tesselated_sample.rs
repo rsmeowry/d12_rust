@@ -13,7 +13,7 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::app::Debugger;
+use crate::app::RenderOpts;
 use crate::render::texture::{MipCount, Texture};
 
 #[derive(Debug)]
@@ -30,6 +30,8 @@ pub struct TesselatedSample {
 }
 
 impl Scene for TesselatedSample {
+    const NAME: &'static str = "Tesselation (bricks)";
+
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let lighting = DeferredLightingPass::new(renderer)?;
 
@@ -76,11 +78,11 @@ impl Scene for TesselatedSample {
         })
     }
 
-    fn build_graph<'a>(&'a self, renderer: &'a Renderer, time: &Time, wireframe: bool, graph: &mut FrameGraph<'a>, dbg: &mut Debugger) -> anyhow::Result<()> {
+    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
 
-        let pass = if wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
+        let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
 
         for (scene, pso) in [(&self.object, pass)] {
             let (obj, meshes) = scene.to_objects_and_draws();

@@ -14,7 +14,8 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::Vec3;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::app::Debugger;
+use crate::app::RenderOpts;
+use crate::render::perf::Culler;
 
 #[derive(Debug)]
 pub struct SponzaWithLights {
@@ -24,12 +25,15 @@ pub struct SponzaWithLights {
 
     materials_buf: ID3D12Resource,
 
+    culler: Culler,
     lighting: DeferredLightingPass,
     post: PostProcessPass,
     blit: BlitPass
 }
 
 impl Scene for SponzaWithLights {
+    const NAME: &'static str = "Sponza (w/ lights)";
+
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let lighting = DeferredLightingPass::new(renderer)?;
 
@@ -60,10 +64,14 @@ impl Scene for SponzaWithLights {
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
+        let (objects, meshes) = sponza.to_objects_and_draws();
+        let culler = Culler::new(&objects, &meshes);
+
         Ok(Self {
             gbuffer,
             blit,
 
+            culler,
             sponza,
             materials_buf,
             lighting,
@@ -71,32 +79,25 @@ impl Scene for SponzaWithLights {
         })
     }
 
-    fn build_graph<'a>(&'a self, renderer: &'a Renderer, time: &Time, wireframe: bool, graph: &mut FrameGraph<'a>, dbg: &mut Debugger) -> anyhow::Result<()> {
+    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
 
-        let pass = if wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
-        let mut total_source_objects = 0;
-        let mut total_culled_objects = 0;
+        let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
 
+        let frustum = renderer.cam.frustum();
         for (scene, pso) in [(&self.sponza, pass)] {
-            let (mut obj, mut meshes) = scene.to_objects_and_draws();
-            total_source_objects += meshes.len();
-
-            // culling objects
-            let frustum = renderer.cam.frustum();
-            for (o, m) in obj.into_iter().zip(meshes) {
-                if frustum.contains(m.aabb(), o.model) {
-                    objects.push(o);
-                    draws.push((m, pso))
-                } else {
-                    total_culled_objects += 1;
-                }
-            }
+            self.culler.push_visible(
+                &mut objects,
+                &mut draws,
+                scene,
+                pso,
+                &frustum,
+                opts
+            );
         }
+        self.culler.finish(opts);
 
-        let fmt = format!("Culled objects: {total_culled_objects}/{total_source_objects}");
-        dbg.push_debug_line(Cow::Owned(fmt));
 
         let objects_va = renderer.upload_objects(&objects)?;
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
