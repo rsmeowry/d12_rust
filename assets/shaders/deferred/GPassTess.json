@@ -7,6 +7,14 @@
     {
       "type": "vertex",
       "entry": "vert"
+    },
+    {
+      "type": "hull",
+      "entry": "hull"
+    },
+    {
+      "type": "domain",
+      "entry": "domain"
     }
   ]
 }

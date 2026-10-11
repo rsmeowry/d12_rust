@@ -4,7 +4,7 @@ use crate::render::deferred::{DeferredLightingPass, GBuffer};
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
-use crate::render::mesh::Mesh;
+use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
@@ -12,7 +12,8 @@ use crate::render::renderer::{ObjectData, Renderer};
 use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{Mat4, Quat, Vec3};
-use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::texture::{MipCount, Texture};
 
 #[derive(Debug)]
 pub struct TesselatedSample {
@@ -21,6 +22,7 @@ pub struct TesselatedSample {
     object: LoadedScene,
     materials_buf: ID3D12Resource,
 
+    _displacement: Texture,
     lighting: DeferredLightingPass,
     post: PostProcessPass,
     blit: BlitPass,
@@ -32,20 +34,23 @@ impl Scene for TesselatedSample {
 
         let mut batch = renderer.gd.begin_upload()?;
 
+        let displacement_map = Texture::load(&mut batch, &std::fs::read("assets/models/bricks/brick_displacement.png")?, false, MipCount::All, "Displacement")?;
+
         let mut materials = Vec::new();
         let object = load_assimp_scene::<VertexTess, _>(
-            &renderer.gd, &mut batch, "assets/models/pusheen_holding_cookie/scene.gltf",
+            &renderer.gd, &mut batch, "assets/models/bricks/BrickSphere.gltf",
             renderer.white_tex().srv_ptr(), &mut materials,
-            LoadTex::ALBEDO | LoadTex::NORMAL,
+            LoadTex::ALBEDO | LoadTex::NORMAL, DrawTopology::PatchList3,
             |_mat, tex| MaterialParams::PhongTess {
                 albedo: tex.albedo,
                 normal: tex.normal,
+                displacement: displacement_map.srv_ptr(),
                 ambient: Vec3::new(0.03, 0.03, 0.03),
                 diffuse: Vec3::ONE,
                 specular: Vec3::ONE,
-                shininess: 32.0,
+                shininess: 64.0,
                 diffuse_k: 0.4,
-                specular_k: 0.7,
+                specular_k: 0.8,
             }.to_gpu_material()
         )?;
 
@@ -53,7 +58,7 @@ impl Scene for TesselatedSample {
 
         batch.finish()?;
 
-        let gbuffer = renderer.build_gbuffer::<VertexTess>("deferred/GPassTess.hlsl")?;
+        let gbuffer = renderer.build_gbuffer::<VertexTess>("deferred/GPassTess.hlsl", DrawTopology::PatchList3)?;
 
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
@@ -62,6 +67,7 @@ impl Scene for TesselatedSample {
             gbuffer,
             blit,
 
+            _displacement: displacement_map,
             object,
             materials_buf,
             lighting,
@@ -82,7 +88,7 @@ impl Scene for TesselatedSample {
         }
 
         for obj in &mut objects {
-            obj.model *= Mat4::from_scale_rotation_translation(5. * Vec3::ONE, Quat::IDENTITY, -4. * Vec3::Z + Vec3::Y);
+            obj.model *= Mat4::from_scale(2. * Vec3::ONE);
         }
 
         let objects_va = renderer.upload_objects(&objects)?;
@@ -90,7 +96,8 @@ impl Scene for TesselatedSample {
 
         let lights = vec![
             GpuLight::directional(Vec3::new(-0.4, -0.8, 0.5), Vec3::new(1., 0.95, 0.9), 0.6),
-            GpuLight::point(Vec3::new(0., 4., 1.), 8., Vec3::new(0.7, 0.6, 0.5), 6.),
+            GpuLight::point(Vec3::new(3., 3., 0.), 8., Vec3::new(0.2, 0.6, 0.3), 16.),
+            GpuLight::point(Vec3::new(-3., 3., 0.), 8., Vec3::new(0.2, 0.3, 0.9), 16.),
         ];
 
         let gr = &renderer.gr;

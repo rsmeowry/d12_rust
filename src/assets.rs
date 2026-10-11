@@ -1,6 +1,6 @@
 pub mod shaders;
 
-use crate::render::mesh::Mesh;
+use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::material::GpuMaterial;
 use crate::render::texture::{build_mips, MipCount, Texture};
 use crate::render::vertex::{FromVertexProps, Vertex};
@@ -52,6 +52,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
     white_tex: u32,
     materials: &mut Vec<GpuMaterial>,
     load_textures: LoadTex,
+    topology: DrawTopology,
     make_material: impl Fn(&asset_importer::material::Material, TextureSet) -> GpuMaterial,
 ) -> anyhow::Result<LoadedScene> {
     let pathbuf = path.as_ref().to_path_buf();
@@ -176,7 +177,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
             let vert = V::from_vertex_props(positions[i], normals[i], tangents[i], binormals[i], uvs[i], Vec4::ONE);
             vertices.push(vert);
         }
-        Mesh::new(gd, batch, &vertices, &indices).map(|it| (it, base + mesh.material_index() as u32))
+        Mesh::new(gd, batch, &vertices, &indices, topology).map(|it| (it, base + mesh.material_index() as u32))
     }).collect::<anyhow::Result<_>>()?;
 
     let mut out = Vec::new();

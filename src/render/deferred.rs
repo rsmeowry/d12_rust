@@ -1,14 +1,14 @@
 ﻿use std::fs::File;
 use std::io::Read;
 use glam::{Vec3, Vec4};
-use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE};
-use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE, D3D12_PRIMITIVE_TOPOLOGY_TYPE};
+use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST};
 use crate::render::builtin::Vertex3;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::{ResId, ResSize};
 use crate::render::lights::{light_cone, unit_sphere, GpuLight, LightingPass, LIGHT_POINT, LIGHT_SPOT};
-use crate::render::mesh::Mesh;
+use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
@@ -32,7 +32,7 @@ pub struct GBuffer {
 }
 
 impl Renderer {
-    pub fn build_gbuffer<V: Vertex>(&mut self, pass_shader: &'static str) -> anyhow::Result<GBuffer> {
+    pub fn build_gbuffer<V: Vertex>(&mut self, pass_shader: &'static str, topology: DrawTopology) -> anyhow::Result<GBuffer> {
         let scene_color = self.gr.color(&self.gd, "SceneColor", SCENE_FORMAT, Vec4::new(0.2, 0.3, 0.6, 1.0), ResSize::FitScreen)?;
         let scene_depth = self.gr.depth(&self.gd, "SceneDepth", ResSize::FitScreen)?;
         let albedo = self.gr.color(&self.gd, "SceneAlbedo", GB_ALBEDO, Vec4::ZERO, ResSize::FitScreen)?;
@@ -44,6 +44,7 @@ impl Renderer {
             name: "GPass",
             shader: pass_shader.into(),
             input: V::LAYOUT,
+            topology: topology.to_d3d12_type(),
             ..Default::default()
         })?;
         let gpass_wireframe = self.create_pipeline(PipelineDesc {
@@ -52,6 +53,7 @@ impl Renderer {
             shader: pass_shader.into(),
             input: V::LAYOUT,
             wireframe: true,
+            topology: topology.to_d3d12_type(),
             ..Default::default()
         })?;
 
@@ -86,9 +88,9 @@ impl DeferredLightingPass {
         let sky_tex = Texture::from_hdr(&mut batch, &sky_buf, "Sky")?;
 
         let point_light_mesh = unit_sphere(8, 8);
-        let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1)?;
+        let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1, DrawTopology::TriangleList)?;
         let spot_light_mesh = light_cone(8);
-        let spot_light_mesh = Mesh::new(&renderer.gd, &mut batch, &spot_light_mesh.0, &spot_light_mesh.1)?;
+        let spot_light_mesh = Mesh::new(&renderer.gd, &mut batch, &spot_light_mesh.0, &spot_light_mesh.1, DrawTopology::TriangleList)?;
 
         batch.finish()?;
 

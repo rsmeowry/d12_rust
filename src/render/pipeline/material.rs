@@ -26,6 +26,7 @@ pub enum MaterialParams {
     PhongTess {
         albedo: u32,
         normal: u32,
+        displacement: u32,
         ambient: Vec3,
         diffuse: Vec3,
         specular: Vec3,
@@ -60,9 +61,9 @@ impl MaterialParams {
                     ]
                 }
             }
-            MaterialParams::PhongTess { albedo, normal, ambient, diffuse, specular, shininess, diffuse_k, specular_k } => {
+            MaterialParams::PhongTess { albedo, normal, displacement, ambient, diffuse, specular, shininess, diffuse_k, specular_k } => {
                 GpuMaterial {
-                    textures: [albedo, normal, 0, 0, 0, 0, 0, 0],
+                    textures: [albedo, normal, displacement, 0, 0, 0, 0, 0],
                     unique_params: [
                         ambient.x, ambient.y, ambient.z, diffuse.x,
                         diffuse.y, diffuse.z, specular.x, specular.y,

@@ -4,7 +4,7 @@ use crate::render::deferred::{DeferredLightingPass, GBuffer};
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
-use crate::render::mesh::Mesh;
+use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
@@ -37,7 +37,7 @@ impl Scene for SponzaWithLights {
         let sponza = load_assimp_scene::<Vertex3, _>(
             &renderer.gd, &mut batch, "assets/sponza_old/Sponza.gltf",
             renderer.white_tex().srv_ptr(), &mut materials,
-            LoadTex::ALBEDO,
+            LoadTex::ALBEDO, DrawTopology::TriangleList,
             |_mat, tex| MaterialParams::Phong {
                 tex: tex.albedo,
                 ambient: Vec3::new(0.03, 0.03, 0.03),
@@ -53,7 +53,7 @@ impl Scene for SponzaWithLights {
 
         batch.finish()?;
 
-        let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl")?;
+        let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
 
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
