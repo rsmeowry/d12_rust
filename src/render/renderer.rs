@@ -11,6 +11,7 @@ use crate::wrappers::graphics::GraphicsDevice;
 use glam::Mat4;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+use crate::render::camera::Camera;
 
 pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16G16B16A16_FLOAT;
 pub const GB_NORMALS: DXGI_FORMAT = DXGI_FORMAT_R10G10B10A2_UNORM;
@@ -18,7 +19,7 @@ pub const GB_ALBEDO: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 pub const GB_MATERIAL: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, PartialEq)]
 pub struct ObjectData {
     pub model: Mat4,
     pub material_id: u32,
@@ -28,13 +29,14 @@ pub struct ObjectData {
 pub struct Renderer {
     pub gd: GraphicsDevice,
     pub gr: GraphResources,
+    pub cam: Camera,
     white_tex: Texture,
     pipeline_mgr: PipelineManager,
     shaders: ShaderStorage,
 }
 
 impl Renderer {
-    pub fn new(hwnd: HWND, width: u32, height: u32) -> anyhow::Result<Self> {
+    pub fn new(hwnd: HWND, width: u32, height: u32, cam: Camera) -> anyhow::Result<Self> {
         let mut gd = GraphicsDevice::new()?;
         gd.setup_resources(hwnd, width, height)?;
 
@@ -51,6 +53,7 @@ impl Renderer {
             white_tex,
             gd,
             shaders,
+            cam
         })
     }
 

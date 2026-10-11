@@ -3,16 +3,18 @@ use crate::wrappers::graphics::GraphicsDevice;
 use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY, D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST};
 use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_INDEX_BUFFER_VIEW, D3D12_PRIMITIVE_TOPOLOGY_TYPE, D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RESOURCE_STATE_INDEX_BUFFER, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_VERTEX_BUFFER_VIEW};
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R32_UINT;
+use crate::render::perf::frustum::AABB;
 use crate::wrappers::graphics::batching::UploadBatch;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Mesh {
     _vb: ID3D12Resource,
     _ib: ID3D12Resource,
     vbv: D3D12_VERTEX_BUFFER_VIEW,
     ibv: D3D12_INDEX_BUFFER_VIEW,
     indices: u32,
-    topology: DrawTopology
+    topology: DrawTopology,
+    aabb: AABB
 }
 
 impl Mesh {
@@ -21,7 +23,8 @@ impl Mesh {
         batch: &mut UploadBatch<'_>,
         vertices: &[TVert],
         indices: &[u32],
-        topology: DrawTopology
+        topology: DrawTopology,
+        aabb: AABB,
     ) -> anyhow::Result<Self> {
         let id: u16 = rand::random();
 
@@ -44,8 +47,13 @@ impl Mesh {
             vbv,
             ibv,
             indices: indices.len() as u32,
-            topology
+            topology,
+            aabb
         })
+    }
+
+    pub fn aabb(&self) -> &AABB {
+        &self.aabb
     }
 
     pub fn draw(&self, cmd: &ID3D12GraphicsCommandList) {

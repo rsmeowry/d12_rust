@@ -1,4 +1,5 @@
-﻿use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
+﻿use std::borrow::Cow;
+use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
 use crate::render::builtin::Vertex3;
 use crate::render::deferred::{DeferredLightingPass, GBuffer};
 use crate::render::graph::pass::ResLoad;
@@ -13,6 +14,7 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::Vec3;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::app::Debugger;
 
 #[derive(Debug)]
 pub struct SponzaWithLights {
@@ -69,17 +71,32 @@ impl Scene for SponzaWithLights {
         })
     }
 
-    fn build_graph<'a>(&'a self, renderer: &'a Renderer, time: &Time, wireframe: bool, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    fn build_graph<'a>(&'a self, renderer: &'a Renderer, time: &Time, wireframe: bool, graph: &mut FrameGraph<'a>, dbg: &mut Debugger) -> anyhow::Result<()> {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
 
         let pass = if wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
+        let mut total_source_objects = 0;
+        let mut total_culled_objects = 0;
 
         for (scene, pso) in [(&self.sponza, pass)] {
-            let (obj, meshes) = scene.to_objects_and_draws();
-            objects.extend(obj);
-            draws.extend(meshes.into_iter().map(|m| (m, pso)));
+            let (mut obj, mut meshes) = scene.to_objects_and_draws();
+            total_source_objects += meshes.len();
+
+            // culling objects
+            let frustum = renderer.cam.frustum();
+            for (o, m) in obj.into_iter().zip(meshes) {
+                if frustum.contains(m.aabb(), o.model) {
+                    objects.push(o);
+                    draws.push((m, pso))
+                } else {
+                    total_culled_objects += 1;
+                }
+            }
         }
+
+        let fmt = format!("Culled objects: {total_culled_objects}/{total_source_objects}");
+        dbg.push_debug_line(Cow::Owned(fmt));
 
         let objects_va = renderer.upload_objects(&objects)?;
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };

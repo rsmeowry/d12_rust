@@ -13,6 +13,7 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::app::Debugger;
 use crate::render::texture::{MipCount, Texture};
 
 #[derive(Debug)]
@@ -75,7 +76,7 @@ impl Scene for TesselatedSample {
         })
     }
 
-    fn build_graph<'a>(&'a self, renderer: &'a Renderer, time: &Time, wireframe: bool, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    fn build_graph<'a>(&'a self, renderer: &'a Renderer, time: &Time, wireframe: bool, graph: &mut FrameGraph<'a>, dbg: &mut Debugger) -> anyhow::Result<()> {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
 

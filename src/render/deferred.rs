@@ -3,7 +3,7 @@ use std::io::Read;
 use glam::{Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE, D3D12_PRIMITIVE_TOPOLOGY_TYPE};
 use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST};
-use crate::render::builtin::Vertex3;
+use crate::render::builtin::{aabb_from_vertices3, Vertex3};
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::{ResId, ResSize};
@@ -88,9 +88,9 @@ impl DeferredLightingPass {
         let sky_tex = Texture::from_hdr(&mut batch, &sky_buf, "Sky")?;
 
         let point_light_mesh = unit_sphere(8, 8);
-        let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1, DrawTopology::TriangleList)?;
+        let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&point_light_mesh.0))?;
         let spot_light_mesh = light_cone(8);
-        let spot_light_mesh = Mesh::new(&renderer.gd, &mut batch, &spot_light_mesh.0, &spot_light_mesh.1, DrawTopology::TriangleList)?;
+        let spot_light_mesh = Mesh::new(&renderer.gd, &mut batch, &spot_light_mesh.0, &spot_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&spot_light_mesh.0))?;
 
         batch.finish()?;
 

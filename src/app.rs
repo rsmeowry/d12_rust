@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+use asset_importer::LogLevel::Debug;
 use crate::input::KeyCode;
 use crate::render::camera::Camera;
 use crate::render::deferred::util::DebugTextPass;
@@ -20,7 +22,6 @@ pub struct App<S: Scene> {
     text: DebugTextPass,
     scene: S,
 
-    cam: Camera,
     globals: Globals,
     time: Time,
     last_title_update: f32,
@@ -39,8 +40,6 @@ impl<S: Scene> App<S> {
         let window = NativeWindow::create(WindowProps::default())?;
         window.set_cursor_locked(true)?;
         let time = Time::new()?;
-        let mut renderer = Renderer::new(window.handle(), WIDTH, HEIGHT)?;
-
         let cam = Camera::new(
             WIDTH,
             HEIGHT,
@@ -48,6 +47,7 @@ impl<S: Scene> App<S> {
             Vec3::new(0., 2., -3.),
             Quat::from_rotation_x(30f32.to_radians()),
         );
+
         let globals = Globals {
             view_proj: cam.view_proj(),
             inv_view_proj: cam.view_proj().inverse(),
@@ -58,6 +58,8 @@ impl<S: Scene> App<S> {
             camera_pos: cam.pos(),
         };
 
+        let mut renderer = Renderer::new(window.handle(), WIDTH, HEIGHT, cam)?;
+
         let scene = S::setup(&mut renderer)?;
         let text = DebugTextPass::new(&mut renderer)?;
 
@@ -67,7 +69,6 @@ impl<S: Scene> App<S> {
             text,
             scene,
 
-            cam,
             globals,
             time,
             last_title_update: 0.,
@@ -115,7 +116,7 @@ impl<S: Scene> App<S> {
 
         if let Some((w, h)) = new_size {
             self.renderer.resize(w, h)?;
-            self.cam.resize(w, h);
+            self.renderer.cam.resize(w, h);
             self.globals.resolution = Vec2::new(w as f32, h as f32);
         }
         Ok(true)
@@ -155,9 +156,9 @@ impl<S: Scene> App<S> {
 
         self.globals.time = self.time.game_time();
         self.globals.delta_time = dt;
-        self.globals.view_proj = self.cam.view_proj();
-        self.globals.inv_view_proj = self.cam.view_proj().inverse();
-        self.globals.camera_pos = self.cam.pos();
+        self.globals.view_proj = self.renderer.cam.view_proj();
+        self.globals.inv_view_proj = self.renderer.cam.view_proj().inverse();
+        self.globals.camera_pos = self.renderer.cam.pos();
         Ok(())
     }
 
@@ -165,12 +166,17 @@ impl<S: Scene> App<S> {
         self.renderer.begin_frame(&self.globals)?;
 
         let mut graph = FrameGraph::new();
+        let mut debugger = Debugger::default();
 
-        self.scene.build_graph(&self.renderer, &self.time, self.use_wireframe, &mut graph)?;
+        self.scene.build_graph(&self.renderer, &self.time, self.use_wireframe, &mut graph, &mut debugger)?;
 
-        let cam_pos = self.cam.pos();
+        let cam_pos = self.renderer.cam.pos();
 
-        self.text.add_pass(format!("FPS: {}\nCamera: {cam_pos:.2}", self.fps), self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
+        let mut text = format!("FPS: {}\nCamera: {cam_pos:.2}", self.fps);
+        for line in debugger.debug_lines {
+            text = format!("{text}\n{line}");
+        }
+        self.text.add_pass(text, self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
 
         graph.execute(&self.renderer.gd, &self.renderer.gr)?;
 
@@ -182,7 +188,7 @@ impl<S: Scene> App<S> {
         self.controller.yaw += (input.mouse_delta().x * MOUSE_SENSITIVITY).to_radians();
         self.controller.pitch += (input.mouse_delta().y * MOUSE_SENSITIVITY).to_radians();
         self.controller.pitch = self.controller.pitch.clamp(-MAX_PITCH, MAX_PITCH);
-        self.cam.set_rot(Quat::from_euler(EulerRot::YXZ, self.controller.yaw, self.controller.pitch, 0.));
+        self.renderer.cam.set_rot(Quat::from_euler(EulerRot::YXZ, self.controller.yaw, self.controller.pitch, 0.));
 
         let camera_rot_2d = Quat::from_rotation_y(self.controller.yaw);
         let left = camera_rot_2d * Vec3::NEG_X;
@@ -199,14 +205,14 @@ impl<S: Scene> App<S> {
             (KeyCode::LeftControl, 2. * Vec3::NEG_Y)
         ];
 
-        let mut pos = self.cam.pos();
+        let mut pos = self.renderer.cam.pos();
         let move_speed = MOVE_SPEED * (if input.is_held(KeyCode::LeftShift) { SHIFT_MUL } else { 1.0 }) * self.time.delta_time();
         for (btn, axis) in btn_axis {
             if input.is_held(btn) {
                 pos += axis * move_speed;
             }
         }
-        self.cam.set_pos(pos);
+        self.renderer.cam.set_pos(pos);
     }
 }
 
@@ -227,5 +233,16 @@ impl Default for ControllerInfo {
             yaw: 40f32.to_radians(),
             pitch: 30f32.to_radians(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Debugger {
+    debug_lines: Vec<Cow<'static, str>>
+}
+
+impl Debugger {
+    pub fn push_debug_line(&mut self, line: Cow<'static, str>) {
+        self.debug_lines.push(line);
     }
 }

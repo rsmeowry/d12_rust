@@ -13,6 +13,7 @@ use image::RgbaImage;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use bitflags::{bitflags, bitflags_match};
+use crate::render::perf::frustum::AABB;
 
 #[derive(Debug)]
 pub struct MaterialDefinition {
@@ -177,7 +178,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
             let vert = V::from_vertex_props(positions[i], normals[i], tangents[i], binormals[i], uvs[i], Vec4::ONE);
             vertices.push(vert);
         }
-        Mesh::new(gd, batch, &vertices, &indices, topology).map(|it| (it, base + mesh.material_index() as u32))
+        Mesh::new(gd, batch, &vertices, &indices, topology, AABB::from_points(&positions)).map(|it| (it, base + mesh.material_index() as u32))
     }).collect::<anyhow::Result<_>>()?;
 
     let mut out = Vec::new();
