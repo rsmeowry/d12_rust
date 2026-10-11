@@ -28,8 +28,16 @@ pub struct LoadedScene {
     pub textures: Vec<Texture>,
 }
 
+impl LoadedScene {
+    pub fn into_single_mesh(self) -> (Mesh, Mat4, Vec<Texture>) {
+        let mesh = self.meshes.into_iter().next().unwrap();
+        (mesh.0, self.mesh_indices[0].1, self.textures)
+    }
+}
+
 #[derive(Debug)]
 pub struct TextureSet {
+    pub white: u32,
     pub albedo: u32,
     pub normal: u32,
     pub roughness: u32,
@@ -107,7 +115,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
 
     let mut textures: Vec<Texture> = Vec::with_capacity(texture_mips.len());
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
-    for ((path, srgb, _mips, tex_type), tex_mips) in texture_paths.iter().zip(texture_mips.into_iter()) {
+    for ((path, srgb, _mips, _tex_type), tex_mips) in texture_paths.iter().zip(texture_mips.into_iter()) {
         let tex_mips = tex_mips?;
         let loaded = Texture::load_from_mips(batch, &tex_mips.0, *srgb, path.file_name().unwrap().to_str().unwrap())?;
         let idx = textures.len();
@@ -117,6 +125,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
 
     for material in scene.materials() {
         let mut tex_set = TextureSet {
+            white: white_tex,
             albedo: 0,
             normal: 0,
             roughness: 0,

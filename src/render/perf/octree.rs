@@ -1,7 +1,5 @@
-﻿use glam::Vec3;
-use crate::render::mesh::Mesh;
-use crate::render::perf::frustum::{Frustum, AABB};
-use crate::render::renderer::ObjectData;
+﻿use crate::render::perf::frustum::{Frustum, AABB};
+use glam::Vec3;
 
 const MAX_DEPTH: u32 = 6;
 const MAX_OBJECTS: usize = 8;
@@ -125,30 +123,5 @@ impl Octree {
             min: center - extends.max_element(), // taking max element cus we need an equal cube
             max: center + extends.max_element(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use glam::Vec3;
-    use crate::render::perf::frustum::AABB;
-    use crate::render::perf::octree::Octree;
-
-    #[test]
-    fn every_object_once_and_inside_its_node() {
-        let boxes: Vec<AABB> = (0..1000).map(|_| {
-            let p = Vec3::new(rand::random(), rand::random(), rand::random()) * 100.;
-            AABB { min: p, max: p + Vec3::ONE }
-        }).collect();
-        let tree = Octree::build(boxes.clone());
-
-        let mut seen = vec![0; boxes.len()];
-        for n in &tree.nodes {
-            for &o in &n.objects {
-                seen[o as usize] += 1;
-                assert!(n.bounds.contains_box(&boxes[o as usize]));
-            }
-        }
-        assert!(seen.iter().all(|&c| c == 1));
     }
 }

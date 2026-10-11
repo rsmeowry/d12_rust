@@ -1,5 +1,7 @@
-﻿use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
-use crate::render::builtin::{Vertex3, VertexTess};
+﻿use crate::app::RenderOpts;
+use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
+use crate::render::builtin::VertexTess;
+use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::{DeferredLightingPass, GBuffer};
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
@@ -7,14 +9,12 @@ use crate::render::lights::GpuLight;
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
-use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::renderer::{ObjectData, Renderer};
+use crate::render::texture::{MipCount, Texture};
 use crate::scenes::Scene;
 use crate::time::Time;
-use glam::{Mat4, Quat, Vec3};
-use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::app::RenderOpts;
-use crate::render::texture::{MipCount, Texture};
+use glam::{Mat4, Vec3};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 
 #[derive(Debug)]
 pub struct TesselatedSample {
@@ -57,7 +57,7 @@ impl Scene for TesselatedSample {
             }.to_gpu_material()
         )?;
 
-        let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "Sponza/MaterialBuffer")?;
+        let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
 
         batch.finish()?;
 
@@ -78,7 +78,7 @@ impl Scene for TesselatedSample {
         })
     }
 
-    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
+    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, _time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
 
