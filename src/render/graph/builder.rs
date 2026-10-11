@@ -10,6 +10,7 @@ impl<'a> FrameGraph<'a> {
             reads: Vec::new(),
             writes_color: Vec::new(),
             writes_depth: None,
+            writes_uav: Vec::new(),
             has_side_effects: false,
         }
     }
@@ -21,6 +22,7 @@ pub struct PassBuilder<'g, 'f> {
     reads: Vec<ResId>,
     writes_color: Vec<(ResId, ResLoad)>,
     writes_depth: Option<(ResId, DepthUse)>,
+    writes_uav: Vec<(ResId, ResLoad)>,
     has_side_effects: bool,
 }
 
@@ -37,6 +39,11 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
 
     pub fn writes_depth(mut self, res: ResId, load: ResLoad) -> Self {
         self.writes_depth = Some((res, DepthUse::Write(load)));
+        self
+    }
+
+    pub fn writes_uav(mut self, res: ResId, load: ResLoad) -> Self {
+        self.writes_uav.push((res, load));
         self
     }
 
@@ -58,6 +65,7 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
             writes_color: self.writes_color,
             uses_depth: self.writes_depth,
             has_side_effects: self.has_side_effects,
+            writes_uav: self.writes_uav,
             exec: Box::new(exec)
         });
     }

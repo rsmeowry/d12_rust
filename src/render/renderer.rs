@@ -90,6 +90,7 @@ impl Renderer {
         self.gd.prepare_rt()?;
         let globals_va = self.gd.frame_context()?.frame_alloc.push(globals)?;
         self.rs().bind(self.gd.command_list()?, globals_va, self.gd.srv_heap_start()?);
+        self.rs().bind_compute(self.gd.command_list()?, globals_va, self.gd.srv_heap_start()?);
         Ok(())
     }
 

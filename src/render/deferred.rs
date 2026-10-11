@@ -18,6 +18,7 @@ use crate::wrappers::graphics::GraphicsDevice;
 
 pub mod post;
 pub mod util;
+pub mod bloom;
 
 #[derive(Debug, Copy, Clone)]
 pub struct GBuffer {

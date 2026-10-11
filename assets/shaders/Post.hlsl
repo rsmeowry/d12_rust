@@ -15,6 +15,8 @@ cbuffer PostProperties : register(b2) {
     uint enablePosterization;
     uint posterizationLevels;
     uint enableFlyEye;
+    uint bloomTex;
+    float bloomIntensity;
 };
 
 struct Varyings { float4 pos : SV_Position; float2 uv : TEXCOORD; };
@@ -78,6 +80,11 @@ float4 frag(Varyings i) : SV_Target {
         source = lerp(float4(0.0, 0.01, 0.02, 1.0), source, resultingDist);
     } else {
         source = scene.Sample(PointClamp, i.uv);
+    }
+
+    // bloom, added in hdr before tonemapping
+    if(bloomIntensity > 0) {
+        source.rgb += g_Tex2D[bloomTex].SampleLevel(LinearClamp, i.uv, 0).rgb * bloomIntensity;
     }
 
     // hdr to ldr

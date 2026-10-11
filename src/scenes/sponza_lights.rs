@@ -15,6 +15,7 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::Vec3;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 
 #[derive(Debug)]
 pub struct SponzaWithLights {
@@ -25,6 +26,7 @@ pub struct SponzaWithLights {
     materials_buf: ID3D12Resource,
 
     culler: Culler,
+    bloom: BloomPass,
     lighting: DeferredLightingPass,
     post: PostProcessPass,
     blit: BlitPass
@@ -59,6 +61,7 @@ impl Scene for SponzaWithLights {
         batch.finish()?;
 
         let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
+        let bloom = BloomPass::new(renderer)?;
 
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
@@ -71,6 +74,7 @@ impl Scene for SponzaWithLights {
             blit,
 
             culler,
+            bloom,
             sponza,
             materials_buf,
             lighting,
@@ -157,10 +161,10 @@ impl Scene for SponzaWithLights {
             });
 
         self.lighting.add_pass(lights, renderer, &self.gbuffer, graph)?;
-        self.post.add_pass(post_props, renderer, &self.gbuffer, graph)?;
+        let bloom = self.bloom.add_pass(BloomProperties::default(), self.gbuffer.scene_color, renderer, graph)?;
+        self.post.add_pass(post_props, Some(bloom), renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 
         Ok(())
     }
 }
-

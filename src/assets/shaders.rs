@@ -35,6 +35,9 @@ enum ShaderTarget {
     },
     Hull {
         entry: String
+    },
+    Compute {
+        entry: String
     }
 }
 
@@ -45,6 +48,7 @@ impl ShaderTarget {
             ShaderTarget::Vertex { .. } => ShaderType::Vertex,
             ShaderTarget::Domain { .. } => ShaderType::Domain,
             ShaderTarget::Hull { .. } => ShaderType::Hull,
+            ShaderTarget::Compute { .. } => ShaderType::Compute
         }
     }
 }
@@ -211,7 +215,8 @@ impl ShaderStorage {
                 ShaderTarget::Fragment { entry } => (entry, s!("ps_5_1")),
                 ShaderTarget::Vertex { entry } => (entry, s!("vs_5_1")),
                 ShaderTarget::Domain { entry } => (entry, s!("ds_5_1")),
-                ShaderTarget::Hull { entry } => (entry, s!("hs_5_1"))
+                ShaderTarget::Hull { entry } => (entry, s!("hs_5_1")),
+                ShaderTarget::Compute { entry } => (entry, s!("cs_5_1"))
             };
             let entry = entry.bytes().chain(std::iter::once(0)).collect::<Vec<u8>>();
             let r = unsafe {

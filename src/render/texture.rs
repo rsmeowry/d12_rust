@@ -1,18 +1,19 @@
 use crate::wrappers::graphics::batching::UploadBatch;
-use crate::wrappers::graphics::{transition_barrier, GraphicsDevice};
+use crate::wrappers::graphics::{transition_barrier, uav_barrier, GraphicsDevice};
 use anyhow::anyhow;
 use glam::Vec4;
 use image::{EncodableLayout, RgbaImage};
 use std::cell::Cell;
 use windows::core::HSTRING;
-use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_FLAG_NONE, D3D12_DSV_FLAG_READ_ONLY_DEPTH, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_FLAG_NONE, D3D12_DSV_FLAG_READ_ONLY_DEPTH, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEX2D_UAV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, D3D12_UAV_DIMENSION_TEXTURE2D, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_D32_FLOAT, DXGI_FORMAT_D32_FLOAT_S8X24_UINT, DXGI_FORMAT_R24G8_TYPELESS, DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32G8X24_TYPELESS, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS, DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_SAMPLE_DESC};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum TextureKind {
     SampleSource, // SRV
-    RenderTarget(Vec4), // SRV + RTV, clear color for now, wanna do skyboxes later
+    RenderTarget(Vec4), // SRV + RTV
     Depth, // SRV + DSV
+    Storage, // UAV, writeable
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -33,6 +34,7 @@ pub struct Texture {
     rtv_ptr: Option<u32>,
     dsv_ptr: Option<u32>,
     dsv_ro_ptr: Option<u32>,
+    uav_ptr: Option<u32>,
     name: String,
 }
 
@@ -42,6 +44,7 @@ impl Texture {
         let rtv = matches!(desc.kind, TextureKind::RenderTarget(_)).then(|| gd.rtv_heap()?.alloc()).transpose()?;
         let dsv = matches!(desc.kind, TextureKind::Depth).then(|| gd.dsv_heap()?.alloc()).transpose()?;
         let dsv_ro = matches!(desc.kind, TextureKind::Depth).then(|| gd.dsv_heap()?.alloc()).transpose()?;
+        let uav = matches!(desc.kind, TextureKind::Storage).then(|| gd.srv_heap()?.alloc()).transpose()?;
         let (res, state) = Self::load_resources(gd, &desc, name)?;
 
         let tex = Self {
@@ -52,6 +55,7 @@ impl Texture {
             rtv_ptr: rtv,
             dsv_ptr: dsv,
             dsv_ro_ptr: dsv_ro,
+            uav_ptr: uav,
             name: name.into()
         };
         tex.write_views(gd)?;
@@ -114,7 +118,9 @@ impl Texture {
     pub fn rtv_ptr(&self) -> Option<u32> { self.rtv_ptr }
     pub fn dsv_ptr(&self) -> Option<u32> { self.dsv_ptr }
     pub fn dsv_ro_ptr(&self) -> Option<u32> { self.dsv_ro_ptr }
+    pub fn uav_ptr(&self) -> Option<u32> { self.uav_ptr }
     pub fn desc(&self) -> &TextureDesc { &self.desc }
+    pub fn resource(&self) -> &ID3D12Resource { &self.res }
 
     pub fn transition(&self, cmd: &ID3D12GraphicsCommandList, target_state: D3D12_RESOURCE_STATES) {
         let cur = self.state.get();
@@ -122,6 +128,20 @@ impl Texture {
             unsafe {
                 cmd.ResourceBarrier(&[transition_barrier(&self.res, cur, target_state)]);
                 self.state.set(target_state);
+            }
+        }
+    }
+
+    pub fn ensure_unordered_access(&self, cmd: &ID3D12GraphicsCommandList) {
+        let cur = self.state.get();
+        if cur == D3D12_RESOURCE_STATE_UNORDERED_ACCESS {
+            unsafe {
+                cmd.ResourceBarrier(&[uav_barrier(&self.res)]);
+            }
+        } else {
+            unsafe {
+                cmd.ResourceBarrier(&[transition_barrier(&self.res, cur, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)]);
+                self.state.set(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             }
         }
     }
@@ -167,6 +187,13 @@ impl Texture {
                     },
                 }),
             ),
+            TextureKind::Storage => {
+                (
+                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                    None
+                )
+            }
         };
         let rd = D3D12_RESOURCE_DESC {
             Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
@@ -228,6 +255,15 @@ impl Texture {
                     Anonymous: D3D12_DEPTH_STENCIL_VIEW_DESC_0 { Texture2D: D3D12_TEX2D_DSV { MipSlice: 0 } },
                 };
                 dev.CreateDepthStencilView(&self.res, Some(&d), gd.dsv_heap()?.cpu(dsv_ro_ptr));
+            }
+
+            if let Some(uav_ptr) = self.uav_ptr {
+                let d = D3D12_UNORDERED_ACCESS_VIEW_DESC {
+                    Format: fmt.target,
+                    ViewDimension: D3D12_UAV_DIMENSION_TEXTURE2D,
+                    Anonymous: D3D12_UNORDERED_ACCESS_VIEW_DESC_0 { Texture2D: D3D12_TEX2D_UAV { MipSlice: 0, PlaneSlice: 0 } },
+                };
+                dev.CreateUnorderedAccessView(&self.res, None, Some(&d), gd.srv_heap()?.cpu(uav_ptr));
             }
         }
         Ok(())

@@ -245,6 +245,10 @@ impl RootSignature {
     pub fn set_lights(&self, cmd: &ID3D12GraphicsCommandList, lights_va: u64) {
         unsafe { cmd.SetGraphicsRootShaderResourceView(Self::LIGHTS_DATA, lights_va) };
     }
+
+    pub fn set_compute_pass(&self, cmd: &ID3D12GraphicsCommandList, pass: u64) {
+        unsafe { cmd.SetComputeRootConstantBufferView(Self::PASS_DATA, pass) }
+    }
 }
 
 fn static_sampler(reg: u32, filter: D3D12_FILTER, addr: D3D12_TEXTURE_ADDRESS_MODE) -> D3D12_STATIC_SAMPLER_DESC {

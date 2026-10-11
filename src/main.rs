@@ -1,3 +1,4 @@
+use crate::scenes::sponza_lights::SponzaWithLights;
 use crate::scenes::testing_culling::CullingScene;
 
 pub mod assets;
@@ -9,5 +10,5 @@ mod app;
 mod scenes;
 
 fn main() -> anyhow::Result<()> {
-    app::App::<CullingScene>::new()?.run()
+    app::App::<SponzaWithLights>::new()?.run()
 }

@@ -40,18 +40,26 @@ impl PostProcessPass {
         self.post_intermediate
     }
 
-    pub fn add_pass<'a>(&'a self, props: PostProperties, renderer: &'a Renderer, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    pub fn add_pass<'a>(&'a self, mut props: PostProperties, bloom: Option<ResId>, renderer: &'a Renderer, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
         let pipelines = renderer.pipelines();
         let rs = renderer.rs();
+        if let Some(bloom) = bloom {
+            props.bloom_tex = renderer.gr.get(bloom)?.srv_ptr();
+        } else {
+            props.bloom_intensity = 0.0;
+        }
         let post_va = renderer.upload_cbuffer(&props)?;
 
-        graph.add_pass("Post")
+        let mut pass = graph.add_pass("Post")
             .reads(gbuffer.albedo)
             .reads(gbuffer.normals)
             .reads(gbuffer.materials)
             .reads(gbuffer.scene_color)
-            .reads(gbuffer.scene_depth)
-            .writes(self.post_intermediate, ResLoad::Clear)
+            .reads(gbuffer.scene_depth);
+        if let Some(bloom) = bloom {
+            pass = pass.reads(bloom);
+        }
+        pass.writes(self.post_intermediate, ResLoad::Clear)
             .exec(move |ctx| {
                 pipelines.get(self.post).bind(ctx.cmd);
                 rs.set_pass(ctx.cmd, post_va);
@@ -81,6 +89,8 @@ pub struct PostProperties {
     pub enable_posterization: u32,
     pub posterization_levels: u32,
     pub enable_fly_eye: u32,
+    pub bloom_tex: u32,
+    pub bloom_intensity: f32,
 }
 
 impl Default for PostProperties {
@@ -97,6 +107,8 @@ impl Default for PostProperties {
             enable_posterization: 0,
             posterization_levels: 32,
             enable_fly_eye: 0,
+            bloom_tex: 0,
+            bloom_intensity: 0.05,
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿use crate::render::graph::res::{GraphResources, ResId};
+﻿use anyhow::anyhow;
+use crate::render::graph::res::{GraphResources, ResId};
 use crate::wrappers::graphics::GraphicsDevice;
 use windows::Win32::Graphics::Direct3D12::ID3D12GraphicsCommandList;
 
@@ -6,6 +7,7 @@ pub struct Pass<'a> {
     pub name: &'static str,
     pub reads: Vec<ResId>,
     pub writes_color: Vec<(ResId, ResLoad)>,
+    pub writes_uav: Vec<(ResId, ResLoad)>,
     pub uses_depth: Option<(ResId, DepthUse)>,
     pub has_side_effects: bool, // if writes to backbuffer
     pub exec: Box<dyn FnOnce(&PassCtx) -> anyhow::Result<()> + 'a>,
@@ -24,6 +26,10 @@ impl<'a> PassCtx<'a> {
 
     pub fn srv_ptr(&self, id: ResId) -> anyhow::Result<u32> {
         self.resources.get(id).map(|it| it.srv_ptr())
+    }
+
+    pub fn uav_ptr(&self, id: ResId) -> anyhow::Result<u32> {
+        self.resources.get(id).map(|it| it.uav_ptr())?.ok_or_else(|| anyhow!("Texture {id:?} does not allow for unordered access!"))
     }
 }
 

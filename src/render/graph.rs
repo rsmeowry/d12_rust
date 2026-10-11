@@ -1,8 +1,9 @@
 ﻿use crate::render::graph::pass::{DepthUse, Pass, PassCtx, ResLoad};
 use crate::render::graph::res::{GraphResources, ResId};
 use crate::render::texture::Texture;
-use crate::wrappers::graphics::GraphicsDevice;
+use crate::wrappers::graphics::{transition_barrier, uav_barrier, GraphicsDevice};
 use std::collections::HashSet;
+use anyhow::bail;
 use windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 
 pub mod pass;
@@ -33,11 +34,24 @@ impl<'a> FrameGraph<'a> {
             } else if !colors.is_empty() || depth.is_some() {
                 gd.set_render_targets(&colors, depth, pass.uses_depth.iter().map(|it| it.1 == DepthUse::Test).any(|it| it))?;
             }
+
+            // normal render targets
             for (id, load) in pass.writes_color.iter().chain(writes_depth(&pass).iter()) {
                 if *load == ResLoad::Clear {
                     gd.clear(res.get(*id)?)?;
                 }
             }
+
+            // UAVs
+            for (id, load) in pass.writes_uav {
+                let res = res.get(id)?;
+                res.ensure_unordered_access(gd.command_list()?);
+
+                if load == ResLoad::Clear {
+                    bail!("Graph does not currently support clearing UAVs")
+                }
+            }
+
             (pass.exec)(&PassCtx::new(&cmd, gd, res))?;
         }
         Ok(())
@@ -50,7 +64,7 @@ impl<'a> FrameGraph<'a> {
         for (i, pass) in self.passes.iter().enumerate().rev() {
             // going from back to front
             let depth = writes_depth(&pass);
-            let writes = pass.writes_color.iter().chain(depth.iter());
+            let writes = pass.writes_color.iter().chain(depth.iter()).chain(pass.writes_uav.iter());
             let is_needed = pass.has_side_effects || writes.clone().any(|it| needed_res.contains(&it.0));
             if !is_needed {
                 continue;

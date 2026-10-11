@@ -10,7 +10,7 @@ use anyhow::anyhow;
 use glam::{Mat4, Vec2, Vec3};
 use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D::ID3DBlob;
-use windows::Win32::Graphics::Direct3D12::{ID3D12Device, ID3D12GraphicsCommandList, ID3D12PipelineState, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DEPTH_WRITE_MASK_ZERO, D3D12_FILL_MODE_SOLID, D3D12_FILL_MODE_WIREFRAME, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_RASTERIZER_DESC, D3D12_SHADER_BYTECODE};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Device, ID3D12GraphicsCommandList, ID3D12PipelineState, D3D12_COMPUTE_PIPELINE_STATE_DESC, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DEPTH_WRITE_MASK_ZERO, D3D12_FILL_MODE_SOLID, D3D12_FILL_MODE_WIREFRAME, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_RASTERIZER_DESC, D3D12_SHADER_BYTECODE};
 use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,50 +63,64 @@ pub struct Pipeline {
 
 impl Pipeline {
     fn new(dev: &ID3D12Device, rs: &RootSignature, shaders: &ShaderStorage, desc: &PipelineDesc) -> anyhow::Result<Self> {
-        anyhow::ensure!(desc.rts.len() <= 8, "{}: max 8 render targets!!", desc.name);
+        anyhow::ensure!(desc.rts.len() <= 8, "{}: max 8 render targets!! got {}", desc.name, desc.rts.len());
         let stage = |ty| shaders.get_shader(&desc.shader, ty).map(bytecode).unwrap_or_default();
-        let vs = shaders.get_shader(&desc.shader, ShaderType::Vertex)
-            .ok_or_else(|| anyhow!("{}: no vertex shader in {}", desc.name, desc.shader.display()))?;
 
-        let mut d = D3D12_GRAPHICS_PIPELINE_STATE_DESC {
-            pRootSignature: unsafe { std::mem::transmute_copy(&rs.rs) },
-            VS: bytecode(vs),
-            PS: stage(ShaderType::Fragment), // пусто = depth-only
-            HS: stage(ShaderType::Hull),
-            DS: stage(ShaderType::Domain),
-            InputLayout: D3D12_INPUT_LAYOUT_DESC {
-                pInputElementDescs: desc.input.as_ptr(),
-                NumElements: desc.input.len() as u32,
-            },
-            RasterizerState: D3D12_RASTERIZER_DESC {
-                FillMode: if desc.wireframe { D3D12_FILL_MODE_WIREFRAME } else { D3D12_FILL_MODE_SOLID },
-                CullMode: desc.cull,
-                DepthClipEnable: desc.depth_clip.into(),
-                ..Default::default()
-            },
-            SampleMask: u32::MAX,
-            PrimitiveTopologyType: desc.topology,
-            NumRenderTargets: desc.rts.len() as u32,
-            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
-            ..Default::default()
-        };
-        for (i, fmt) in desc.rts.iter().enumerate() {
-            d.RTVFormats[i] = *fmt;
-            d.BlendState.RenderTarget[i] = desc.blend.to_directx();
-        }
-        if let Some(depth) = desc.depth {
-            d.DSVFormat = depth.format;
-            d.DepthStencilState = D3D12_DEPTH_STENCIL_DESC {
-                DepthEnable: true.into(),
-                DepthWriteMask: if depth.write { D3D12_DEPTH_WRITE_MASK_ALL } else { D3D12_DEPTH_WRITE_MASK_ZERO },
-                DepthFunc: depth.func,
+        let vs = shaders.get_shader(&desc.shader, ShaderType::Vertex);
+        let cs = shaders.get_shader(&desc.shader, ShaderType::Compute);
+
+        if let Some(vs) = vs {
+            let mut d = D3D12_GRAPHICS_PIPELINE_STATE_DESC {
+                pRootSignature: unsafe { std::mem::transmute_copy(&rs.rs) },
+                VS: bytecode(vs),
+                PS: stage(ShaderType::Fragment), // пусто = depth-only
+                HS: stage(ShaderType::Hull),
+                DS: stage(ShaderType::Domain),
+                InputLayout: D3D12_INPUT_LAYOUT_DESC {
+                    pInputElementDescs: desc.input.as_ptr(),
+                    NumElements: desc.input.len() as u32,
+                },
+                RasterizerState: D3D12_RASTERIZER_DESC {
+                    FillMode: if desc.wireframe { D3D12_FILL_MODE_WIREFRAME } else { D3D12_FILL_MODE_SOLID },
+                    CullMode: desc.cull,
+                    DepthClipEnable: desc.depth_clip.into(),
+                    ..Default::default()
+                },
+                SampleMask: u32::MAX,
+                PrimitiveTopologyType: desc.topology,
+                NumRenderTargets: desc.rts.len() as u32,
+                SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
                 ..Default::default()
             };
-        }
+            for (i, fmt) in desc.rts.iter().enumerate() {
+                d.RTVFormats[i] = *fmt;
+                d.BlendState.RenderTarget[i] = desc.blend.to_directx();
+            }
+            if let Some(depth) = desc.depth {
+                d.DSVFormat = depth.format;
+                d.DepthStencilState = D3D12_DEPTH_STENCIL_DESC {
+                    DepthEnable: true.into(),
+                    DepthWriteMask: if depth.write { D3D12_DEPTH_WRITE_MASK_ALL } else { D3D12_DEPTH_WRITE_MASK_ZERO },
+                    DepthFunc: depth.func,
+                    ..Default::default()
+                };
+            }
+            let pso: ID3D12PipelineState = unsafe { dev.CreateGraphicsPipelineState(&d)? };
+            unsafe { pso.SetName(&HSTRING::from(format!("Brine::Pipeline_{}", desc.name)))? };
+            Ok(Self { pso })
+        } else if let Some(cs) = cs {
+            let mut d = D3D12_COMPUTE_PIPELINE_STATE_DESC {
+                pRootSignature: unsafe { std::mem::transmute_copy(&rs.rs) },
+                CS: bytecode(cs),
+                ..Default::default()
+            };
+            let pso: ID3D12PipelineState = unsafe { dev.CreateComputePipelineState(&d)? };
+            unsafe { pso.SetName(&HSTRING::from(format!("Brine::ComputePipeline_{}", desc.name)))? };
+            Ok(Self { pso })
 
-        let pso: ID3D12PipelineState = unsafe { dev.CreateGraphicsPipelineState(&d)? };
-        unsafe { pso.SetName(&HSTRING::from(format!("Brine::Pipeline_{}", desc.name)))? };
-        Ok(Self { pso })
+        } else {
+            anyhow::bail!("No vertex/compute shader found for {}!", desc.name)
+        }
     }
 
     pub fn bind(&self, cmd: &ID3D12GraphicsCommandList) {
