@@ -38,6 +38,9 @@ enum ShaderTarget {
     },
     Compute {
         entry: String
+    },
+    Geometry {
+        entry: String
     }
 }
 
@@ -48,7 +51,8 @@ impl ShaderTarget {
             ShaderTarget::Vertex { .. } => ShaderType::Vertex,
             ShaderTarget::Domain { .. } => ShaderType::Domain,
             ShaderTarget::Hull { .. } => ShaderType::Hull,
-            ShaderTarget::Compute { .. } => ShaderType::Compute
+            ShaderTarget::Compute { .. } => ShaderType::Compute,
+            ShaderTarget::Geometry { .. } => ShaderType::Geometry
         }
     }
 }
@@ -216,7 +220,8 @@ impl ShaderStorage {
                 ShaderTarget::Vertex { entry } => (entry, s!("vs_5_1")),
                 ShaderTarget::Domain { entry } => (entry, s!("ds_5_1")),
                 ShaderTarget::Hull { entry } => (entry, s!("hs_5_1")),
-                ShaderTarget::Compute { entry } => (entry, s!("cs_5_1"))
+                ShaderTarget::Compute { entry } => (entry, s!("cs_5_1")),
+                ShaderTarget::Geometry { entry } => (entry, s!("gs_5_1"))
             };
             let entry = entry.bytes().chain(std::iter::once(0)).collect::<Vec<u8>>();
             let r = unsafe {

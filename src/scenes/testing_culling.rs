@@ -14,7 +14,7 @@ use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::texture::Texture;
 use crate::scenes::Scene;
 use crate::time::Time;
-use glam::{Mat4, Quat, Vec3};
+use glam::{EulerRot, Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 
 #[derive(Debug)]
@@ -61,7 +61,7 @@ impl Scene for CullingScene {
         for _ in 0..10000 {
             let pos = Vec3::new(rand::random(), rand::random(), rand::random()) * 200. - 100.;
             let object_data = ObjectData {
-                model: Mat4::from_scale_rotation_translation(4. * Vec3::ONE, Quat::IDENTITY, pos),
+                model: Mat4::from_scale_rotation_translation(4. * Vec3::ONE, Quat::from_euler(EulerRot::XYZ, rand::random::<f32>() * 90., rand::random::<f32>() * 90., rand::random::<f32>() * 90.), pos),
                 material_id: 0,
                 _pad: [0; 3],
             };

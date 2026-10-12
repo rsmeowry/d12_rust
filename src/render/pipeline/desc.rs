@@ -15,6 +15,8 @@ pub struct PipelineDesc {
     pub topology: D3D12_PRIMITIVE_TOPOLOGY_TYPE,
     pub wireframe: bool,
     pub depth_clip: bool,
+    pub depth_bias: i32,
+    pub slope_bias: f32
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -61,7 +63,9 @@ impl Default for PipelineDesc {
             cull: D3D12_CULL_MODE_BACK,
             topology: D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
             wireframe: false,
-            depth_clip: true
+            depth_clip: true,
+            depth_bias: -1,
+            slope_bias: 0.0
         }
     }
 }

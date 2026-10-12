@@ -1,5 +1,5 @@
 ﻿#include <lib/Core.hlsl>
-#define MAX_TF 8.
+#define MAX_TF 16.
 #define FAR 15.0
 #define NEAR 0.1
 #define DISP 0.2

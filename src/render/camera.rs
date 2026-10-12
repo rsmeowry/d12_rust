@@ -79,7 +79,23 @@ impl Camera {
         self.rot
     }
 
+    pub fn forward(&self) -> Vec3 {
+        self.rot * Vec3::Z
+    }
+
+    pub fn view(&self) -> Mat4 {
+        self.view
+    }
+
+    pub fn fov_rad(&self) -> f32 {
+        self.fov_rad
+    }
+
+    pub fn aspect(&self) -> f32 {
+        self.aspect
+    }
+
     fn projection(aspect: f32, fov_rad: f32) -> Mat4 {
-        glam::camera::lh::proj::directx::perspective(fov_rad, aspect, 100.0, 0.1)
+        glam::camera::lh::proj::directx::perspective(fov_rad, aspect, 10e11, 0.1)
     }
 }

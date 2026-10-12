@@ -76,6 +76,7 @@ impl Pipeline {
                 PS: stage(ShaderType::Fragment), // пусто = depth-only
                 HS: stage(ShaderType::Hull),
                 DS: stage(ShaderType::Domain),
+                GS: stage(ShaderType::Geometry),
                 InputLayout: D3D12_INPUT_LAYOUT_DESC {
                     pInputElementDescs: desc.input.as_ptr(),
                     NumElements: desc.input.len() as u32,
@@ -84,6 +85,8 @@ impl Pipeline {
                     FillMode: if desc.wireframe { D3D12_FILL_MODE_WIREFRAME } else { D3D12_FILL_MODE_SOLID },
                     CullMode: desc.cull,
                     DepthClipEnable: desc.depth_clip.into(),
+                    DepthBias: desc.depth_bias,
+                    SlopeScaledDepthBias: desc.slope_bias,
                     ..Default::default()
                 },
                 SampleMask: u32::MAX,
