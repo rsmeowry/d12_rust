@@ -16,6 +16,7 @@ use crate::time::Time;
 use glam::Vec3;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
+use crate::render::shadows::ShadowMap;
 
 #[derive(Debug)]
 pub struct SponzaWithLights {
@@ -25,6 +26,7 @@ pub struct SponzaWithLights {
 
     materials_buf: ID3D12Resource,
 
+    shadows: ShadowMap,
     culler: Culler,
     bloom: BloomPass,
     lighting: DeferredLightingPass,
@@ -63,16 +65,20 @@ impl Scene for SponzaWithLights {
         let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
         let bloom = BloomPass::new(renderer)?;
 
+        let shadows = ShadowMap::new(renderer, 2048, 2048)?;
+
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
 
+
         Ok(Self {
             gbuffer,
             blit,
 
+            shadows,
             culler,
             bloom,
             sponza,
@@ -101,25 +107,17 @@ impl Scene for SponzaWithLights {
         }
         self.culler.finish(opts);
 
-
         let objects_va = renderer.upload_objects(&objects)?;
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
 
         let t = time.game_time();
         let mut lights = vec![
-            GpuLight::directional(Vec3::new(-0.4, -0.8, 0.5), Vec3::new(1., 0.95, 0.9), 0.6),
+            GpuLight::directional(Vec3::new(-0.4, -0.9, 0.5), Vec3::new(1., 0.95, 0.9), 0.6),
             // GpuLight::point(Vec3::new(4. * t.sin(), 1., -1.2), 6., Vec3::new(1., 0.3, 0.2), 8.),
             // GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
             // GpuLight::point(Vec3::new(2., 2. + 2. * t.cos(), 0.), 8., Vec3::new(0.2, 0.9, 0.2), 8.),
             // GpuLight::spot(Vec3::new(4., 2., -1.), Vec3::NEG_Y, 15., 15., 25.,  Vec3::ONE, 20.),
         ];
-
-        let mut i = 0;
-
-        while i < 5 {
-            i += 1;
-            lights.push(GpuLight::point(Vec3::new(-8.0 + 0.2 * (i as f32), 3.0 + 4. * (i as f32 + t).sin(), 1.2 * (i as f32).sin()), 6., Vec3::ONE, 4.0));
-        }
 
         let gr = &renderer.gr;
 
@@ -160,7 +158,13 @@ impl Scene for SponzaWithLights {
                 Ok(())
             });
 
-        self.lighting.add_pass(lights, renderer, &self.gbuffer, graph)?;
+        let (all_objects, all_meshes) = self.sponza.to_objects_and_draws();
+        let objects_va = renderer.upload_objects(&all_objects)?;
+
+        let shadow = self.shadows.add_pass(lights[0], renderer, graph, objects_va, all_meshes)?;
+
+        self.lighting.add_pass(lights, renderer, Some(shadow), &self.gbuffer, graph)?;
+
         let bloom = self.bloom.add_pass(BloomProperties::default(), self.gbuffer.scene_color, renderer, graph)?;
         self.post.add_pass(post_props, Some(bloom), renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;

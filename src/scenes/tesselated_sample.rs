@@ -142,7 +142,7 @@ impl Scene for TesselatedSample {
                 Ok(())
             });
 
-        self.lighting.add_pass(lights, renderer, &self.gbuffer, graph)?;
+        self.lighting.add_pass(lights, renderer, None, &self.gbuffer, graph)?;
         self.post.add_pass(post_props, None, renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 

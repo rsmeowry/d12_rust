@@ -9,6 +9,10 @@
     float _pad;
     float3 ambientColor;
     float _alsoPad;
+    float4x4 cascadeVp;
+    uint shadowsTex;
+    float2 cascadeTexel;
+    uint useShadows;
 };
 
 Texture2D g_Tex2D[1024] : register(t0, space1);

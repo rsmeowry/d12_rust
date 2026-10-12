@@ -1,20 +1,21 @@
-﻿use std::fs::File;
-use std::io::Read;
-use glam::{Vec3, Vec4};
-use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE, D3D12_PRIMITIVE_TOPOLOGY_TYPE};
-use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST};
-use crate::render::builtin::{aabb_from_vertices3, Vertex3};
-use crate::render::graph::FrameGraph;
+﻿use crate::render::builtin::{aabb_from_vertices3, Vertex3};
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::{ResId, ResSize};
-use crate::render::lights::{light_cone, unit_sphere, GpuLight, LightingPass, LIGHT_POINT, LIGHT_SPOT};
+use crate::render::graph::FrameGraph;
+use crate::render::lights::{light_cone, unit_sphere, GpuLight, LIGHT_POINT, LIGHT_SPOT};
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
+use crate::render::shadows::ShadowCascades;
 use crate::render::texture::Texture;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
+use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
+use std::fs::File;
+use std::io::Read;
+use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE};
 
 pub mod post;
 pub mod util;
@@ -130,7 +131,7 @@ impl DeferredLightingPass {
         })
     }
 
-    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
         lights.sort_by_key(|l| l.kind);
         let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
         let first_spot = lights.partition_point(|l| l.kind < LIGHT_SPOT) as u32;
@@ -138,6 +139,11 @@ impl DeferredLightingPass {
         let spot_count = lights.len() as u32 - first_spot;
         let lights_va = renderer.upload_slice(bytemuck::cast_slice(&lights), 16)?;
         let gr = &renderer.gr;
+        let (cascade_vp, shadows_tex, cascade_texel) = if let Some(shadows) = &shadows {
+            (shadows.view_proj[0], gr.get(shadows.cascades[0])?.srv_ptr(), shadows.texel.xy())
+        } else {
+            (Mat4::IDENTITY, renderer.white_tex().srv_ptr(), Vec2::ONE)
+        };
         let light_pass_va = renderer.upload_slice(bytemuck::bytes_of(&LightingPass {
             albedo: gr.get(gbuffer.albedo)?.srv_ptr(),
             normal: gr.get(gbuffer.normals)?.srv_ptr(),
@@ -149,20 +155,31 @@ impl DeferredLightingPass {
             _pad: 0.,
             ambient: Vec3::ONE * 0.07,
             _pad2: 0.,
+            cascade_vp,
+            shadows_tex,
+            cascade_texel,
+            use_shadows: shadows.is_some() as u32,
         }), 256)?;
 
         let rs = renderer.rs();
         let pipelines = renderer.pipelines();
 
         // directional light
-        graph
+        let mut pass = graph
             .add_pass("LightsFullscreen")
             .reads(gbuffer.albedo)
             .reads(gbuffer.normals)
             .reads(gbuffer.materials)
             .reads(gbuffer.scene_depth)
-            .writes(gbuffer.scene_color, ResLoad::Preserve)
-            .exec(move |ctx| {
+            .writes(gbuffer.scene_color, ResLoad::Preserve);
+
+        if let Some(shadows) = shadows {
+            for cascade in shadows.cascades {
+                pass = pass.reads(cascade);
+            }
+        }
+
+        pass.exec(move |ctx| {
                 pipelines.get(self.lights_fullscreen).bind(ctx.cmd);
                 rs.set_pass(ctx.cmd, light_pass_va);
                 rs.set_lights(ctx.cmd, lights_va);
@@ -197,4 +214,24 @@ impl DeferredLightingPass {
 
         Ok(())
     }
+}
+
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LightingPass {
+    pub albedo: u32,
+    pub normal: u32,
+    pub material: u32,
+    pub depth: u32,
+    pub dir_count: u32,
+    pub debug_view: u32,
+    pub sky_tex: u32,
+    pub _pad: f32,
+    pub ambient: Vec3,
+    pub _pad2: f32,
+    pub cascade_vp: Mat4,
+    pub shadows_tex: u32,
+    pub cascade_texel: Vec2,
+    pub use_shadows: u32
 }

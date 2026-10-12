@@ -11,5 +11,5 @@ mod app;
 mod scenes;
 
 fn main() -> anyhow::Result<()> {
-    app::App::<TesselatedSample>::new()?.run()
+    app::App::<SponzaWithLights>::new()?.run()
 }

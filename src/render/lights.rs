@@ -1,5 +1,5 @@
 ﻿use bytemuck::Zeroable;
-use glam::Vec3;
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use crate::render::builtin::Vertex3;
 
 pub const LIGHT_DIRECTIONAL: u32 = 0;
@@ -37,21 +37,6 @@ impl GpuLight {
             ..Self::zeroed()
         }
     }
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LightingPass {
-    pub albedo: u32,
-    pub normal: u32,
-    pub material: u32,
-    pub depth: u32,
-    pub dir_count: u32,
-    pub debug_view: u32,
-    pub sky_tex: u32,
-    pub _pad: f32,
-    pub ambient: Vec3,
-    pub _pad2: f32,
 }
 
 pub fn light_cone(details: u32) -> (Vec<Vertex3>, Vec<u32>) {

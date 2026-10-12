@@ -64,7 +64,7 @@ impl Default for PipelineDesc {
             topology: D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
             wireframe: false,
             depth_clip: true,
-            depth_bias: -1,
+            depth_bias: 0,
             slope_bias: 0.0
         }
     }

@@ -10,3 +10,4 @@ pub mod txt;
 pub mod lights;
 pub mod deferred;
 pub mod perf;
+pub mod shadows;
