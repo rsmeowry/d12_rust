@@ -7,7 +7,7 @@ use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
-use crate::render::shadows::ShadowCascades;
+use crate::render::shadows::{ShadowCascades, CASCADE_COUNT};
 use crate::render::texture::Texture;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -139,11 +139,17 @@ impl DeferredLightingPass {
         let spot_count = lights.len() as u32 - first_spot;
         let lights_va = renderer.upload_slice(bytemuck::cast_slice(&lights), 16)?;
         let gr = &renderer.gr;
-        let (cascade_vp, shadows_tex, cascade_texel) = if let Some(shadows) = &shadows {
-            (shadows.view_proj[0], gr.get(shadows.cascades[0])?.srv_ptr(), shadows.texel.xy())
-        } else {
-            (Mat4::IDENTITY, renderer.white_tex().srv_ptr(), Vec2::ONE)
-        };
+
+        let mut shadows_tex = [0u32; CASCADE_COUNT];
+        if let Some(s) = &shadows {
+            for (dst, id) in shadows_tex.iter_mut().zip(s.cascades) {
+                *dst = gr.get(id)?.srv_ptr();
+            }
+        }
+        let (cascade_vp, splits, cascade_texel) = shadows
+            .map(|s| (s.view_proj, s.splits, s.texel_sizes))
+            .unwrap_or(([Mat4::IDENTITY; 4], Vec4::ZERO, Vec4::ZERO));
+
         let light_pass_va = renderer.upload_slice(bytemuck::bytes_of(&LightingPass {
             albedo: gr.get(gbuffer.albedo)?.srv_ptr(),
             normal: gr.get(gbuffer.normals)?.srv_ptr(),
@@ -158,6 +164,8 @@ impl DeferredLightingPass {
             cascade_vp,
             shadows_tex,
             cascade_texel,
+            splits,
+            cam_forward: renderer.cam.forward(),
             use_shadows: shadows.is_some() as u32,
         }), 256)?;
 
@@ -230,8 +238,10 @@ pub struct LightingPass {
     pub _pad: f32,
     pub ambient: Vec3,
     pub _pad2: f32,
-    pub cascade_vp: Mat4,
-    pub shadows_tex: u32,
-    pub cascade_texel: Vec2,
+    pub cascade_vp: [Mat4; CASCADE_COUNT],
+    pub splits: Vec4,
+    pub cascade_texel: Vec4,
+    pub shadows_tex: [u32; CASCADE_COUNT],
+    pub cam_forward: Vec3,
     pub use_shadows: u32
 }

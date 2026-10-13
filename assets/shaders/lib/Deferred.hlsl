@@ -9,9 +9,11 @@
     float _pad;
     float3 ambientColor;
     float _alsoPad;
-    float4x4 cascadeVp;
-    uint shadowsTex;
-    float2 cascadeTexel;
+    float4x4 cascadeVp[4];
+    float4 splits;
+    float4 cascadeTexel;
+    uint4 shadowTex;
+    float3 camForward;
     uint useShadows;
 };
 

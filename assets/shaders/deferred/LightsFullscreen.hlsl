@@ -16,21 +16,23 @@ float3 SampleSky(float2 pixel) {
     return g_Tex2D[skyTex].Sample(AnisoWrap, uv, 0).rgb * SKY_INTENSITY;
 }
 
-float SampleShadow(Surface s) {
-    if (useShadows == 0)
-        return 1;
+float ViewDepth(float3 pos) {
+    return dot(pos - cameraPos, camForward);
+}
 
-    float3 posOff = s.pos + s.normal * cascadeTexel.x * NORMAL_OFFSET;
+uint CascadeIndex(float depth) {
+    return (uint) (depth > splits.x) + (uint) (depth > splits.y) + (uint) (depth > splits.z);
+}
 
-    float4 p = mul(cascadeVp, float4(posOff, 1));
+float ShadowInCascade(uint cascade, Surface s) {
+    float3 posOff = s.pos + s.normal * cascadeTexel[cascade] * NORMAL_OFFSET;
+    float4 p = mul(cascadeVp[cascade], float4(posOff, 1));
     p.xyz /= p.w;
-
     float2 uv = p.xy * float2(0.5, -0.5) + 0.5;
-
     if (any(uv < 0) || any(uv > 1) || p.z < 0 || p.z > 1)
         return 1;
 
-    Texture2D map = g_Tex2D[shadowsTex];
+    Texture2D map = g_Tex2D[NonUniformResourceIndex(shadowTex[cascade])];
     float w, h;
     map.GetDimensions(w, h);
     float2 t = 1.0 / float2(w, h);
@@ -39,9 +41,30 @@ float SampleShadow(Surface s) {
     [unroll] for (int y = -PCF_RADIUS; y <= PCF_RADIUS; y++)
     [unroll] for (int x = -PCF_RADIUS; x <= PCF_RADIUS; x++)
         sum += map.SampleCmpLevelZero(ShadowCmp, uv + float2(x, y) * t, p.z);
-
     const float n = 2 * PCF_RADIUS + 1;
     return sum / (n * n);
+}
+
+float SampleShadow(Surface s) {
+    if (useShadows == 0)
+        return 1;
+
+    float d = ViewDepth(s.pos);
+    if (d >= splits.w)
+        return 1; // farther than the farthest split
+
+    uint cascade = CascadeIndex(d);
+    float sh = ShadowInCascade(cascade, s);
+
+    // blending two cascades
+    float start = (cascade == 0) ? 0.0 : splits[max(cascade, 1u) - 1];
+    float band = 0.1 * (splits[cascade] - start);
+    float t = saturate((d - (splits[cascade] - band)) / band);
+    if (t > 0) {
+        float next = (cascade < 3) ? ShadowInCascade(cascade + 1, s) : 1.0; // smooth fadeout of the last cascade
+        sh = lerp(sh, next, t);
+    }
+    return sh;
 }
 
 float4 vert(uint id : SV_VertexID) : SV_Position {
