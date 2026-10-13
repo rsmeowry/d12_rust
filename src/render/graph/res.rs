@@ -5,7 +5,7 @@ use crate::render::texture::{Texture, TextureDesc, TextureKind};
 use crate::wrappers::graphics::GraphicsDevice;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
-pub struct ResId(usize);
+pub struct ResId(pub usize);
 
 #[derive(Debug, Clone)]
 pub enum ResSize {

@@ -84,10 +84,14 @@ float4 frag(float4 pos : SV_Position) : SV_Target {
     if (debugView == 3)
         return float4(frac(s.pos), 0);
 
-    float shadow = SampleShadow(s);
     float3 V = normalize(cameraPos - s.pos);
     float3 color = s.albedo * ambientColor;
-    for (uint i = 0; i < dirCount; i++)
-        color += ShadeLight(g_Lights[i], s, V) * (i == 0 ? shadow : 1.0);
+    for (uint i = 0; i < dirCount; i++) {
+        float3 litVal = ShadeLight(g_Lights[i], s, V);
+        if(i == 0 && any(litVal > 0)) {
+            litVal *= SampleShadow(s);
+        }
+        color += litVal;
+    }
     return float4(color, 0);
 }

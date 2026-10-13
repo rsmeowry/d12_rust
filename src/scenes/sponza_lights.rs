@@ -160,6 +160,8 @@ impl Scene for SponzaWithLights {
             });
 
         let (all_objects, all_meshes) = self.sponza.to_objects_and_draws();
+        let lambda = 0.6;
+        self.shadows.update(lights[0], lambda, renderer);
         let shadow = self.shadows.add_pass(lights[0], 0.6, renderer, graph, all_objects, all_meshes)?;
         for i in 0..CASCADE_COUNT {
             opts.push_debug_line(Cow::Owned(format!("cascade {i}: <= {:.1}m | {} drawn", shadow.splits[i], shadow.drawn[i])))

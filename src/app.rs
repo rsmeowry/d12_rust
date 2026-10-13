@@ -134,6 +134,10 @@ impl<S: Scene> App<S> {
             self.window.set_cursor_locked(true)?;
         }
 
+        if input.was_released(KeyCode::F3) {
+            self.opts.enable_dbg_text = !self.opts.enable_dbg_text;
+        }
+
         if input.was_released(KeyCode::F4) {
             self.window.toggle_fullscreen()?;
         }
@@ -177,7 +181,7 @@ impl<S: Scene> App<S> {
 
         let cam_pos = self.renderer.cam.pos();
 
-        let mut text = format!("FPS: {}\nCamera: {cam_pos:.2}\nScene: {}", self.fps, S::NAME);
+        let mut text = format!("FPS: {} | tpf: {:.2}ms\nCamera: {cam_pos:.2}\nScene: {}", self.fps, 1000. / self.fps as f32, S::NAME);
 
         for line in &self.opts.debug_lines {
             text.push('\n');
@@ -185,7 +189,9 @@ impl<S: Scene> App<S> {
         }
         self.opts.debug_lines.clear();
 
-        self.text.add_pass(text, self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
+        if self.opts.enable_dbg_text {
+            self.text.add_pass(text, self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
+        }
 
         graph.execute(&self.renderer.gd, &self.renderer.gr)?;
 
@@ -259,6 +265,7 @@ pub struct RenderOpts {
     pub culling_mode: CullingMode,
     pub use_wireframe: bool,
     pub debug_view_type: u32,
+    pub enable_dbg_text: bool,
 }
 
 impl RenderOpts {
