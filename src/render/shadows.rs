@@ -13,6 +13,7 @@ use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 use glam::{FloatExt, Mat4, Vec3, Vec4};
 use std::cell::Cell;
+use std::f32::consts::FRAC_PI_2;
 use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE};
 
 pub const CASCADE_COUNT: usize = 4;
@@ -46,8 +47,11 @@ pub struct ShadowMap {
 pub struct LocalShadows {
     pipeline: PipelineId,
     spots: [ResId; MAX_SPOT_SHADOWS],
+    points: [ResId; MAX_SPOT_SHADOWS],
     spot_size: u32,
+    point_size: u32,
     last_spot: usize,
+    last_point: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,7 +64,7 @@ pub struct ShadowCascades {
 }
 
 impl ShadowMap {
-    pub fn new(renderer: &mut Renderer, size: u32, spot_size: u32) -> anyhow::Result<Self> {
+    pub fn new(renderer: &mut Renderer, size: u32, spot_size: u32, point_size: u32) -> anyhow::Result<Self> {
         let mut cascades = [ResId::default(); CASCADE_COUNT];
         for i in 0..CASCADE_COUNT {
             cascades[i] = renderer.gr.depth(&renderer.gd, &format!("Shadows{i}"), ResSize::Fixed(size, size))?
@@ -76,8 +80,8 @@ impl ShadowMap {
                 write: true,
             }),
             cull: D3D12_CULL_MODE_FRONT,
-            depth_bias: -100,
-            slope_bias: -2.0,
+            depth_bias: -20,
+            slope_bias: -1.0,
             depth_clip: false,
             ..Default::default()
         })?;
@@ -85,6 +89,10 @@ impl ShadowMap {
         let mut spots = [ResId::default(); MAX_SPOT_SHADOWS];
         for i in 0..MAX_SPOT_SHADOWS {
             spots[i] = renderer.gr.depth(&renderer.gd, &format!("Shadows_Spot{i}"), ResSize::Fixed(spot_size, spot_size))?;
+        }
+        let mut points = [ResId::default(); MAX_POINT_SHADOWS];
+        for i in 0..MAX_POINT_SHADOWS {
+            points[i] = renderer.gr.depth_cube(&renderer.gd, &format!("Shadows_Point{i}"), point_size)?;
         }
 
         Ok(Self {
@@ -94,7 +102,7 @@ impl ShadowMap {
             frame_idx: 0,
             last_drawn: Cell::new([0; CASCADE_COUNT]),
             size,
-            local_shadows: LocalShadows { pipeline, spots, spot_size, last_spot: 0 },
+            local_shadows: LocalShadows { pipeline, spots, spot_size, last_spot: 0, point_size, points, last_point: 0 },
         })
     }
 
@@ -146,8 +154,8 @@ impl ShadowMap {
         (proj * light_view, texel)
     }
 
-    pub fn fetch_all_local_shadows(&self) -> &[ResId] {
-        &self.local_shadows.spots
+    pub fn fetch_all_local_shadows(&self) -> Vec<ResId> {
+        self.local_shadows.spots.iter().copied().chain(self.local_shadows.points.iter().copied()).collect::<Vec<ResId>>()
     }
 
     pub fn update(&mut self, main_light: GpuLight, lambda: f32, renderer: &Renderer) {
@@ -206,6 +214,7 @@ impl ShadowMap {
 impl LocalShadows {
     fn add_pass<'f>(&mut self, lights: &mut Vec<GpuLight>, renderer: &'f Renderer, objects_va: u64, objects: &[ObjectData], meshes: &[&'f Mesh], graph: &mut FrameGraph<'f>) -> anyhow::Result<()> {
         self.last_spot = 0;
+        self.last_point = 0;
         for light in lights.iter_mut() {
             match light.kind {
                 LIGHT_SPOT => {
@@ -221,6 +230,23 @@ impl LocalShadows {
                         objects_va, objects, meshes)?;
                     self.last_spot += 1;
                 },
+                LIGHT_POINT => {
+                    if self.last_point + 1 >= MAX_POINT_SHADOWS {
+                        continue;
+                    }
+                    let (faces, params) = Self::prepare_point_light(light, self.point_size);
+                    let tex = self.points[self.last_point + 1];
+                    for (face_idx, face) in faces.into_iter().enumerate() {
+                        shadows_depth_pass(
+                            graph, renderer, self.pipeline,
+                            "PointLight",
+                            tex, face_idx as u32, face,
+                            objects_va, objects, meshes)?;
+                    }
+                    light.shadow_tex = renderer.gr.get(tex)?.srv_ptr();
+
+                    self.last_point += 1;
+                }
                 _ => { }
             }
         }
@@ -234,6 +260,16 @@ impl LocalShadows {
         light.shadow_vp = proj * glam::camera::lh::view::look_to_mat4(light.position, light.direction, up);
         light.shadow_params = Vec3::new(0., 0., 2.0 * outer.tan() / size as f32);
         (light.shadow_vp, light.shadow_params)
+    }
+
+    pub fn prepare_point_light(light: &mut GpuLight, size: u32) -> ([Mat4; 6], Vec3) {
+        let proj = glam::camera::lh::proj::directx::perspective(FRAC_PI_2, 1.0, light.range, LOCAL_NEAR);
+        let mut vps = [Mat4::IDENTITY; 6];
+        for i in 0..6 {
+            vps[i] = proj * glam::camera::lh::view::look_to_mat4(light.position, CUBE_FACES[i].0, CUBE_FACES[i].1);
+        }
+        light.shadow_params = Vec3::new(proj.z_axis.z, proj.w_axis.z, 2.0 / size as f32);
+        (vps, light.shadow_params)
     }
 }
 

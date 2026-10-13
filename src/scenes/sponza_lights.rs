@@ -65,7 +65,7 @@ impl Scene for SponzaWithLights {
         let bloom = BloomPass::new(renderer)?;
 
         let mut lighting = DeferredLightingPass::new(renderer)?;
-        let shadows = ShadowMap::new(renderer, 1024, 512)?;
+        let shadows = ShadowMap::new(renderer, 1024, 512, 512)?;
         lighting.save_local_shadows(&shadows);
 
         let post = PostProcessPass::new(renderer)?;
@@ -114,10 +114,10 @@ impl Scene for SponzaWithLights {
         let t = time.game_time();
         let mut lights = vec![
             GpuLight::directional(Vec3::new(0.3, -0.8, -0.1), Vec3::new(1., 0.95, 0.9), 0.6),
-            // GpuLight::point(Vec3::new(4. * t.sin(), 1., -1.2), 6., Vec3::new(1., 0.3, 0.2), 8.),
+            GpuLight::point(Vec3::new(4. * t.sin(), 2., -1.2), 12., Vec3::new(1., 0.3, 0.2), 12.),
             // GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
             // GpuLight::point(Vec3::new(2., 2. + 2. * t.cos(), 0.), 8., Vec3::new(0.2, 0.9, 0.2), 8.),
-            GpuLight::spot(Vec3::new(4., 5., 0.), Quat::from_rotation_y(time.game_time()) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
+            // GpuLight::spot(Vec3::new(4., 5., 0.), Quat::from_rotation_y(time.game_time()) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
         ];
 
         let gr = &renderer.gr;

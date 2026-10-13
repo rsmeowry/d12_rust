@@ -47,6 +47,16 @@ float SpotShadow(Light l, Surface s) {
     return PCF(g_Tex2D[NonUniformResourceIndex(l.shadowTex)], uv, c.z);
 }
 
+float PointShadow(Light l, Surface s) {
+    float3 v = s.pos - l.position;
+    v += s.normal * (l.shadowParams.z * length(v) * LOCAL_NORMAL_OFFSET);
+    float3 a = abs(v);
+    float z = max(a.x, max(a.y, a.z));
+    float depth = l.shadowParams.x + l.shadowParams.y / z;
+    // kinda pcf? idk rly
+    return PCFCube(g_TexCube[NonUniformResourceIndex(l.shadowTex)], v, depth);
+}
+
 float4 frag(VolumeOut i) : SV_Target {
     Surface s;
     if (!LoadSurface(i.pos.xy, s))
@@ -54,7 +64,7 @@ float4 frag(VolumeOut i) : SV_Target {
     Light l = g_Lights[i.light];
     float3 color = ShadeLight(l, s, normalize(cameraPos - s.pos));
     if (l.shadowTex != NO_SHADOW && any(color > 0)) {
-        color *= l.type == LIGHT_SPOT ? SpotShadow(l, s) : 1.0;
+        color *= l.type == LIGHT_SPOT ? SpotShadow(l, s) : l.type == LIGHT_POINT ? PointShadow(l, s) : 1.0;
     }
     return float4(color, 0);
 }
