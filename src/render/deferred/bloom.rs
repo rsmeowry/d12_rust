@@ -57,7 +57,7 @@ impl BloomPass {
                 threshold: props.threshold,
                 knee: props.knee,
                 is_first_pass: (i == 0) as u32,
-                _pad: 0,
+                intensity: props.intensity,
                 tint: [1.0, 0.9, 0.5, 1.0],
                 scene_tex: gr.get(src)?.srv_ptr(),
                 out_tex: uav(dst)?,
@@ -112,11 +112,12 @@ pub struct BloomProperties {
     pub threshold: f32,
     pub knee: f32,
     pub radius: f32,
+    pub intensity: f32,
 }
 
 impl Default for BloomProperties {
     fn default() -> Self {
-        Self { threshold: 1.0, knee: 0.5, radius: 1.0 }
+        Self { threshold: 1.0, knee: 0.5, radius: 1.0, intensity: 1.0 }
     }
 }
 
@@ -128,7 +129,7 @@ struct BloomDownProps {
     threshold: f32,
     knee: f32,
     is_first_pass: u32,
-    _pad: u32,
+    intensity: f32,
     tint: [f32; 4],
     scene_tex: u32,
     out_tex: u32,

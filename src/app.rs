@@ -62,6 +62,9 @@ impl<S: Scene> App<S> {
         let scene = S::setup(&mut renderer)?;
         let text = DebugTextPass::new(&mut renderer)?;
 
+        let mut opts = RenderOpts::default();
+        opts.enable_dbg_text = true;
+
         Ok(Self {
             renderer,
 
@@ -76,7 +79,7 @@ impl<S: Scene> App<S> {
 
             window,
 
-            opts: RenderOpts::default(),
+            opts,
             controller: ControllerInfo::default()
         })
     }

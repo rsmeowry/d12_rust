@@ -117,7 +117,7 @@ impl Scene for SponzaWithLights {
             // GpuLight::point(Vec3::new(4. * t.sin(), 1., -1.2), 6., Vec3::new(1., 0.3, 0.2), 8.),
             // GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
             // GpuLight::point(Vec3::new(2., 2. + 2. * t.cos(), 0.), 8., Vec3::new(0.2, 0.9, 0.2), 8.),
-            GpuLight::spot(Vec3::new(4., 2., -1.), Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.2, 0.2), 20.),
+            GpuLight::spot(Vec3::new(4., 5., 0.), Quat::from_rotation_y(time.game_time()) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
         ];
 
         let gr = &renderer.gr;
@@ -170,7 +170,13 @@ impl Scene for SponzaWithLights {
         self.lighting.add_pass(lights, renderer, Some(shadow), &self.gbuffer, graph)?;
 
         // bloom
-        let bloom = self.bloom.add_pass(BloomProperties::default(), self.gbuffer.scene_color, renderer, graph)?;
+        let bloom = self.bloom.add_pass(BloomProperties {
+            threshold: 0.5,
+            knee: 0.25,
+            radius: 1.0,
+            intensity: 1.0,
+            ..Default::default()
+        }, self.gbuffer.scene_color, renderer, graph)?;
         self.post.add_pass(post_props, Some(bloom), renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 

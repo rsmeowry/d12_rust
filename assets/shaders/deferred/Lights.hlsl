@@ -44,7 +44,7 @@ float SpotShadow(Light l, Surface s) {
     float4 c = mul(l.shadowVp, float4(p, 1));
     c.xyz /= c.w;
     float2 uv = c.xy * float2(0.5, -0.5) + 0.5;
-    return g_Tex2D[NonUniformResourceIndex(l.shadowTex)].SampleCmpLevelZero(ShadowCmp, uv, c.z);
+    return PCF(g_Tex2D[NonUniformResourceIndex(l.shadowTex)], uv, c.z);
 }
 
 float4 frag(VolumeOut i) : SV_Target {

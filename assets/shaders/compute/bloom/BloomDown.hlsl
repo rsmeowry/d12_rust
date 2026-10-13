@@ -4,6 +4,7 @@
     float threshold;
     float knee;
     uint isFirstPass;
+    float intensity;
     float4 tint;
 
     uint sceneTex; // in
@@ -67,7 +68,7 @@ void CS(int3 threadId : SV_DispatchThreadID) {
 
         // extract brightness basically
         float w = saturate((Luma(res) - threshold) / max(knee, 1e-4));
-        res *= w * tint.rgb;
+        res *= w * tint.rgb * intensity;
     } else {
         res = (D + E + I + J) * 0.125
                 + (A + B + F + G) * 0.03125
