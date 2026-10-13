@@ -47,19 +47,21 @@ float PCF(Texture2D shadowMap, float2 uv, float z) {
     return sum / (n * n);
 }
 
-float PCFCube(TextureCube shadowMap, float3 uvw, float z) {
+float PCFCube(TextureCube shadowMap, float3 uvw, float z, float depth, float texel) {
     float w;
     float h;
 
-    shadowMap.GetDimensions(w, h);
-    float2 t = 1.0 / float2(w, h);
-
+    float3 n = normalize(uvw);
+    float3 t= normalize(cross(abs(n.y) < 0.99 ? float3(0, 1, 0) : float3(1, 0, 0), n));
+    float3 b = cross(n, t);
+    float stp = texel * z;
     float sum = 0;
+
     [unroll] for (int y = -PCF_RADIUS; y <= PCF_RADIUS; y++)
     [unroll] for (int x = -PCF_RADIUS; x <= PCF_RADIUS; x++)
-        sum += shadowMap.SampleCmpLevelZero(ShadowCmp, uvw + float3(x, y, 0) * float3(t, 1.0), z);
-    const float n = 2 * PCF_RADIUS + 1;
-    return sum / (n * n);
+        sum += shadowMap.SampleCmpLevelZero(ShadowCmp, uvw + (t * x + b * y) * stp, depth);
+    const float k = 2 * PCF_RADIUS + 1;
+    return sum / (k * k);
 }
 
 float3 ShadeLight(Light l, Surface s, float3 V) {

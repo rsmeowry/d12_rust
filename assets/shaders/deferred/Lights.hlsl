@@ -53,8 +53,7 @@ float PointShadow(Light l, Surface s) {
     float3 a = abs(v);
     float z = max(a.x, max(a.y, a.z));
     float depth = l.shadowParams.x + l.shadowParams.y / z;
-    // kinda pcf? idk rly
-    return PCFCube(g_TexCube[NonUniformResourceIndex(l.shadowTex)], v, depth);
+    return PCFCube(g_TexCube[NonUniformResourceIndex(l.shadowTex)], v, z, depth, l.shadowParams.z);
 }
 
 float4 frag(VolumeOut i) : SV_Target {
