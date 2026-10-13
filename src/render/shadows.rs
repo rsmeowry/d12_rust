@@ -222,7 +222,7 @@ impl LocalShadows {
                         continue; // exhausted our texture limit :(
                     }
                     let (vp, params) = Self::prepare_spot_light(light, self.spot_size);
-                    let tex = self.spots[self.last_spot + 1];
+                    let tex = self.spots[self.last_spot];
                     light.shadow_tex = renderer.gr.get(tex)?.srv_ptr();
                     shadows_depth_pass(
                         graph, renderer, self.pipeline,
@@ -235,7 +235,7 @@ impl LocalShadows {
                         continue;
                     }
                     let (faces, params) = Self::prepare_point_light(light, self.point_size);
-                    let tex = self.points[self.last_point + 1];
+                    let tex = self.points[self.last_point];
                     for (face_idx, face) in faces.into_iter().enumerate() {
                         shadows_depth_pass(
                             graph, renderer, self.pipeline,
