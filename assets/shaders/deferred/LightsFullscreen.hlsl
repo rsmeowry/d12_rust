@@ -8,12 +8,18 @@ SamplerComparisonState ShadowCmp : register(s4);
 
 #define NORMAL_OFFSET 1.5
 #define PCF_RADIUS 1
-#define SKY_INTENSITY 1.5
+#define SKY_INTENSITY 1.2
+#define SKY_CUBEMAP 0
 
 float3 SampleSky(float2 pixel) {
     float3 dir = normalize(WorldPosFromDepth(pixel / resolution, 1.) - cameraPos);
+
+#if SKY_CUBEMAP
+    return g_TexCube[skyTex].Sample(AnisoWrap, dir, 0).rgb * SKY_INTENSITY;
+#else
     float2 uv = float2(atan2(dir.z, dir.x) / (2 * PI) + 0.5, acos(dir.y) / PI);
     return g_Tex2D[skyTex].Sample(AnisoWrap, uv, 0).rgb * SKY_INTENSITY;
+#endif
 }
 
 float ViewDepth(float3 pos) {

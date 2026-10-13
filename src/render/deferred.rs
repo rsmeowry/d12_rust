@@ -84,10 +84,15 @@ impl DeferredLightingPass {
     pub fn new(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let mut batch = renderer.gd.begin_upload()?;
 
-        let mut file = File::open("assets/textures/sky/sky.hdr")?;
-        let mut sky_buf = Vec::new();
-        file.read_to_end(&mut sky_buf)?;
-        let sky_tex = Texture::from_hdr(&mut batch, &sky_buf, "Sky")?;
+        // let sky_tex = Texture::cube_from_hdr(&mut batch, [
+        //     &std::fs::read("assets/textures/cubemap/sky/left.hdr")?,
+        //     &std::fs::read("assets/textures/cubemap/sky/right.hdr")?,
+        //     &std::fs::read("assets/textures/cubemap/sky/up.hdr")?,
+        //     &std::fs::read("assets/textures/cubemap/sky/down.hdr")?,
+        //     &std::fs::read("assets/textures/cubemap/sky/front.hdr")?,
+        //     &std::fs::read("assets/textures/cubemap/sky/back.hdr")?,
+        // ], "Sky")?;
+        let sky_tex = Texture::from_hdr(&mut batch, &std::fs::read("assets/textures/sky/sky.hdr")?, "Sky")?;
 
         let point_light_mesh = unit_sphere(8, 8);
         let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&point_light_mesh.0))?;

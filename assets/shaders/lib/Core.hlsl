@@ -8,7 +8,7 @@ cbuffer Globals : register(b1) {
     float _pad2;
 };
 
-TextureCube g_TexCube[] : register(t0, space2);
+TextureCube g_TexCube[1024] : register(t0, space2);
 RWTexture2D<float4> g_RWTex2D[] : register(u0, space1);
 RWByteAddressBuffer g_RWBuffers[] : register(u0, space2);
 RWByteAddressBuffer g_RWScratch : register(u0);

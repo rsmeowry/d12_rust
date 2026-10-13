@@ -2,7 +2,7 @@ use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::{transition_barrier, uav_barrier, GraphicsDevice};
 use anyhow::anyhow;
 use glam::Vec4;
-use image::{EncodableLayout, RgbaImage};
+use image::{EncodableLayout, Rgba32FImage, RgbaImage};
 use std::cell::Cell;
 use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_DIMENSION_TEXTURE2DARRAY, D3D12_DSV_FLAG_NONE, D3D12_DSV_FLAG_READ_ONLY_DEPTH, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_SRV_DIMENSION_TEXTURECUBE, D3D12_TEX2D_ARRAY_DSV, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEX2D_UAV, D3D12_TEXCUBE_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, D3D12_UAV_DIMENSION_TEXTURE2D, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
@@ -104,8 +104,11 @@ impl Texture {
 
     pub fn cube_from_rgba8(batch: &mut UploadBatch, size: u32, faces: [&[u8]; 6], name: &str) -> anyhow::Result<Self> {
         let tex = Self::new(batch.gd(), TextureDesc {
-            kind: TextureKind::SampleSource, width: size, height: size,
-            format: DXGI_FORMAT_R8G8B8A8_UNORM, mips: 1, is_cube: true,
+            kind: TextureKind::SampleSource,
+            width: size, height: size,
+            format: DXGI_FORMAT_R8G8B8A8_UNORM,
+            mips: 1,
+            is_cube: true,
         }, name)?;
         tex.upload(batch, &faces)?;
         Ok(tex)
@@ -136,6 +139,26 @@ impl Texture {
             is_cube: false
         }, name)?;
         tex.upload(batch, &[bytemuck::cast_slice(img.as_raw())])?;
+        Ok(tex)
+    }
+
+    pub fn cube_from_hdr(batch: &mut UploadBatch, sides: [&[u8]; 6], name: &str) -> anyhow::Result<Self> {
+        let images: Vec<Rgba32FImage> = sides.into_iter().map(|each| -> anyhow::Result<Rgba32FImage> { Ok(image::load_from_memory(each)?.to_rgba32f()) }).collect::<anyhow::Result<_>>()?;
+        let tex = Self::new(batch.gd(), TextureDesc {
+            kind: TextureKind::SampleSource,
+            width: images[0].width(), height: images[0].height(),
+            format: DXGI_FORMAT_R32G32B32A32_FLOAT,
+            mips: 1,
+            is_cube: true
+        }, name)?;
+        tex.upload(batch, &[
+            bytemuck::cast_slice(images[0].as_raw()),
+            bytemuck::cast_slice(images[1].as_raw()),
+            bytemuck::cast_slice(images[2].as_raw()),
+            bytemuck::cast_slice(images[3].as_raw()),
+            bytemuck::cast_slice(images[4].as_raw()),
+            bytemuck::cast_slice(images[5].as_raw()),
+        ])?;
         Ok(tex)
     }
 
