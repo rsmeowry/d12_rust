@@ -8,7 +8,8 @@ pub struct Pass<'a> {
     pub reads: Vec<ResId>,
     pub writes_color: Vec<(ResId, ResLoad)>,
     pub writes_uav: Vec<(ResId, ResLoad)>,
-    pub uses_depth: Option<(ResId, DepthUse)>,
+    pub uses_depth: Option<(ResId, DepthUse, u32)>,
+    pub partial_depth: bool,
     pub has_side_effects: bool, // if writes to backbuffer
     pub exec: Box<dyn FnOnce(&PassCtx) -> anyhow::Result<()> + 'a>,
 }

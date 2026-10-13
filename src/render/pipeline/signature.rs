@@ -11,7 +11,7 @@ impl RootSignature {
     pub const GLOBALS: u32 = 1; // b1 - root CBV
     pub const TEX2D: u32 = 2; // t0 space1 - textures
     pub const OBJECTS: u32 = 3; // t1 - objects data
-    pub const TEX2D_ARRAY: u32 = 4; // t0 space2 - texture arrays
+    pub const TEX_CUBE: u32 = 4; // t0 space2 - cubemaps
     pub const MATERIALS: u32 = 5; // t2 - materials
     pub const ROOT_UAV: u32 = 6; // u0 space0 - root uav buffer
     pub const UAV_TEX2D: u32 = 7; // u0 space1 - writeable tex2ds
@@ -28,7 +28,7 @@ impl RootSignature {
             OffsetInDescriptorsFromTableStart: 0,  // spans the wholeee heap
         };
 
-        let tex2d_array_range = D3D12_DESCRIPTOR_RANGE {
+        let cubemap_tex_range = D3D12_DESCRIPTOR_RANGE {
             RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
             NumDescriptors: u32::MAX, // unlimited !! cus its heap
             BaseShaderRegister: 0,
@@ -98,13 +98,13 @@ impl RootSignature {
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL
             },
-            // t0 space2 - tex2d range
+            // t0 space2 - cubemap range
             D3D12_ROOT_PARAMETER {
                 ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
                 Anonymous: D3D12_ROOT_PARAMETER_0 {
                     DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE {
                         NumDescriptorRanges: 1,
-                        pDescriptorRanges: &tex2d_array_range,
+                        pDescriptorRanges: &cubemap_tex_range,
                     },
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
@@ -214,7 +214,7 @@ impl RootSignature {
             cmd.SetGraphicsRootSignature(&self.rs);
             cmd.SetGraphicsRootConstantBufferView(Self::GLOBALS, globals_va);
             cmd.SetGraphicsRootDescriptorTable(Self::TEX2D, heap_start);
-            cmd.SetGraphicsRootDescriptorTable(Self::TEX2D_ARRAY, heap_start);
+            cmd.SetGraphicsRootDescriptorTable(Self::TEX_CUBE, heap_start);
             cmd.SetGraphicsRootDescriptorTable(Self::UAV_TEX2D, heap_start);
             cmd.SetGraphicsRootDescriptorTable(Self::UAV_BUF, heap_start);
         }
@@ -225,7 +225,7 @@ impl RootSignature {
             cmd.SetComputeRootSignature(&self.rs);
             cmd.SetComputeRootConstantBufferView(Self::GLOBALS, globals_va);
             cmd.SetComputeRootDescriptorTable(Self::TEX2D, heap_start);
-            cmd.SetComputeRootDescriptorTable(Self::TEX2D_ARRAY, heap_start);
+            cmd.SetComputeRootDescriptorTable(Self::TEX_CUBE, heap_start);
             cmd.SetComputeRootDescriptorTable(Self::UAV_TEX2D, heap_start);
             cmd.SetComputeRootDescriptorTable(Self::UAV_BUF, heap_start);
         }

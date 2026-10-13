@@ -1,6 +1,6 @@
 ﻿use anyhow::anyhow;
 use glam::Vec4;
-use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT;
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D32_FLOAT};
 use crate::render::texture::{Texture, TextureDesc, TextureKind};
 use crate::wrappers::graphics::GraphicsDevice;
 
@@ -56,6 +56,16 @@ impl GraphResources {
         Ok(id)
     }
 
+    pub fn depth_cube(&mut self, gd: &GraphicsDevice, name: &str, size: u32) -> anyhow::Result<ResId> {
+        let tex = Texture::new(gd, TextureDesc {
+            kind: TextureKind::Depth, width: size, height: size,
+            format: DXGI_FORMAT_D32_FLOAT, mips: 1, is_cube: true,
+        }, name)?;
+        let id = ResId(self.resources.len());
+        self.resources.push((ResSize::Fixed(size, size), tex));
+        Ok(id)
+    }
+
     pub fn storage(&mut self, gd: &GraphicsDevice, name: &str, format: DXGI_FORMAT, size: ResSize) -> anyhow::Result<ResId> {
         let (w, h) = size.resolve(self.screen_w, self.screen_h);
         let tex = Texture::new(gd, TextureDesc {
@@ -64,6 +74,7 @@ impl GraphResources {
             height: h,
             format,
             mips: 1,
+            is_cube: false
         }, name)?;
         let id = ResId(self.resources.len());
         self.resources.push((size, tex));

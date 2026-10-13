@@ -9,7 +9,8 @@ impl<'a> FrameGraph<'a> {
             name,
             reads: Vec::new(),
             writes_color: Vec::new(),
-            writes_depth: None,
+            uses_depth: None,
+            partial_depth: false,
             writes_uav: Vec::new(),
             has_side_effects: false,
         }
@@ -21,7 +22,8 @@ pub struct PassBuilder<'g, 'f> {
     name: &'static str,
     reads: Vec<ResId>,
     writes_color: Vec<(ResId, ResLoad)>,
-    writes_depth: Option<(ResId, DepthUse)>,
+    uses_depth: Option<(ResId, DepthUse, u32)>,
+    partial_depth: bool,
     writes_uav: Vec<(ResId, ResLoad)>,
     has_side_effects: bool,
 }
@@ -38,7 +40,14 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
     }
 
     pub fn writes_depth(mut self, res: ResId, load: ResLoad) -> Self {
-        self.writes_depth = Some((res, DepthUse::Write(load)));
+        self.writes_depth_slice(res, load, 0)
+    }
+
+    pub fn writes_depth_slice(mut self, res: ResId, load: ResLoad, slice: u32) -> Self {
+        self.uses_depth = Some((res, DepthUse::Write(load), slice));
+        if slice != 0 {
+            self.partial_depth = true;
+        }
         self
     }
 
@@ -48,7 +57,7 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
     }
 
     pub fn reads_depth(mut self, res: ResId) -> Self {
-        self.writes_depth = Some((res, DepthUse::Test));
+        self.uses_depth = Some((res, DepthUse::Test, 0));
         self
     }
 
@@ -63,7 +72,8 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
             name: self.name,
             reads: self.reads,
             writes_color: self.writes_color,
-            uses_depth: self.writes_depth,
+            uses_depth: self.uses_depth,
+            partial_depth: self.partial_depth,
             has_side_effects: self.has_side_effects,
             writes_uav: self.writes_uav,
             exec: Box::new(exec)

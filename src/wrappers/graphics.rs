@@ -17,6 +17,7 @@ use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2, DXGI_CREATE_FACTORY_FLAGS, DXGI_PRESENT_ALLOW_TEARING, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING, DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter, IDXGIFactory6, IDXGISwapChain1, IDXGISwapChain3, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, IDXGIAdapter1, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_ADAPTER_FLAG_SOFTWARE};
 use windows::Win32::System::Threading::{CreateEventW, INFINITE, WaitForSingleObject};
 use windows::core::{Interface, HSTRING, PCWSTR};
+use crate::render::graph::res::ResId;
 use crate::render::texture::{Texture, TextureKind};
 use crate::wrappers::graphics::alloc::FrameAllocator;
 use crate::wrappers::graphics::batching::UploadBatch;
@@ -188,29 +189,38 @@ impl GraphicsDevice {
         Ok(())
     }
 
-    pub fn set_render_targets(&self, color: &[&Texture], depth: Option<&Texture>, depth_read_only: bool,) -> anyhow::Result<()> {
+    pub fn set_render_targets(&self, color: &[&Texture], depth: Option<(&Texture, u32)>, depth_read_only: bool,) -> anyhow::Result<()> {
         let res = self.resources()?;
         let cmd = &res.command_list;
         let rtvs: Vec<_> = color.iter().map(|t| {
             t.transition(cmd, D3D12_RESOURCE_STATE_RENDER_TARGET);
             res.rtv.cpu(t.rtv_ptr().expect("Did not get a render target!"))
         }).collect();
-        let dsv = depth.map(|d| {
+        let dsv = depth.map(|(d, slice)| {
             if depth_read_only {
                 d.transition(cmd, D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
                 res.dsv.cpu(d.dsv_ro_ptr().unwrap())
             } else {
                 d.transition(cmd, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-                res.dsv.cpu(d.dsv_ptr().unwrap())
+                res.dsv.cpu(d.dsv_slice(slice).unwrap())
             }
         });
 
-        let size = color.first().copied().or(depth).map(|t| (t.desc().width, t.desc().height)).unwrap();
+        let size = color.first().copied().or(depth.map(|it| it.0)).map(|t| (t.desc().width, t.desc().height)).unwrap();
         let (vp, sc) = Self::viewport_scissor(size.0, size.1);
         unsafe {
             cmd.RSSetViewports(&[vp]);
             cmd.RSSetScissorRects(&[sc]);
             cmd.OMSetRenderTargets(rtvs.len() as u32, Some(rtvs.as_ptr()), false, dsv.as_ref().map(|h| h as *const _));
+        }
+        Ok(())
+    }
+
+    pub fn clear_depth(&self, depth: &Texture, slice: u32) -> anyhow::Result<()> {
+        let res = self.resources()?;
+        unsafe {
+            res.command_list.ClearDepthStencilView(
+                res.dsv.cpu(depth.dsv_slice(slice).unwrap()), D3D12_CLEAR_FLAG_DEPTH, 0.0, 0, None);
         }
         Ok(())
     }

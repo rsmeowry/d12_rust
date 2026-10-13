@@ -21,25 +21,26 @@ impl<'a> FrameGraph<'a> {
 
     pub fn execute(self, gd: &GraphicsDevice, res: &GraphResources) -> anyhow::Result<()> {
         let cmd = gd.command_list()?;
-        for pass in self.cull_passes() {
+        for pass in self.cull_passes(res) {
             // transition all into readable state
             for r in &pass.reads {
                 res.get(*r)?.transition(cmd, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
             }
 
             let colors: Vec<&Texture> = pass.writes_color.iter().map(|it| res.get(it.0)).collect::<anyhow::Result<_>>()?;
-            let depth = pass.uses_depth.iter().map(|it| res.get(it.0)).next().transpose()?;
+            let depth = pass.uses_depth.iter().map(|it| res.get(it.0).map(|j| (j, it.2))).next().transpose()?;
+
             if pass.has_side_effects {
-                gd.bind_backbuffer(depth)?;
+                gd.bind_backbuffer(depth.map(|d| d.0))?;
             } else if !colors.is_empty() || depth.is_some() {
-                gd.set_render_targets(&colors, depth, pass.uses_depth.iter().map(|it| it.1 == DepthUse::Test).any(|it| it))?;
+                gd.set_render_targets(&colors, depth, pass.uses_depth.is_some_and(|d| d.1 == DepthUse::Test))?;
             }
 
-            // normal render targets
-            for (id, load) in pass.writes_color.iter().chain(writes_depth(&pass).iter()) {
-                if *load == ResLoad::Clear {
-                    gd.clear(res.get(*id)?)?;
-                }
+            for (id, load) in &pass.writes_color {
+                if *load == ResLoad::Clear { gd.clear(res.get(*id)?)?; }
+            }
+            if let Some((id, DepthUse::Write(ResLoad::Clear), slice)) = pass.uses_depth {
+                gd.clear_depth(res.get(id)?, slice)?;
             }
 
             // UAVs
@@ -57,7 +58,7 @@ impl<'a> FrameGraph<'a> {
         Ok(())
     }
 
-    fn cull_passes(self) -> Vec<Pass<'a>> {
+    fn cull_passes(self, res: &GraphResources) -> Vec<Pass<'a>> {
         let mut needed_res: HashSet<ResId> = HashSet::new();
         let mut alive = vec![false; self.passes.len()];
 
@@ -71,7 +72,7 @@ impl<'a> FrameGraph<'a> {
             }
             alive[i] = true;
             for (id, _) in pass.writes_color.iter().chain(writes_depth(&pass).iter()) {
-                needed_res.remove(id);
+                if !res.get(*id).unwrap().desc().is_cube { needed_res.remove(id); }
             }
             if let Some(depth) = pass.uses_depth && depth.1 == DepthUse::Test {
                 needed_res.insert(depth.0);
