@@ -2,6 +2,9 @@
 #include <lib/Lighting.hlsl>
 #include <lib/Deferred.hlsl>
 
+#define NO_SHADOW 0xFFFFFFFF
+#define LOCAL_NORMAL_OFFSET 1.5
+
 cbuffer DrawConstants : register(b0) { uint lightOffset; }
 StructuredBuffer<Light> g_Lights : register(t3);
 
@@ -35,10 +38,23 @@ VolumeOut vert(float3 p : POSITION, uint iid : SV_InstanceID) {
     return o;
 }
 
+float SpotShadow(Light l, Surface s) {
+    float dist = distance(s.pos, l.position);
+    float3 p = s.pos + s.normal * (l.shadowParams.z * dist * LOCAL_NORMAL_OFFSET);
+    float4 c = mul(l.shadowVp, float4(p, 1));
+    c.xyz /= c.w;
+    float2 uv = c.xy * float2(0.5, -0.5) + 0.5;
+    return g_Tex2D[NonUniformResourceIndex(l.shadowTex)].SampleCmpLevelZero(ShadowCmp, uv, c.z);
+}
+
 float4 frag(VolumeOut i) : SV_Target {
     Surface s;
     if (!LoadSurface(i.pos.xy, s))
         return 0;
-    float3 V = normalize(cameraPos - s.pos);
-    return float4(ShadeLight(g_Lights[i.light], s, V), 0);
+    Light l = g_Lights[i.light];
+    float3 color = ShadeLight(l, s, normalize(cameraPos - s.pos));
+    if (l.shadowTex != NO_SHADOW && any(color > 0)) {
+        color *= l.type == LIGHT_SPOT ? SpotShadow(l, s) : 1.0;
+    }
+    return float4(color, 0);
 }

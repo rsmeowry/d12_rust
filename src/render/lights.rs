@@ -5,6 +5,7 @@ use crate::render::builtin::Vertex3;
 pub const LIGHT_DIRECTIONAL: u32 = 0;
 pub const LIGHT_POINT: u32 = 1;
 pub const LIGHT_SPOT: u32 = 2;
+pub const NO_SHADOW: u32 = 0xFFFFFFFF;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -18,15 +19,18 @@ pub struct GpuLight {
     pub spot_inner_cos: f32,
     pub spot_outer_cos: f32,
     pub spot_radius: f32,
-    pub _pad: f32,
+    pub shadow_tex: u32, // srv index for shadow tex
+    pub shadow_vp: Mat4, // shadow view proj
+    pub shadow_params: Vec3, // xy - depth coeff, z - texel size
+    pub _pad: u32
 }
 
 impl GpuLight {
     pub fn directional(dir: Vec3, color: Vec3, intensity: f32) -> Self {
-        Self { direction: dir.normalize(), kind: 0, color, intensity, ..Self::zeroed() }
+        Self { direction: dir.normalize(), kind: 0, color, intensity, shadow_tex: NO_SHADOW, ..Self::zeroed() }
     }
     pub fn point(pos: Vec3, range: f32, color: Vec3, intensity: f32) -> Self {
-        Self { position: pos, range, kind: 1, color, intensity, ..Self::zeroed() }
+        Self { position: pos, range, kind: 1, color, intensity, shadow_tex: NO_SHADOW, ..Self::zeroed() }
     }
     pub fn spot(pos: Vec3, dir: Vec3, range: f32, inner_deg: f32, outer_deg: f32, color: Vec3, intensity: f32) -> Self {
         Self {
@@ -34,6 +38,7 @@ impl GpuLight {
             spot_inner_cos: inner_deg.to_radians().cos(),
             spot_outer_cos: outer_deg.to_radians().cos(),
             spot_radius: range * outer_deg.to_radians().tan(),
+            shadow_tex: NO_SHADOW,
             ..Self::zeroed()
         }
     }

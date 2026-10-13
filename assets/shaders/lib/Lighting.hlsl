@@ -1,6 +1,7 @@
 ﻿#define LIGHT_DIRECTIONAL 0
 #define LIGHT_POINT 1
 #define LIGHT_SPOT 2
+#define PCF_RADIUS 1
 
 struct Light {
     float3 position;
@@ -12,7 +13,9 @@ struct Light {
     float spotInnerCos;
     float spotOuterCos;
     float spotRadius;
-    float _pad;
+    uint shadowTex;
+    float4x4 shadowVp;
+    float4 shadowParams;
 };
 
 struct Surface {
@@ -27,6 +30,21 @@ float DistanceAttenuation(float dist, float range) {
     float r = dist / range;
     float window = saturate(1.0 - r * r * r * r);
     return window * window / (dist * dist + 1.0);
+}
+
+float PCF(Texture2D shadowMap, float2 uv, float z) {
+    float w;
+    float h;
+
+    shadowMap.GetDimensions(w, h);
+    float2 t = 1.0 / float2(w, h);
+
+    float sum = 0;
+    [unroll] for (int y = -PCF_RADIUS; y <= PCF_RADIUS; y++)
+    [unroll] for (int x = -PCF_RADIUS; x <= PCF_RADIUS; x++)
+        sum += shadowMap.SampleCmpLevelZero(ShadowCmp, uv + float2(x, y) * t, z);
+    const float n = 2 * PCF_RADIUS + 1;
+    return sum / (n * n);
 }
 
 float3 ShadeLight(Light l, Surface s, float3 V) {

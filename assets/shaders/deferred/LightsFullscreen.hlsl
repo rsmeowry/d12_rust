@@ -4,7 +4,6 @@
 
 StructuredBuffer<Light> g_Lights : register(t3);
 SamplerState AnisoWrap : register(s3);
-SamplerComparisonState ShadowCmp : register(s4);
 
 #define NORMAL_OFFSET 1.5
 #define PCF_RADIUS 1
@@ -39,16 +38,7 @@ float ShadowInCascade(uint cascade, Surface s) {
         return 1;
 
     Texture2D map = g_Tex2D[NonUniformResourceIndex(shadowTex[cascade])];
-    float w, h;
-    map.GetDimensions(w, h);
-    float2 t = 1.0 / float2(w, h);
-
-    float sum = 0;
-    [unroll] for (int y = -PCF_RADIUS; y <= PCF_RADIUS; y++)
-    [unroll] for (int x = -PCF_RADIUS; x <= PCF_RADIUS; x++)
-        sum += map.SampleCmpLevelZero(ShadowCmp, uv + float2(x, y) * t, p.z);
-    const float n = 2 * PCF_RADIUS + 1;
-    return sum / (n * n);
+    return PCF(map, uv, p.z);
 }
 
 float SampleShadow(Surface s) {

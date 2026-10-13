@@ -7,7 +7,7 @@ use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
-use crate::render::shadows::{ShadowCascades, CASCADE_COUNT};
+use crate::render::shadows::{LocalShadows, ShadowCascades, ShadowMap, CASCADE_COUNT};
 use crate::render::texture::Texture;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -78,6 +78,7 @@ pub struct DeferredLightingPass {
     point_light_mesh: Mesh,
     spot_light_mesh: Mesh,
     sky_tex: Texture,
+    local_shadows: Vec<ResId>,
 }
 
 impl DeferredLightingPass {
@@ -133,7 +134,12 @@ impl DeferredLightingPass {
             point_light_mesh,
             spot_light_mesh,
             sky_tex,
+            local_shadows: vec![]
         })
+    }
+
+    pub fn save_local_shadows(&mut self, map: &ShadowMap) {
+        self.local_shadows.extend(map.fetch_all_local_shadows());
     }
 
     pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
@@ -185,6 +191,10 @@ impl DeferredLightingPass {
             .reads(gbuffer.materials)
             .reads(gbuffer.scene_depth)
             .writes(gbuffer.scene_color, ResLoad::Preserve);
+
+        for local_shadows in &self.local_shadows {
+            pass = pass.reads(*local_shadows);
+        }
 
         if let Some(shadows) = shadows {
             for cascade in shadows.cascades {

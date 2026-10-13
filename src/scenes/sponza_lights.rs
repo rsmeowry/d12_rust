@@ -14,7 +14,7 @@ use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::scenes::Scene;
 use crate::time::Time;
-use glam::Vec3;
+use glam::{Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::shadows::{ShadowMap, CASCADE_COUNT};
@@ -39,8 +39,6 @@ impl Scene for SponzaWithLights {
     const NAME: &'static str = "Sponza (w/ lights)";
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
-        let lighting = DeferredLightingPass::new(renderer)?;
-
         let mut batch = renderer.gd.begin_upload()?;
 
         let mut materials = Vec::new();
@@ -66,7 +64,9 @@ impl Scene for SponzaWithLights {
         let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
         let bloom = BloomPass::new(renderer)?;
 
-        let shadows = ShadowMap::new(renderer, 1024)?;
+        let mut lighting = DeferredLightingPass::new(renderer)?;
+        let shadows = ShadowMap::new(renderer, 1024, 512)?;
+        lighting.save_local_shadows(&shadows);
 
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
@@ -117,7 +117,7 @@ impl Scene for SponzaWithLights {
             // GpuLight::point(Vec3::new(4. * t.sin(), 1., -1.2), 6., Vec3::new(1., 0.3, 0.2), 8.),
             // GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
             // GpuLight::point(Vec3::new(2., 2. + 2. * t.cos(), 0.), 8., Vec3::new(0.2, 0.9, 0.2), 8.),
-            // GpuLight::spot(Vec3::new(4., 2., -1.), Vec3::NEG_Y, 15., 15., 25.,  Vec3::ONE, 20.),
+            GpuLight::spot(Vec3::new(4., 2., -1.), Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.2, 0.2), 20.),
         ];
 
         let gr = &renderer.gr;
@@ -160,18 +160,24 @@ impl Scene for SponzaWithLights {
             });
 
         let (all_objects, all_meshes) = self.sponza.to_objects_and_draws();
+
+        // shadowws (global and local)
+        let all_objects_va = renderer.upload_objects(&all_objects)?;
         let lambda = 0.6;
         self.shadows.update(lights[0], lambda, renderer);
-        let shadow = self.shadows.add_pass(lights[0], 0.6, renderer, graph, all_objects, all_meshes)?;
-        for i in 0..CASCADE_COUNT {
-            opts.push_debug_line(Cow::Owned(format!("cascade {i}: <= {:.1}m | {} drawn", shadow.splits[i], shadow.drawn[i])))
-        }
-
+        let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
+        self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
         self.lighting.add_pass(lights, renderer, Some(shadow), &self.gbuffer, graph)?;
 
+        // bloom
         let bloom = self.bloom.add_pass(BloomProperties::default(), self.gbuffer.scene_color, renderer, graph)?;
         self.post.add_pass(post_props, Some(bloom), renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
+
+        // debug
+        for i in 0..CASCADE_COUNT {
+            opts.push_debug_line(Cow::Owned(format!("cascade {i}: <= {:.1}m | {} drawn", shadow.splits[i], shadow.drawn[i])))
+        }
 
         Ok(())
     }

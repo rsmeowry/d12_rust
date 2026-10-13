@@ -440,7 +440,7 @@ impl GraphicsDevice {
 
         // heaps
         let rtv = DescriptorHeap::new(dev, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 64, false, "RTV")?;
-        let dsv = DescriptorHeap::new(dev, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 16, false, "DSV")?;
+        let dsv = DescriptorHeap::new(dev, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 256, false, "DSV")?;
         let srv = DescriptorHeap::new(dev, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 65536, true, "SRV")?;
         let bb_rtv = [rtv.alloc()?, rtv.alloc()?];
         let depth_dsv = dsv.alloc()?;
@@ -648,7 +648,7 @@ pub struct GraphicsResources {
     bb_index: RefCell<u32>,
 
     rtv: DescriptorHeap, // 64
-    dsv: DescriptorHeap, // 16
+    dsv: DescriptorHeap, // 256
     srv: DescriptorHeap, // 65356
     bb_rtv: [u32; 2],
     swapchain_buffer: Vec<ID3D12Resource>,
