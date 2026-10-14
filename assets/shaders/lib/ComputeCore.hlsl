@@ -29,3 +29,7 @@ RWByteAddressBuffer g_RWBuffers[1024] : register(u0, space2);
 RWByteAddressBuffer g_RWScratch : register(u0);
 
 static const float PI = 3.14159265;
+
+float Luma(float3 c) {
+    return dot(c, float3(0.2126, 0.7152, 0.0722));
+}

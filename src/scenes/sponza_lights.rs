@@ -17,6 +17,7 @@ use crate::time::Time;
 use glam::{Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
+use crate::render::deferred::fog::{FogPass, FogProperties};
 use crate::render::shadows::{ShadowMap, CASCADE_COUNT};
 
 #[derive(Debug)]
@@ -30,6 +31,7 @@ pub struct SponzaWithLights {
     shadows: ShadowMap,
     culler: Culler,
     bloom: BloomPass,
+    fog: FogPass,
     lighting: DeferredLightingPass,
     post: PostProcessPass,
     blit: BlitPass
@@ -63,6 +65,7 @@ impl Scene for SponzaWithLights {
 
         let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
         let bloom = BloomPass::new(renderer)?;
+        let fog = FogPass::new(renderer)?;
 
         let mut lighting = DeferredLightingPass::new(renderer)?;
         let shadows = ShadowMap::new(renderer, 1024, 512, 512)?;
@@ -82,6 +85,7 @@ impl Scene for SponzaWithLights {
             shadows,
             culler,
             bloom,
+            fog,
             sponza,
             materials_buf,
             lighting,
@@ -168,6 +172,7 @@ impl Scene for SponzaWithLights {
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
         self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
         self.lighting.add_pass(lights, renderer, Some(shadow), &self.gbuffer, graph)?;
+        self.fog.add_pass(FogProperties::default(), Some(shadow), renderer, &self.gbuffer, graph)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

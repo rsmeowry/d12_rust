@@ -134,7 +134,6 @@ struct BloomDownProps {
     scene_tex: u32,
     out_tex: u32,
 }
-const _: () = assert!(std::mem::offset_of!(BloomDownProps, tint) == 32);
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]

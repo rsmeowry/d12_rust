@@ -12,12 +12,6 @@
     Cascades csm;
 };
 
-float3 WorldPosFromDepth(float2 uv, float depth) {
-    float4 clip = float4(uv.x * 2 - 1, 1 - uv.y * 2, depth, 1);
-    float4 w = mul(invViewProj, clip);
-    return w.xyz / w.w;
-}
-
 bool LoadSurface(float2 pixel, out Surface s) {
     s = (Surface) 0;
     int3 px = int3(pixel, 0);

@@ -23,6 +23,7 @@ float3 Fetch(Texture2D src, float2 uv, float2 offset) {
 float Luma(float3 c) {
     return dot(c, float3(0.2126, 0.7152, 0.0722));
 }
+
 float KarisWeight(float3 c) {
     return 1.0 / (1.0 + Luma(c));
 }
