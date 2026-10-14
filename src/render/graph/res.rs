@@ -60,6 +60,7 @@ impl GraphResources {
         let tex = Texture::new(gd, TextureDesc {
             kind: TextureKind::Depth, width: size, height: size,
             format: DXGI_FORMAT_D32_FLOAT, mips: 1, is_cube: true,
+            depth: 1,
         }, name)?;
         let id = ResId(self.resources.len());
         self.resources.push((ResSize::Fixed(size, size), tex));
@@ -74,7 +75,8 @@ impl GraphResources {
             height: h,
             format,
             mips: 1,
-            is_cube: false
+            is_cube: false,
+            depth: 1
         }, name)?;
         let id = ResId(self.resources.len());
         self.resources.push((size, tex));

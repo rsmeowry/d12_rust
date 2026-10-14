@@ -5,7 +5,7 @@ use glam::Vec4;
 use image::{EncodableLayout, Rgba32FImage, RgbaImage};
 use std::cell::Cell;
 use windows::core::HSTRING;
-use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_DIMENSION_TEXTURE2DARRAY, D3D12_DSV_FLAG_NONE, D3D12_DSV_FLAG_READ_ONLY_DEPTH, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_SRV_DIMENSION_TEXTURECUBE, D3D12_TEX2D_ARRAY_DSV, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEX2D_UAV, D3D12_TEXCUBE_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, D3D12_UAV_DIMENSION_TEXTURE2D, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
+use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_DIMENSION_TEXTURE2DARRAY, D3D12_DSV_FLAG_NONE, D3D12_DSV_FLAG_READ_ONLY_DEPTH, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_DIMENSION_TEXTURE3D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_SRV_DIMENSION_TEXTURE3D, D3D12_SRV_DIMENSION_TEXTURECUBE, D3D12_TEX2D_ARRAY_DSV, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEX2D_UAV, D3D12_TEX3D_SRV, D3D12_TEXCUBE_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, D3D12_UAV_DIMENSION_TEXTURE2D, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_D32_FLOAT, DXGI_FORMAT_D32_FLOAT_S8X24_UINT, DXGI_FORMAT_R24G8_TYPELESS, DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32G8X24_TYPELESS, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS, DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_SAMPLE_DESC};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -24,6 +24,7 @@ pub struct TextureDesc {
     pub format: DXGI_FORMAT,
     pub mips: u32,
     pub is_cube: bool,
+    pub depth: u32,
 }
 
 impl TextureDesc {
@@ -77,11 +78,11 @@ impl Texture {
     }
 
     pub fn render_target(gd: &GraphicsDevice, format: DXGI_FORMAT, w: u32, h: u32, clear: Vec4, name: &str) -> anyhow::Result<Self> {
-        Self::new(gd, TextureDesc { format, width: w, height: h, kind: TextureKind::RenderTarget(clear), mips: 1, is_cube: false }, name)
+        Self::new(gd, TextureDesc { format, width: w, height: h, kind: TextureKind::RenderTarget(clear), mips: 1, is_cube: false, depth: 1 }, name)
     }
 
     pub fn depth(gd: &GraphicsDevice, w: u32, h: u32, name: &str) -> anyhow::Result<Self> {
-        Self::new(gd, TextureDesc { format: DXGI_FORMAT_D32_FLOAT, width: w, height: h, kind: TextureKind::Depth, mips: 1, is_cube: false }, name)
+        Self::new(gd, TextureDesc { format: DXGI_FORMAT_D32_FLOAT, width: w, height: h, kind: TextureKind::Depth, mips: 1, is_cube: false, depth: 1 }, name)
     }
 
     pub fn load(batch: &mut UploadBatch<'_>, bytes: &[u8], srgb: bool, mips: MipCount, name: &str) -> anyhow::Result<Self> {
@@ -96,6 +97,7 @@ impl Texture {
             format: if srgb { DXGI_FORMAT_R8G8B8A8_UNORM_SRGB } else { DXGI_FORMAT_R8G8B8A8_UNORM },
             mips: mips.len() as u32,
             is_cube: false,
+            depth: 1
         }, name)?;
         let mips = mips.into_iter().map(|it| it.as_bytes()).collect::<Vec<_>>();
         base.upload(batch, &mips)?;
@@ -109,6 +111,7 @@ impl Texture {
             format: DXGI_FORMAT_R8G8B8A8_UNORM,
             mips: 1,
             is_cube: true,
+            depth: 1
         }, name)?;
         tex.upload(batch, &faces)?;
         Ok(tex)
@@ -123,9 +126,22 @@ impl Texture {
             format: if srgb { DXGI_FORMAT_R8G8B8A8_UNORM_SRGB } else { DXGI_FORMAT_R8G8B8A8_UNORM },
             mips: mips.len() as u32,
             is_cube: false,
+            depth: 1
         }, name)?;
         let mips = mips.iter().map(|it| it.as_bytes()).collect::<Vec<_>>();
         base.upload(batch, &mips)?;
+        Ok(base)
+    }
+
+    pub fn from_rgba8_3d(batch: &mut UploadBatch<'_>, width: u32, height: u32, depth: u32, bytes: &[u8], name: &str) -> anyhow::Result<Self> {
+        let base = Self::new(batch.gd(), TextureDesc {
+            kind: TextureKind::SampleSource,
+            width, height, depth,
+            format: DXGI_FORMAT_R8G8B8A8_UNORM,
+            mips: 1,
+            is_cube: false,
+        }, name)?;
+        base.upload(batch, &[&bytes])?;
         Ok(base)
     }
 
@@ -136,7 +152,8 @@ impl Texture {
             width: img.width(), height: img.height(),
             format: DXGI_FORMAT_R32G32B32A32_FLOAT,
             mips: 1,
-            is_cube: false
+            is_cube: false,
+            depth: 1
         }, name)?;
         tex.upload(batch, &[bytemuck::cast_slice(img.as_raw())])?;
         Ok(tex)
@@ -149,7 +166,8 @@ impl Texture {
             width: images[0].width(), height: images[0].height(),
             format: DXGI_FORMAT_R32G32B32A32_FLOAT,
             mips: 1,
-            is_cube: true
+            is_cube: true,
+            depth: 1
         }, name)?;
         tex.upload(batch, &[
             bytemuck::cast_slice(images[0].as_raw()),
@@ -245,10 +263,10 @@ impl Texture {
             }
         };
         let rd = D3D12_RESOURCE_DESC {
-            Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            Dimension: if desc.depth > 1 { D3D12_RESOURCE_DIMENSION_TEXTURE3D } else { D3D12_RESOURCE_DIMENSION_TEXTURE2D },
             Width: desc.width as u64,
             Height: desc.height,
-            DepthOrArraySize: desc.layers(),
+            DepthOrArraySize: if desc.depth > 1 { desc.depth as u16 } else { desc.layers() },
             MipLevels: desc.mips as u16,
             Format: fmt.resource,
             SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
@@ -272,14 +290,25 @@ impl Texture {
         let fmt = formats(&self.desc);
         let dev = gd.device();
         unsafe {
-            let srv = if !self.desc.is_cube { D3D12_SHADER_RESOURCE_VIEW_DESC {
-                Format: fmt.srv,
-                ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
-                Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-                Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
-                    Texture2D: D3D12_TEX2D_SRV { MipLevels: u32::MAX, ..Default::default() }
+            let srv = if !self.desc.is_cube {
+                D3D12_SHADER_RESOURCE_VIEW_DESC {
+                    Format: fmt.srv,
+                    ViewDimension: if self.desc.depth > 1 { D3D12_SRV_DIMENSION_TEXTURE3D } else { D3D12_SRV_DIMENSION_TEXTURE2D },
+                    Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                    Anonymous: if self.desc.depth > 1 {
+                        D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+                            Texture3D: D3D12_TEX3D_SRV {
+                                MipLevels: 1,
+                                ..Default::default()
+                            }
+                        }
+                    } else {
+                        D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+                            Texture2D: D3D12_TEX2D_SRV { MipLevels: u32::MAX, ..Default::default() }
+                        }
+                    }
                 }
-            } } else {
+            } else {
                 D3D12_SHADER_RESOURCE_VIEW_DESC {
                     Format: fmt.srv,
                     ViewDimension: D3D12_SRV_DIMENSION_TEXTURECUBE,
@@ -341,7 +370,7 @@ impl Texture {
 
     fn upload(&self, batch: &mut UploadBatch<'_>, mips: &[&[u8]]) -> anyhow::Result<()> {
         let desc = unsafe { self.res.GetDesc() };
-        let n = desc.MipLevels as usize * desc.DepthOrArraySize as usize;
+        let n = if desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D { desc.MipLevels as usize } else { desc.MipLevels as usize * desc.DepthOrArraySize as usize };
         anyhow::ensure!(mips.len() == n, "{}: {} mips given, resource has {}", self.name, mips.len(), n);
 
         let mut fps = vec![D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default(); n];
@@ -387,7 +416,7 @@ impl Texture {
                 cmd.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
             }
         }
-        self.transition(cmd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        self.transition(cmd, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
         Ok(())
     }
 }
