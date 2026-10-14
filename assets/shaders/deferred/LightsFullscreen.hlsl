@@ -1,6 +1,7 @@
 ﻿#include <../lib/Core.hlsl>
 #include <../lib/Lighting.hlsl>
 #include <../lib/Deferred.hlsl>
+#include <../lib/Shadows.hlsl>
 
 StructuredBuffer<Light> g_Lights : register(t3);
 SamplerState AnisoWrap : register(s3);
@@ -36,14 +37,14 @@ float SampleShadow(Surface s) {
         return 1; // farther than the farthest split
 
     uint cascade = CascadeIndex(d);
-    float sh = ShadowInCascade(cascade, s.pos, s.normal);
+    float sh = ShadowInCascade(cascade, s.pos, s.normal, true);
 
     // blending two cascades
     float start = (cascade == 0) ? 0.0 : splits[max(cascade, 1u) - 1];
     float band = 0.1 * (splits[cascade] - start);
     float t = saturate((d - (splits[cascade] - band)) / band);
     if (t > 0) {
-        float next = (cascade < 3) ? ShadowInCascade(cascade + 1, s.pos, s.normal) : 1.0; // smooth fadeout of the last cascade
+        float next = (cascade < 3) ? ShadowInCascade(cascade + 1, s.pos, s.normal, true) : 1.0; // smooth fadeout of the last cascade
         sh = lerp(sh, next, t);
     }
     return sh;

@@ -1,6 +1,7 @@
 ﻿#include <../lib/Core.hlsl>
 #include <../lib/Lighting.hlsl>
 #include <../lib/Deferred.hlsl>
+#include <../lib/Shadows.hlsl>
 
 #define NO_SHADOW 0xFFFFFFFF
 
@@ -44,7 +45,7 @@ float4 frag(VolumeOut i) : SV_Target {
     Light l = g_Lights[i.light];
     float3 color = ShadeLight(l, s, normalize(cameraPos - s.pos));
     if (l.shadowTex != NO_SHADOW && any(color > 0)) {
-        color *= l.type == LIGHT_SPOT ? SpotShadow(l, s.pos, s.normal) : l.type == LIGHT_POINT ? PointShadow(l, s.pos, s.normal) : 1.0;
+        color *= l.type == LIGHT_SPOT ? SpotShadow(l, s.pos, s.normal, true) : l.type == LIGHT_POINT ? PointShadow(l, s.pos, s.normal, true) : 1.0;
     }
     return float4(color, 0);
 }
