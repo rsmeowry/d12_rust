@@ -1,9 +1,8 @@
-﻿#include <lib/Core.hlsl>
-#include <lib/Lighting.hlsl>
-#include <lib/Deferred.hlsl>
+﻿#include <../lib/Core.hlsl>
+#include <../lib/Lighting.hlsl>
+#include <../lib/Deferred.hlsl>
 
 #define NO_SHADOW 0xFFFFFFFF
-#define LOCAL_NORMAL_OFFSET 1.5
 
 cbuffer DrawConstants : register(b0) { uint lightOffset; }
 StructuredBuffer<Light> g_Lights : register(t3);
@@ -38,24 +37,6 @@ VolumeOut vert(float3 p : POSITION, uint iid : SV_InstanceID) {
     return o;
 }
 
-float SpotShadow(Light l, Surface s) {
-    float dist = distance(s.pos, l.position);
-    float3 p = s.pos + s.normal * (l.shadowParams.z * dist * LOCAL_NORMAL_OFFSET);
-    float4 c = mul(l.shadowVp, float4(p, 1));
-    c.xyz /= c.w;
-    float2 uv = c.xy * float2(0.5, -0.5) + 0.5;
-    return PCF(g_Tex2D[NonUniformResourceIndex(l.shadowTex)], uv, c.z);
-}
-
-float PointShadow(Light l, Surface s) {
-    float3 v = s.pos - l.position;
-    v += s.normal * (l.shadowParams.z * length(v) * LOCAL_NORMAL_OFFSET);
-    float3 a = abs(v);
-    float z = max(a.x, max(a.y, a.z));
-    float depth = l.shadowParams.x + l.shadowParams.y / z;
-    return PCFCube(g_TexCube[NonUniformResourceIndex(l.shadowTex)], v, z, depth, l.shadowParams.z);
-}
-
 float4 frag(VolumeOut i) : SV_Target {
     Surface s;
     if (!LoadSurface(i.pos.xy, s))
@@ -63,7 +44,7 @@ float4 frag(VolumeOut i) : SV_Target {
     Light l = g_Lights[i.light];
     float3 color = ShadeLight(l, s, normalize(cameraPos - s.pos));
     if (l.shadowTex != NO_SHADOW && any(color > 0)) {
-        color *= l.type == LIGHT_SPOT ? SpotShadow(l, s) : l.type == LIGHT_POINT ? PointShadow(l, s) : 1.0;
+        color *= l.type == LIGHT_SPOT ? SpotShadow(l, s.pos, s.normal) : l.type == LIGHT_POINT ? PointShadow(l, s.pos, s.normal) : 1.0;
     }
     return float4(color, 0);
 }

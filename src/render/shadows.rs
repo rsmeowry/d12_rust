@@ -159,6 +159,8 @@ impl ShadowMap {
     }
 
     pub fn update(&mut self, main_light: GpuLight, lambda: f32, renderer: &Renderer) {
+        // incrementing first so add_global_shadows_pass sees the same frame_idx we decided on
+        self.frame_idx += 1;
         let splits = Self::calc_splits(CAM_NEAR, SHADOW_DISTANCE, lambda);
         for i in 0..CASCADE_COUNT {
             // checking if we should even update this cascade
@@ -168,7 +170,6 @@ impl ShadowMap {
             let (vp, texel) = Self::cascade_matrix(&renderer.cam, main_light.direction, splits[i], splits[i + 1], self.size);
             self.last_vp[i] = (vp, texel);
         }
-        self.frame_idx += 1;
     }
 
     pub fn add_global_shadows_pass<'f>(&self, lambda: f32, renderer: &'f Renderer, graph: &mut FrameGraph<'f>, objects: &[ObjectData], meshes: &[&'f Mesh]) -> anyhow::Result<ShadowCascades> {

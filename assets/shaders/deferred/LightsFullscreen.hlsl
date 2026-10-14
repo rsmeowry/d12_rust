@@ -1,12 +1,10 @@
-﻿#include <lib/Core.hlsl>
-#include <lib/Lighting.hlsl>
-#include <lib/Deferred.hlsl>
+﻿#include <../lib/Core.hlsl>
+#include <../lib/Lighting.hlsl>
+#include <../lib/Deferred.hlsl>
 
 StructuredBuffer<Light> g_Lights : register(t3);
 SamplerState AnisoWrap : register(s3);
 
-#define NORMAL_OFFSET 1.5
-#define PCF_RADIUS 1
 #define SKY_INTENSITY 1.2
 #define SKY_CUBEMAP 0
 
@@ -29,18 +27,6 @@ uint CascadeIndex(float depth) {
     return (uint) (depth > splits.x) + (uint) (depth > splits.y) + (uint) (depth > splits.z);
 }
 
-float ShadowInCascade(uint cascade, Surface s) {
-    float3 posOff = s.pos + s.normal * cascadeTexel[cascade] * NORMAL_OFFSET;
-    float4 p = mul(cascadeVp[cascade], float4(posOff, 1));
-    p.xyz /= p.w;
-    float2 uv = p.xy * float2(0.5, -0.5) + 0.5;
-    if (any(uv < 0) || any(uv > 1) || p.z < 0 || p.z > 1)
-        return 1;
-
-    Texture2D map = g_Tex2D[NonUniformResourceIndex(shadowTex[cascade])];
-    return PCF(map, uv, p.z);
-}
-
 float SampleShadow(Surface s) {
     if (useShadows == 0)
         return 1;
@@ -50,14 +36,14 @@ float SampleShadow(Surface s) {
         return 1; // farther than the farthest split
 
     uint cascade = CascadeIndex(d);
-    float sh = ShadowInCascade(cascade, s);
+    float sh = ShadowInCascade(cascade, s.pos, s.normal);
 
     // blending two cascades
     float start = (cascade == 0) ? 0.0 : splits[max(cascade, 1u) - 1];
     float band = 0.1 * (splits[cascade] - start);
     float t = saturate((d - (splits[cascade] - band)) / band);
     if (t > 0) {
-        float next = (cascade < 3) ? ShadowInCascade(cascade + 1, s) : 1.0; // smooth fadeout of the last cascade
+        float next = (cascade < 3) ? ShadowInCascade(cascade + 1, s.pos, s.normal) : 1.0; // smooth fadeout of the last cascade
         sh = lerp(sh, next, t);
     }
     return sh;

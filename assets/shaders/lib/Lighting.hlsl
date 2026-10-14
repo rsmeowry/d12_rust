@@ -2,12 +2,13 @@
 #define LIGHT_POINT 1
 #define LIGHT_SPOT 2
 #define PCF_RADIUS 1
+#define LOCAL_NORMAL_OFFSET 1.5
 
 struct Light {
     float3 position;
     float range;
     float3 direction;
-    uint  type;
+    uint type;
     float3 color;
     float intensity;
     float spotInnerCos;
@@ -62,6 +63,24 @@ float PCFCube(TextureCube shadowMap, float3 uvw, float z, float depth, float tex
         sum += shadowMap.SampleCmpLevelZero(ShadowCmp, uvw + (t * x + b * y) * stp, depth);
     const float k = 2 * PCF_RADIUS + 1;
     return sum / (k * k);
+}
+
+float SpotShadow(Light l, float3 pos, float3 offset) {
+    float dist = distance(pos, l.position);
+    float3 p = pos + offset * (l.shadowParams.z * dist * LOCAL_NORMAL_OFFSET);
+    float4 c = mul(l.shadowVp, float4(p, 1));
+    c.xyz /= c.w;
+    float2 uv = c.xy * float2(0.5, -0.5) + 0.5;
+    return PCF(g_Tex2D[NonUniformResourceIndex(l.shadowTex)], uv, c.z);
+}
+
+float PointShadow(Light l, float3 pos, float3 offset) {
+    float3 v = pos - l.position;
+    v += offset * (l.shadowParams.z * length(v) * LOCAL_NORMAL_OFFSET);
+    float3 a = abs(v);
+    float z = max(a.x, max(a.y, a.z));
+    float depth = l.shadowParams.x + l.shadowParams.y / z;
+    return PCFCube(g_TexCube[NonUniformResourceIndex(l.shadowTex)], v, z, depth, l.shadowParams.z);
 }
 
 float3 ShadeLight(Light l, Surface s, float3 V) {

@@ -273,7 +273,7 @@ impl ID3DInclude_Impl for ShaderStorage {
         let name =
             unsafe { pfilename.to_string() }.map_err(|_| windows::core::Error::from(E_FAIL))?;
         let name = name.replace('\\', "/");
-        let key = name.trim_start_matches("./");
+        let key = name.trim_start_matches("./").trim_start_matches("../");
         let path = self.root_dir.join(key);
 
         let src = self

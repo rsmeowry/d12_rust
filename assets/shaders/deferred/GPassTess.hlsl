@@ -1,4 +1,4 @@
-﻿#include <lib/Core.hlsl>
+﻿#include <../lib/Core.hlsl>
 #define MAX_TF 16.
 #define FAR 15.0
 #define NEAR 0.1
@@ -29,7 +29,6 @@ struct PhongTessMaterial {
 cbuffer DrawConstants : register(b0) { uint drawIndex; }
 StructuredBuffer<ObjectData> g_Objects : register(t1);
 StructuredBuffer<PhongTessMaterial> g_Materials : register(t2);
-Texture2D g_Tex2D[1024] : register(t0, space1);
 SamplerState AnisoWrap : register(s3);
 
 struct Attributes {

@@ -1,6 +1,5 @@
 ﻿#include <lib/Core.hlsl>
 
-Texture2D g_Tex2D[1024] : register(t0, space1);
 SamplerState PointClamp : register(s2);
 SamplerState LinearClamp : register(s1);
 cbuffer PostProperties : register(b2) {

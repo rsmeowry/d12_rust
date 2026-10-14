@@ -1,4 +1,7 @@
-﻿cbuffer LightingPass : register(b2) {
+﻿#define NORMAL_OFFSET 1.5
+#define PCF_RADIUS 1
+
+cbuffer LightingPass : register(b2) {
     uint albedoTex;
     uint normalTex;
     uint materialTex;
@@ -16,8 +19,6 @@
     float3 camForward;
     uint useShadows;
 };
-
-Texture2D g_Tex2D[1024] : register(t0, space1);
 
 float3 WorldPosFromDepth(float2 uv, float depth) {
     float4 clip = float4(uv.x * 2 - 1, 1 - uv.y * 2, depth, 1);
@@ -38,4 +39,16 @@ bool LoadSurface(float2 pixel, out Surface s) {
     s.shininess = m.g * 255.0;
     s.pos = WorldPosFromDepth(pixel / resolution, depth);
     return true;
+}
+
+float ShadowInCascade(uint cascade, float3 pos, float3 offset) {
+    float3 posOff = pos + offset * cascadeTexel[cascade] * NORMAL_OFFSET;
+    float4 p = mul(cascadeVp[cascade], float4(posOff, 1));
+    p.xyz /= p.w;
+    float2 uv = p.xy * float2(0.5, -0.5) + 0.5;
+    if (any(uv < 0) || any(uv > 1) || p.z < 0 || p.z > 1)
+        return 1;
+
+    Texture2D map = g_Tex2D[NonUniformResourceIndex(shadowTex[cascade])];
+    return PCF(map, uv, p.z);
 }

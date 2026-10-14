@@ -251,6 +251,10 @@ impl RootSignature {
         unsafe { cmd.SetGraphicsRootShaderResourceView(Self::LIGHTS_DATA, lights_va) };
     }
 
+    pub fn set_compute_lights(&self, cmd: &ID3D12GraphicsCommandList, lights_va: u64) {
+        unsafe { cmd.SetComputeRootShaderResourceView(Self::LIGHTS_DATA, lights_va) };
+    }
+
     pub fn set_compute_pass(&self, cmd: &ID3D12GraphicsCommandList, pass: u64) {
         unsafe { cmd.SetComputeRootConstantBufferView(Self::PASS_DATA, pass) }
     }

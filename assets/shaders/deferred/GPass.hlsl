@@ -1,4 +1,4 @@
-﻿#include <lib/Core.hlsl>
+﻿#include "../lib/Core.hlsl"
 
 struct ObjectData {
     float4x4 model;
@@ -22,7 +22,6 @@ struct PhongMaterial {
 cbuffer DrawConstants : register(b0) { uint drawIndex; }
 StructuredBuffer<ObjectData> g_Objects : register(t1);
 StructuredBuffer<PhongMaterial> g_Materials : register(t2);
-Texture2D g_Tex2D[1024] : register(t0, space1);
 SamplerState AnisoWrap : register(s3);
 
 struct Attributes {

@@ -1,7 +1,6 @@
-﻿#include <lib/Core.hlsl>
+﻿#include <./lib/Core.hlsl>
 
 cbuffer DrawConstants : register(b0) { uint drawIndex; } // font texture idx
-Texture2D g_Tex2D[1024] : register(t0, space1);
 SamplerState PointClamp : register(s2);
 
 struct Glyph {

@@ -1,6 +1,5 @@
 ﻿#include <lib/Core.hlsl>
 
-Texture2D g_Tex2D[1024] : register(t0, space1);
 SamplerState PointClamp : register(s2);
 cbuffer BlitProperties : register(b2) {
     uint sourceTex;
@@ -41,3 +40,4 @@ float4 frag(Varyings i) : SV_Target {
     }
     return scene + (dither - 0.5) * DITHER_STRENGTH;
 }
+
