@@ -1,7 +1,8 @@
 ﻿use crate::render::builtin::Vertex3;
 use crate::render::camera::Camera;
 use crate::render::graph::pass::ResLoad;
-use crate::render::graph::res::{ResId, ResSize};
+use crate::render::graph::res::{GraphResources, ResId, ResSize};
+use bytemuck::Zeroable;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::{GpuLight, LIGHT_POINT, LIGHT_SPOT};
 use crate::render::mesh::Mesh;
@@ -61,6 +62,30 @@ pub struct ShadowCascades {
     pub splits: Vec4, // distances, just assuming we have 4 cascades (🙏🙏)
     pub texel_sizes: Vec4, // texel sizes for each cascade
     pub drawn: [usize; CASCADE_COUNT], // how many objects per cascade
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GpuCascades {
+    pub vp: [Mat4; CASCADE_COUNT],
+    pub splits: Vec4,
+    pub texel: Vec4,
+    pub tex: [u32; CASCADE_COUNT],
+    pub cam_forward: Vec3,
+    pub enabled: u32,
+}
+
+impl GpuCascades {
+    pub fn new(shadows: Option<&ShadowCascades>, gr: &GraphResources, cam_forward: Vec3) -> anyhow::Result<Self> {
+        let Some(s) = shadows else {
+            return Ok(Self { vp: [Mat4::IDENTITY; CASCADE_COUNT], cam_forward, ..Self::zeroed() });
+        };
+        let mut tex = [0u32; CASCADE_COUNT];
+        for (dst, id) in tex.iter_mut().zip(s.cascades) {
+            *dst = gr.get(id)?.srv_ptr();
+        }
+        Ok(Self { vp: s.view_proj, splits: s.splits, texel: s.texel_sizes, tex, cam_forward, enabled: 1 })
+    }
 }
 
 impl ShadowMap {

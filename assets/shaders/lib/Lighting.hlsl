@@ -2,20 +2,7 @@
 #define LIGHT_POINT 1
 #define LIGHT_SPOT 2
 
-struct Light {
-    float3 position;
-    float range;
-    float3 direction;
-    uint type;
-    float3 color;
-    float intensity;
-    float spotInnerCos;
-    float spotOuterCos;
-    float spotRadius;
-    uint shadowTex;
-    float4x4 shadowVp;
-    float4 shadowParams;
-};
+SamplerComparisonState ShadowCmp : register(s4);
 
 struct Surface {
     float3 pos;

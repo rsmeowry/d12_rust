@@ -7,11 +7,11 @@ use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
-use crate::render::shadows::{LocalShadows, ShadowCascades, ShadowMap, CASCADE_COUNT};
+use crate::render::shadows::{GpuCascades, LocalShadows, ShadowCascades, ShadowMap};
 use crate::render::texture::Texture;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
-use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
+use glam::{Vec2, Vec3, Vec4, Vec4Swizzles};
 use std::fs::File;
 use std::io::Read;
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -20,6 +20,7 @@ use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D
 pub mod post;
 pub mod util;
 pub mod bloom;
+pub mod fog;
 
 #[derive(Debug, Copy, Clone)]
 pub struct GBuffer {
@@ -151,16 +152,6 @@ impl DeferredLightingPass {
         let lights_va = renderer.upload_slice(bytemuck::cast_slice(&lights), 16)?;
         let gr = &renderer.gr;
 
-        let mut shadows_tex = [0u32; CASCADE_COUNT];
-        if let Some(s) = &shadows {
-            for (dst, id) in shadows_tex.iter_mut().zip(s.cascades) {
-                *dst = gr.get(id)?.srv_ptr();
-            }
-        }
-        let (cascade_vp, splits, cascade_texel) = shadows
-            .map(|s| (s.view_proj, s.splits, s.texel_sizes))
-            .unwrap_or(([Mat4::IDENTITY; 4], Vec4::ZERO, Vec4::ZERO));
-
         let light_pass_va = renderer.upload_slice(bytemuck::bytes_of(&LightingPass {
             albedo: gr.get(gbuffer.albedo)?.srv_ptr(),
             normal: gr.get(gbuffer.normals)?.srv_ptr(),
@@ -172,12 +163,7 @@ impl DeferredLightingPass {
             _pad: 0.,
             ambient: Vec3::ONE * 0.07,
             _pad2: 0.,
-            cascade_vp,
-            shadows_tex,
-            cascade_texel,
-            splits,
-            cam_forward: renderer.cam.forward(),
-            use_shadows: shadows.is_some() as u32,
+            csm: GpuCascades::new(shadows.as_ref(), gr, renderer.cam.forward())?,
         }), 256)?;
 
         let rs = renderer.rs();
@@ -253,10 +239,6 @@ pub struct LightingPass {
     pub _pad: f32,
     pub ambient: Vec3,
     pub _pad2: f32,
-    pub cascade_vp: [Mat4; CASCADE_COUNT],
-    pub splits: Vec4,
-    pub cascade_texel: Vec4,
-    pub shadows_tex: [u32; CASCADE_COUNT],
-    pub cam_forward: Vec3,
-    pub use_shadows: u32
+    pub csm: GpuCascades,
 }
+const _: () = assert!(std::mem::offset_of!(LightingPass, csm) == 48);

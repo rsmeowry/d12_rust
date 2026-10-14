@@ -21,12 +21,12 @@ impl BloomPass {
     pub fn new(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let down = renderer.create_pipeline(PipelineDesc {
             name: "BloomDown",
-            shader: "compute/bloom/BloomDown.hlsl".into(),
+            shader: "compute/bloom/BloomDown.compute.hlsl".into(),
             ..Default::default()
         })?;
         let up = renderer.create_pipeline(PipelineDesc {
             name: "BloomUp",
-            shader: "compute/bloom/BloomUp.hlsl".into(),
+            shader: "compute/bloom/BloomUp.compute.hlsl".into(),
             ..Default::default()
         })?;
 

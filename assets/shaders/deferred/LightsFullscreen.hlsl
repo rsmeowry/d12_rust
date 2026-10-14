@@ -20,36 +20,6 @@ float3 SampleSky(float2 pixel) {
 #endif
 }
 
-float ViewDepth(float3 pos) {
-    return dot(pos - cameraPos, camForward);
-}
-
-uint CascadeIndex(float depth) {
-    return (uint) (depth > splits.x) + (uint) (depth > splits.y) + (uint) (depth > splits.z);
-}
-
-float SampleShadow(Surface s) {
-    if (useShadows == 0)
-        return 1;
-
-    float d = ViewDepth(s.pos);
-    if (d >= splits.w)
-        return 1; // farther than the farthest split
-
-    uint cascade = CascadeIndex(d);
-    float sh = ShadowInCascade(cascade, s.pos, s.normal, true);
-
-    // blending two cascades
-    float start = (cascade == 0) ? 0.0 : splits[max(cascade, 1u) - 1];
-    float band = 0.1 * (splits[cascade] - start);
-    float t = saturate((d - (splits[cascade] - band)) / band);
-    if (t > 0) {
-        float next = (cascade < 3) ? ShadowInCascade(cascade + 1, s.pos, s.normal, true) : 1.0; // smooth fadeout of the last cascade
-        sh = lerp(sh, next, t);
-    }
-    return sh;
-}
-
 float4 vert(uint id : SV_VertexID) : SV_Position {
     float2 uv = float2((id << 1) & 2, id & 2);
     return float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
@@ -72,7 +42,7 @@ float4 frag(float4 pos : SV_Position) : SV_Target {
     for (uint i = 0; i < dirCount; i++) {
         float3 litVal = ShadeLight(g_Lights[i], s, V);
         if(i == 0 && any(litVal > 0)) {
-            litVal *= SampleShadow(s);
+            litVal *= SampleCascades(s.pos, s.normal, true);
         }
         color += litVal;
     }
