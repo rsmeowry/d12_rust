@@ -18,8 +18,9 @@ cbuffer FogPass : register(b2) {
 
 #include <../../lib/Shadows.hlsl>
 
-#define LIGHT_SCATTERING 0.3
-#define LIGHT_CONTRIBUTION float3(0.8, 0.6, 0.6)
+#define LIGHT_SCATTERING 0.1
+#define LIGHT_CONTRIBUTION float3(2.5, 2.5, 2.5)
+#define NOISE_INTENSITY 0.2
 
 SamplerState LinearWrap : register(s0);
 StructuredBuffer<Light> g_Lights : register(t3);
@@ -38,11 +39,34 @@ float HenyeyGreenstein(float g2, float angle, float scattering) {
     return (1.0 - g2) / (4.0 * PI * denom * sqrt(denom));
 }
 
-float3 SampleMainLight(float g2, Light light, float3 rd, float3 rpos, float density) {
+float3 SampleMainLight(float g2, Light light, float3 rd, float3 rpos) {
     float phase = HenyeyGreenstein(g2, dot(rd, -light.direction), LIGHT_SCATTERING);
     float shadow = SampleCascades(rpos, float3(0, 0, 0), false);
 
-    return light.color * LIGHT_CONTRIBUTION * phase * density * stepDistance * shadow;
+    return light.color * LIGHT_CONTRIBUTION * phase * shadow;
+}
+
+float3 SampleLight(float g2, Light light, float3 rd, float3 rpos) {
+    float3 L = normalize(light.position - rpos);
+    float phase = HenyeyGreenstein(g2, dot(rd, L), LIGHT_SCATTERING);
+    float dist = length(rpos - light.position);
+    float atten = DistanceAttenuation(dist, light.range);
+    if (atten <= 0.0) {
+        return float3(0, 0, 0);
+    }
+    float shadow = light.type == LIGHT_POINT ? PointShadow(light, rpos, float3(0, 0, 0), false) : SpotShadow(light, rpos, float3(0, 0, 0), false);
+    float3 o = light.color
+        * light.intensity
+        * Luma(LIGHT_CONTRIBUTION).xxx
+        * phase
+        * shadow
+        * atten;
+
+    if(light.type == LIGHT_SPOT) {
+        o *= smoothstep(light.spotOuterCos, light.spotInnerCos, dot(-L, light.direction));
+    }
+
+    return o;
 }
 
 [numthreads(8, 8, 1)]
@@ -61,7 +85,7 @@ void CS(uint3 id : SV_DispatchThreadID) {
 
     float3 scattering = 0;
     float transmittance = 1.0;
-    float distanceTravelled = DitherInterleavedGradientNoise(1., uv * resolution, time / max(0.0001, deltaTime));
+    float distanceTravelled = stepDistance * NOISE_INTENSITY * InterleavedGradientNoise(float2(id.xy));
     uint c = 0;
 
     [loop]
@@ -70,15 +94,23 @@ void CS(uint3 id : SV_DispatchThreadID) {
         float3 pos = cameraPos + rd * (distanceTravelled + 0.5 * dt);
 
         float alpha = 1.0 - exp(-GetDensity(noiseTex, pos) * dt);
-        scattering += transmittance * alpha * fogColor;
+
+        distanceTravelled += dt;
+
+        float3 finalColor = fogColor;
+        if((c & 2) == 0) {
+            finalColor += SampleMainLight(g2, g_Lights[0], rd, pos);
+
+            for(uint lightIdx = 1; lightIdx < lightCount; lightIdx++) {
+                finalColor += SampleLight(g2, g_Lights[lightIdx], rd, pos);
+            }
+        }
+        scattering += transmittance * alpha * finalColor;
         transmittance *= 1.0 - alpha;
         distanceTravelled += dt;
-        if (transmittance < 0.01) {
-            break;
-        }
 
-        if((c & 2) == 0) {
-            scattering += transmittance * SampleMainLight(g2, g_Lights[0], rd, pos, transmittance);
+        if(transmittance < 0.01) {
+            break;
         }
     }
 

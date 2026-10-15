@@ -7,12 +7,11 @@ use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
-use crate::render::shadows::{GpuCascades, LocalShadows, ShadowCascades, ShadowMap};
+use crate::render::shadows::{GpuCascades, ShadowCascades, ShadowMap};
 use crate::render::texture::Texture;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
-use glam::{Vec2, Vec3, Vec4, Vec4Swizzles};
-use std::fs::File;
+use glam::{Vec3, Vec4, Vec4Swizzles};
 use std::io::Read;
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE};
@@ -143,7 +142,7 @@ impl DeferredLightingPass {
         self.local_shadows.extend(map.fetch_all_local_shadows());
     }
 
-    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<u64> {
+    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<(u64, u32)> {
         lights.sort_by_key(|l| l.kind);
         let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
         let first_spot = lights.partition_point(|l| l.kind < LIGHT_SPOT) as u32;
@@ -221,7 +220,7 @@ impl DeferredLightingPass {
                 Ok(())
             });
 
-        Ok(lights_va)
+        Ok((lights_va, lights.len() as u32))
     }
 }
 

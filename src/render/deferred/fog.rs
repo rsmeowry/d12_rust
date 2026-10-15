@@ -22,7 +22,7 @@ pub struct FogPass {
 }
 
 impl FogPass {
-    pub const DOWNSCALE: u32 = 4;
+    pub const DOWNSCALE: u32 = 2;
 
     pub fn new(shadows: Option<&ShadowMap>, renderer: &mut Renderer) -> anyhow::Result<Self> {
         let march = renderer.create_pipeline(PipelineDesc {
@@ -55,7 +55,7 @@ impl FogPass {
         Ok(Self { march, composite, fog_out: fog_tex, fog_noise, local_shadows })
     }
 
-    pub fn add_pass<'a>(&'a self, props: FogProperties, renderer: &'a Renderer, shadows: Option<ShadowCascades>, lights_va: u64,  gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    pub fn add_pass<'a>(&'a self, props: FogProperties, renderer: &'a Renderer, shadows: Option<ShadowCascades>, lights_va: u64, light_count: u32, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
         let gr = &renderer.gr;
         let rs = renderer.rs();
         let pipelines = renderer.pipelines();
@@ -75,7 +75,7 @@ impl FogPass {
             density: props.density,
             fog_color: props.color,
             noise_tex: self.fog_noise.srv_ptr(),
-            light_count: self.local_shadows.len() as u32,
+            light_count,
             _pad: [0; 3],
         })?;
         let composite_va = renderer.upload_cbuffer(&FogCompositeProps {
@@ -99,7 +99,7 @@ impl FogPass {
         for local in &self.local_shadows {
             march = march.reads(*local);
         }
-        
+
         march.exec(move |ctx| {
             pipelines.get(self.march).bind(ctx.cmd);
             rs.set_compute_pass(ctx.cmd, march_va);

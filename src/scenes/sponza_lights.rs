@@ -117,10 +117,11 @@ impl Scene for SponzaWithLights {
         let t = time.game_time();
         let mut lights = vec![
             GpuLight::directional(Vec3::new(0.3, -0.8, -0.1), Vec3::new(1., 0.95, 0.9), 0.6),
-            GpuLight::point(Vec3::new(4. * t.sin(), 2., -1.2), 12., Vec3::new(1., 0.3, 0.2), 12.),
+            // GpuLight::point(Vec3::new(4. * t.sin(), 2., -1.2), 12., Vec3::new(1., 0.3, 0.2), 12.),
             // GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
             // GpuLight::point(Vec3::new(2., 2. + 2. * t.cos(), 0.), 8., Vec3::new(0.2, 0.9, 0.2), 8.),
             GpuLight::spot(Vec3::new(4., 5., 0.), Quat::from_rotation_y(time.game_time()) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
+            GpuLight::spot(Vec3::new(4., 2., 0.), Quat::from_rotation_y(-time.game_time()) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
         ];
 
         let gr = &renderer.gr;
@@ -170,8 +171,11 @@ impl Scene for SponzaWithLights {
         self.shadows.update(lights[0], lambda, renderer);
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
         self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
-        let lights_va = self.lighting.add_pass(lights, renderer, Some(shadow), &self.gbuffer, graph)?;
-        self.fog.add_pass(FogProperties::default(), renderer, Some(shadow), lights_va, &self.gbuffer, graph)?;
+        let (lights_va, light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), &self.gbuffer, graph)?;
+        self.fog.add_pass(FogProperties {
+            density: 0.12,
+            ..Default::default()
+        }, renderer, Some(shadow), lights_va, light_count, &self.gbuffer, graph)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {
