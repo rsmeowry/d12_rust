@@ -143,7 +143,7 @@ impl DeferredLightingPass {
         self.local_shadows.extend(map.fetch_all_local_shadows());
     }
 
-    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<u64> {
         lights.sort_by_key(|l| l.kind);
         let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
         let first_spot = lights.partition_point(|l| l.kind < LIGHT_SPOT) as u32;
@@ -221,7 +221,7 @@ impl DeferredLightingPass {
                 Ok(())
             });
 
-        Ok(())
+        Ok(lights_va)
     }
 }
 

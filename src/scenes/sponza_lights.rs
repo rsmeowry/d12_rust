@@ -64,13 +64,12 @@ impl Scene for SponzaWithLights {
         batch.finish()?;
 
         let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
-        let bloom = BloomPass::new(renderer)?;
-        let fog = FogPass::new(renderer)?;
 
         let mut lighting = DeferredLightingPass::new(renderer)?;
         let shadows = ShadowMap::new(renderer, 1024, 512, 512)?;
         lighting.save_local_shadows(&shadows);
-
+        let bloom = BloomPass::new(renderer)?;
+        let fog = FogPass::new(Some(&shadows), renderer)?;
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
@@ -171,8 +170,8 @@ impl Scene for SponzaWithLights {
         self.shadows.update(lights[0], lambda, renderer);
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
         self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
-        self.lighting.add_pass(lights, renderer, Some(shadow), &self.gbuffer, graph)?;
-        self.fog.add_pass(FogProperties::default(), Some(shadow), renderer, &self.gbuffer, graph)?;
+        let lights_va = self.lighting.add_pass(lights, renderer, Some(shadow), &self.gbuffer, graph)?;
+        self.fog.add_pass(FogProperties::default(), renderer, Some(shadow), lights_va, &self.gbuffer, graph)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

@@ -5,23 +5,26 @@ use crate::render::graph::FrameGraph;
 use crate::render::pipeline::desc::{Blend, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, SCENE_FORMAT};
-use crate::render::shadows::{GpuCascades, ShadowCascades};
+use crate::render::shadows::{GpuCascades, ShadowCascades, ShadowMap};
 use anyhow::anyhow;
 use glam::Vec3;
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use windows::Win32::Graphics::Direct3D12::D3D12_CULL_MODE_NONE;
+use crate::render::texture::Texture;
 
 #[derive(Debug)]
 pub struct FogPass {
     march: PipelineId,
     composite: PipelineId,
-    fog_tex: ResId, // rgb: scattered light, a: transmittance
+    fog_noise: Texture,
+    fog_out: ResId, // rgb: scattered light, a: transmittance
+    local_shadows: Vec<ResId>
 }
 
 impl FogPass {
     pub const DOWNSCALE: u32 = 4;
 
-    pub fn new(renderer: &mut Renderer) -> anyhow::Result<Self> {
+    pub fn new(shadows: Option<&ShadowMap>, renderer: &mut Renderer) -> anyhow::Result<Self> {
         let march = renderer.create_pipeline(PipelineDesc {
             name: "FogRaymarch",
             shader: "compute/fog/VolumetricFog.compute.hlsl".into(),
@@ -38,15 +41,26 @@ impl FogPass {
             ..Default::default()
         })?;
         let fog_tex = renderer.gr.storage(&renderer.gd, "Fog", SCENE_FORMAT, ResSize::ScreenDiv(Self::DOWNSCALE))?;
-        Ok(Self { march, composite, fog_tex })
+
+        let mut batch = renderer.gd.begin_upload()?;
+        let fog_noise = Texture::from_rgba8_3d(&mut batch, 64, 64, 64, &std::fs::read("assets/textures/noise/noise_3d_64.raw")?, "Noise3D")?;
+        batch.finish()?;
+
+        let mut local_shadows = vec![];
+
+        if let Some(shadows) = shadows {
+            local_shadows = shadows.fetch_all_local_shadows();
+        }
+
+        Ok(Self { march, composite, fog_out: fog_tex, fog_noise, local_shadows })
     }
 
-    pub fn add_pass<'a>(&'a self, props: FogProperties, shadows: Option<ShadowCascades>, renderer: &'a Renderer, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    pub fn add_pass<'a>(&'a self, props: FogProperties, renderer: &'a Renderer, shadows: Option<ShadowCascades>, lights_va: u64,  gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
         let gr = &renderer.gr;
         let rs = renderer.rs();
         let pipelines = renderer.pipelines();
 
-        let fog = gr.get(self.fog_tex)?;
+        let fog = gr.get(self.fog_out)?;
         let size = [fog.desc().width, fog.desc().height];
         let depth = gr.get(gbuffer.scene_depth)?.srv_ptr();
 
@@ -60,7 +74,9 @@ impl FogPass {
             step_distance: props.step_distance.max(0.05),
             density: props.density,
             fog_color: props.color,
-            _pad: 0.0,
+            noise_tex: self.fog_noise.srv_ptr(),
+            light_count: self.local_shadows.len() as u32,
+            _pad: [0; 3],
         })?;
         let composite_va = renderer.upload_cbuffer(&FogCompositeProps {
             fog_tex: fog.srv_ptr(),
@@ -72,7 +88,7 @@ impl FogPass {
 
         let mut march = graph.add_pass("FogRaymarch")
             .reads(gbuffer.scene_depth)
-            .writes_uav(self.fog_tex, ResLoad::Preserve);
+            .writes_uav(self.fog_out, ResLoad::Preserve);
 
         if let Some(s) = &shadows {
             for cascade in s.cascades {
@@ -80,9 +96,14 @@ impl FogPass {
             }
         }
 
+        for local in &self.local_shadows {
+            march = march.reads(*local);
+        }
+        
         march.exec(move |ctx| {
             pipelines.get(self.march).bind(ctx.cmd);
             rs.set_compute_pass(ctx.cmd, march_va);
+            rs.set_compute_lights(ctx.cmd, lights_va);
             unsafe {
                 ctx.cmd.Dispatch(size[0].div_ceil(8), size[1].div_ceil(8), 1)
             };
@@ -90,7 +111,7 @@ impl FogPass {
         });
 
         graph.add_pass("FogComposite")
-            .reads(self.fog_tex)
+            .reads(self.fog_out)
             .reads(gbuffer.scene_depth)
             .writes(gbuffer.scene_color, ResLoad::Preserve)
             .exec(move |ctx| {
@@ -138,7 +159,9 @@ struct FogMarchProps {
     step_distance: f32,
     density: f32,
     fog_color: Vec3,
-    _pad: f32,
+    noise_tex: u32,
+    light_count: u32,
+    _pad: [u32; 3]
 }
 
 #[repr(C)]
