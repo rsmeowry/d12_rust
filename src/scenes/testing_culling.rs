@@ -2,7 +2,7 @@
 use crate::assets::{load_assimp_scene, LoadTex};
 use crate::render::builtin::Vertex3;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
-use crate::render::deferred::{DeferredLightingPass, GBuffer};
+use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
@@ -16,6 +16,7 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::deferred::lighting::PhongLightingPass;
 
 #[derive(Debug)]
 pub struct CullingScene {
@@ -28,7 +29,7 @@ pub struct CullingScene {
     materials_buf: ID3D12Resource,
 
     culler: Culler,
-    lighting: DeferredLightingPass,
+    lighting: PhongLightingPass,
     post: PostProcessPass,
     blit: BlitPass
 }
@@ -37,7 +38,7 @@ impl Scene for CullingScene {
     const NAME: &'static str = "Pusheens (10K)";
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
-        let lighting = DeferredLightingPass::new(renderer, "assets/textures/sky/sky.hdr")?;
+        let lighting = PhongLightingPass::new(renderer, "assets/textures/sky/sky.hdr")?;
 
         let mut batch = renderer.gd.begin_upload()?;
         let mut materials = Vec::new();

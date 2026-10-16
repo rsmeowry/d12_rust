@@ -2,7 +2,7 @@
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
-use crate::render::deferred::{DeferredLightingPass, GBuffer};
+use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::{unit_sphere, GpuLight};
@@ -15,6 +15,7 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{Mat4, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::deferred::lighting::PhongLightingPass;
 use crate::render::perf::frustum::AABB;
 
 #[derive(Debug)]
@@ -25,7 +26,7 @@ pub struct PbrSample {
     materials_buf: ID3D12Resource,
     objects: Vec<ObjectData>,
 
-    lighting: DeferredLightingPass,
+    lighting: PhongLightingPass,
     post: PostProcessPass,
     blit: BlitPass,
 }
@@ -37,7 +38,7 @@ impl Scene for PbrSample {
     const NAME: &'static str = "PBR Spheres";
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
-        let lighting = DeferredLightingPass::new(renderer, "assets/textures/pbr/warm_reception_dinner_4k.hdr")?;
+        let lighting = PhongLightingPass::new(renderer, "assets/textures/pbr/warm_reception_dinner_4k.hdr")?;
 
         let mut batch = renderer.gd.begin_upload()?;
 

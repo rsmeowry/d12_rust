@@ -2,7 +2,7 @@
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
 use crate::render::builtin::VertexTess;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
-use crate::render::deferred::{DeferredLightingPass, GBuffer};
+use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
@@ -15,6 +15,7 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{Mat4, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::deferred::lighting::PhongLightingPass;
 
 #[derive(Debug)]
 pub struct TesselatedSample {
@@ -24,7 +25,7 @@ pub struct TesselatedSample {
     materials_buf: ID3D12Resource,
 
     _displacement: Texture,
-    lighting: DeferredLightingPass,
+    lighting: PhongLightingPass,
     post: PostProcessPass,
     blit: BlitPass,
 }
@@ -33,7 +34,7 @@ impl Scene for TesselatedSample {
     const NAME: &'static str = "Tesselation (bricks)";
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
-        let lighting = DeferredLightingPass::new(renderer, "assets/textures/sky/sky.hdr")?;
+        let lighting = PhongLightingPass::new(renderer, "assets/textures/sky/sky.hdr")?;
 
         let mut batch = renderer.gd.begin_upload()?;
 
