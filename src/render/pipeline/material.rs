@@ -38,6 +38,7 @@ pub enum MaterialParams {
         albedo_tex: u32,
         normal_tex: u32,
         metal_roughness_tex: u32,
+        occlusion_tex: u32,
         base_color: Vec3,
         metallic: f32,
         roughness: f32
@@ -80,9 +81,9 @@ impl MaterialParams {
                     ]
                 }
             }
-            MaterialParams::Pbr { albedo_tex, normal_tex, metal_roughness_tex, base_color, metallic, roughness } => {
+            MaterialParams::Pbr { albedo_tex, normal_tex, metal_roughness_tex, occlusion_tex, base_color, metallic, roughness } => {
                 GpuMaterial {
-                    textures: [albedo_tex, normal_tex, metal_roughness_tex, 0, 0, 0, 0, 0],
+                    textures: [albedo_tex, normal_tex, metal_roughness_tex, occlusion_tex, 0, 0, 0, 0],
                     unique_params: [
                         base_color.x, base_color.y, base_color.z, metallic,
                         roughness, 0., 0., 0.,

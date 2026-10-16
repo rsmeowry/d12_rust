@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use bitflags::{bitflags, bitflags_match};
 use crate::render::perf::frustum::AABB;
+use crate::render::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct MaterialDefinition {
@@ -41,7 +42,7 @@ pub struct TextureSet {
     pub albedo: u32,
     pub normal: u32,
     pub roughness: u32,
-    pub metallic: u32,
+    pub lightmap: u32,
 }
 
 bitflags! {
@@ -50,15 +51,14 @@ bitflags! {
         const ALBEDO = 0b00000001;
         const NORMAL = 0b00000010;
         const ROUGHNESS = 0b00000100;
-        const METALLIC = 0b00001000;
+        const LIGHTMAP = 0b00001000;
     }
 }
 
 pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
-    gd: &GraphicsDevice,
+    renderer: &Renderer,
     batch: &mut UploadBatch<'_>,
     path: P,
-    white_tex: u32,
     materials: &mut Vec<GpuMaterial>,
     load_textures: LoadTex,
     topology: DrawTopology,
@@ -93,7 +93,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
         load_single_tex(&material, TextureType::BaseColor, LoadTex::ALBEDO);
         load_single_tex(&material, TextureType::Normals, LoadTex::NORMAL);
         load_single_tex(&material, TextureType::DiffuseRoughness, LoadTex::ROUGHNESS);
-        load_single_tex(&material, TextureType::Metalness, LoadTex::METALLIC);
+        load_single_tex(&material, TextureType::Lightmap, LoadTex::LIGHTMAP);
     }
 
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -125,18 +125,18 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
 
     for material in scene.materials() {
         let mut tex_set = TextureSet {
-            white: white_tex,
-            albedo: 0,
-            normal: 0,
-            roughness: 0,
-            metallic: 0,
+            white: renderer.white_tex().srv_ptr(),
+            albedo: renderer.white_tex().srv_ptr(),
+            normal: renderer.flat_normal_tex().srv_ptr(),
+            roughness: renderer.white_tex().srv_ptr(),
+            lightmap: renderer.white_tex().srv_ptr(),
         };
         for flag in load_textures.iter() {
             let ty = bitflags_match!(flag, {
                 LoadTex::ALBEDO => TextureType::BaseColor,
                 LoadTex::NORMAL => TextureType::Normals,
                 LoadTex::ROUGHNESS => TextureType::DiffuseRoughness,
-                LoadTex::METALLIC => TextureType::Metalness,
+                LoadTex::LIGHTMAP => TextureType::Lightmap,
                 _ => TextureType::BaseColor,
             });
             let idx = match material.texture(ty, 0) {
@@ -144,15 +144,13 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
                     let path_parent = pathbuf.parent().unwrap();
                     textures[*by_path.get(&path_parent.join(&t.path)).unwrap()].srv_ptr()
                 }
-                None => {
-                    0
-                }
+                None => continue, // keep the white / flat-normal fallback
             } as u32;
             bitflags_match!(flag, {
                 LoadTex::ALBEDO => tex_set.albedo = idx,
                 LoadTex::NORMAL => tex_set.normal = idx,
                 LoadTex::ROUGHNESS => tex_set.roughness = idx,
-                LoadTex::METALLIC => tex_set.metallic = idx,
+                LoadTex::LIGHTMAP => tex_set.lightmap = idx,
                 _ => { },
             });
         }
@@ -187,7 +185,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
             let vert = V::from_vertex_props(positions[i], normals[i], tangents[i], binormals[i], uvs[i], Vec4::ONE);
             vertices.push(vert);
         }
-        Mesh::new(gd, batch, &vertices, &indices, topology, AABB::from_points(&positions)).map(|it| (it, base + mesh.material_index() as u32))
+        Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions)).map(|it| (it, base + mesh.material_index() as u32))
     }).collect::<anyhow::Result<_>>()?;
 
     let mut out = Vec::new();

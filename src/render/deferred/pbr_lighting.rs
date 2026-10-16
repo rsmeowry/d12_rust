@@ -95,7 +95,7 @@ impl PbrLightingPass {
         self.local_shadows.extend(map.fetch_all_local_shadows());
     }
 
-    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<(u64, u32)> {
+    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, ambient_strength: f32, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<(u64, u32)> {
         lights.sort_by_key(|l| l.kind);
         let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
         let first_spot = lights.partition_point(|l| l.kind < LIGHT_SPOT) as u32;
@@ -113,7 +113,7 @@ impl PbrLightingPass {
             debug_view: 0,
             sky_tex: self.sky_tex.srv_ptr(),
             _pad: 0.,
-            ambient: Vec3::ONE * 0.07,
+            ambient: Vec3::ONE * ambient_strength,
             _pad2: 0.,
             csm: GpuCascades::new(shadows.as_ref(), gr, renderer.cam.forward())?,
             irradiance_tex: self.ibl_irradiance_tex.srv_ptr(),

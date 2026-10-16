@@ -50,13 +50,14 @@ impl Scene for PbrSampleMesh {
 
         let mut materials = Vec::new();
         let scene = load_assimp_scene::<VertexPbr, _>(
-            &renderer.gd, &mut batch, "assets/models/bananas/bananas_1k.gltf",
-            renderer.white_tex().srv_ptr(), &mut materials,
-            LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS, DrawTopology::TriangleList,
+            &renderer, &mut batch, "assets/models/bananas/bananas_1k.gltf",
+            &mut materials,
+            LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
             |mat, tex| MaterialParams::Pbr {
                 albedo_tex: tex.albedo,
                 normal_tex: tex.normal,
                 metal_roughness_tex: tex.roughness,
+                occlusion_tex: tex.lightmap,
                 base_color: mat.base_color().map(|it| Vec3::new(it.x, it.y, it.z)).unwrap_or(Vec3::ONE),
                 metallic: mat.metallic_factor().unwrap_or(1.0),
                 roughness: mat.roughness_factor().unwrap_or(1.0),
@@ -140,7 +141,7 @@ impl Scene for PbrSampleMesh {
                 Ok(())
             });
 
-        self.lighting.add_pass(lights, renderer, None, &self.gbuffer, graph)?;
+        self.lighting.add_pass(lights, renderer, None, 1.0, &self.gbuffer, graph)?;
         self.post.add_pass(post_props, None, renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 

@@ -10,7 +10,8 @@ struct PbrMaterial {
     uint albedoTex;
     uint normalTex;
     uint metalRoughnessTex;
-    uint _texPad[5];
+    uint occlusionTex;
+    uint _texPad[4];
 
     float3 baseColor;
     float metallic;
@@ -70,11 +71,12 @@ GBufferOut frag(Varyings i) {
     float3 normal = normalize(mul(texNormal.xyz, tbnMat));
 
     float4 roughnessMetallic = g_Tex2D[mat.metalRoughnessTex].Sample(AnisoWrap, i.uv);
+    float4 occlusion = g_Tex2D[mat.occlusionTex].Sample(AnisoWrap, i.uv);
 
     GBufferOut o;
     o.albedo = float4(albedo.rgb * mat.baseColor, 1);
     o.normal = float4(normal * 0.5 + 0.5, 0);
-    o.material = float4(roughnessMetallic.g * mat.roughness, roughnessMetallic.b * mat.metallic, roughnessMetallic.r, 0);
+    o.material = float4(roughnessMetallic.g * mat.roughness, roughnessMetallic.b * mat.metallic, occlusion.r, 0);
     o.emissive = 0;
     return o;
 }

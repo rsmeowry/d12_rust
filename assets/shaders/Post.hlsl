@@ -86,9 +86,9 @@ float4 frag(Varyings i) : SV_Target {
         source.rgb += g_Tex2D[bloomTex].SampleLevel(LinearClamp, i.uv, 0).rgb * bloomIntensity;
     }
 
-//    source.rgb = g_Tex2D[bloomTex].SampleLevel(LinearClamp, i.uv, 0).rgb;
     // hdr to ldr
-    source = source / (source + 1);
+    source.rgb *= exp2(0.5);
+    source.rgb = source.rgb / (source.rgb + 1.);
 
     // vignette
     if(enableVignette == 1) {

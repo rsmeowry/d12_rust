@@ -44,8 +44,8 @@ impl Scene for CullingScene {
         let mut materials = Vec::new();
         let mut objects = Vec::<ObjectData>::new();
         let scene = load_assimp_scene::<Vertex3, _>(
-            &renderer.gd, &mut batch, "assets/models/pusheen_holding_cookie/scene.gltf",
-            renderer.white_tex().srv_ptr(), &mut materials,
+            &renderer, &mut batch, "assets/models/pusheen_holding_cookie/scene.gltf",
+            &mut materials,
             LoadTex::ALBEDO, DrawTopology::TriangleList,
             |_mat, tex| MaterialParams::Phong {
                 tex: tex.albedo,

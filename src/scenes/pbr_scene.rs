@@ -63,6 +63,7 @@ impl Scene for PbrSample {
                     albedo_tex: renderer.white_tex().srv_ptr(),
                     normal_tex: renderer.flat_normal_tex().srv_ptr(),
                     metal_roughness_tex: renderer.white_tex().srv_ptr(),
+                    occlusion_tex: renderer.white_tex().srv_ptr(),
                     base_color: Vec3::new(0.9, 0.1, 0.1),
                     metallic: actual_metallness,
                     roughness: actual_roughness,
@@ -148,7 +149,7 @@ impl Scene for PbrSample {
                 Ok(())
             });
 
-        self.lighting.add_pass(lights, renderer, None, &self.gbuffer, graph)?;
+        self.lighting.add_pass(lights, renderer, None, 1.0, &self.gbuffer, graph)?;
         self.post.add_pass(post_props, None, renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 
