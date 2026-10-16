@@ -39,6 +39,9 @@ float4 frag(float4 pos : SV_Position) : SV_Target {
 
     float3 V = normalize(cameraPos - s.pos);
     float3 color = s.albedo * ambientColor;
+    #ifdef PBR
+    color = AmbientIBL(s, V);
+    #endif
     for (uint i = 0; i < dirCount; i++) {
         float3 litVal = ShadeLight(g_Lights[i], s, V);
         if(i == 0 && any(litVal > 0)) {

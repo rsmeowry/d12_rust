@@ -40,6 +40,7 @@ float3 ShadeLightPhong(Light l, Surface s, float3 V) {
 
 #ifdef PBR
 SamplerState LinearWrap : register(s0);
+SamplerState LinearClamp : register(s1);
 
 // Throwbridge-Reitz GGX NDF
 float NormalDistributionFunction(Light l, Surface s, float3 V) {
@@ -69,44 +70,60 @@ float GeometryFunction(Light l, Surface s, float3 V) {
 }
 
 // Fresnel-Schlick
-float3 FresnelSchlick(Light l, Surface s, float3 V) {
-    float3 f0 = float3(0.04, 0.04, 0.04); // taking an approx value here
-    float cosTheta = max(dot(s.normal, V), 0.0);
-    float oneMinusR = 1.0 - s.roughness;
-    return f0 + (max(float3(oneMinusR, oneMinusR, oneMinusR), f0) - f0) * pow(clamp(1.0 -
-            cosTheta, 0.0, 1.0), 5.0);
+float3 BaseReflectivity(Surface s) {
+    return lerp(0.04, s.albedo, s.metallic);
+}
+
+float3 FresnelSchlick(float cosTheta, float3 f0) {
+    return f0 + (1 - f0) * pow(1 - cosTheta, 5);
+}
+
+float3 FresnelSchlickRoughness(float cosTheta, float3 f0, float roughness) {
+    return f0 + (max(1 - roughness, f0) - f0) * pow(1 - cosTheta, 5);
+}
+
+float3 AmbientIBL(Surface s, float3 V) {
+    float nDotV = saturate(dot(s.normal, V));
+    float3 F = FresnelSchlickRoughness(nDotV, BaseReflectivity(s), s.roughness);
+    float3 kD = (1 - F) * (1 - s.metallic);
+
+    float3 irradiance = g_TexCube[irradianceTex].SampleLevel(LinearClamp, s.normal, 0).rgb;
+    float3 R = reflect(-V, s.normal);
+    float3 prefiltered = g_TexCube[specularTex].SampleLevel(LinearClamp, R, s.roughness * (specularMips - 1)).rgb;
+    float2 brdf = g_Tex2D[brdfLutTex].SampleLevel(LinearClamp, float2(nDotV, s.roughness), 0).rg;
+
+    return (kD * irradiance * s.albedo + prefiltered * (F * brdf.x + brdf.y)) * s.ao;
 }
 
 float3 ShadeLightPBR(Light l, Surface s, float3 V) {
-    // specular
-    float nDotV = max(dot(s.normal, V), 0.001);
-    float nDotL = max(dot(s.normal, -l.direction), 0.001);
-
-    if(nDotL <= 0.0) {
-        return 0.0;
+    float3 L = -l.direction;
+    float atten = 1.0;
+    if (l.type != LIGHT_DIRECTIONAL) {
+        float3 toLight = l.position - s.pos;
+        float dist = length(toLight);
+        L = toLight / max(dist, 1e-4);
+        atten = DistanceAttenuation(dist, l.range);
+        if (l.type == LIGHT_SPOT) {
+            atten *= smoothstep(l.spotOuterCos, l.spotInnerCos, dot(-L, l.direction));
+        }
     }
 
-    float D = NormalDistributionFunction(l, s, V);
-    float3 F = FresnelSchlick(l, s, V);
-    float G = GeometryFunction(l, s, V);
+    float nDotL = saturate(dot(s.normal, L));
+    if (nDotL <= 0.0 || atten <= 0.0) return 0;
 
-    // irradiance
-    TextureCube irradianceMap = g_TexCube[irradianceTex];
-    float3 irradiance = irradianceMap.SampleLevel(LinearWrap, s.normal, 0).rgb;
-    float3 diffuse = irradiance * s.albedo;
+    float3 H = normalize(V + L);
+    float nDotV = max(dot(s.normal, V), 1e-3);
+    float r = max(s.roughness, 0.045);
+    float a2 = r * r * r * r;
+    float nDotH = saturate(dot(s.normal, H));
+    float d = nDotH * nDotH * (a2 - 1) + 1;
+    float D = a2 / (PI * d * d);
+    float G = GeometrySchlick(nDotV, r) * GeometrySchlick(nDotL, r);
+    float3 F = FresnelSchlick(saturate(dot(H, V)), BaseReflectivity(s));
 
-    // prefiltered environment
-    float3 R = reflect(-V, s.normal);
-    float3 prefiltered = g_TexCube[specularTex].SampleLevel(LinearWrap, R, s.roughness * (specularMips - 1)).rgb;
-    Texture2D brdfLut = g_Tex2D[brdfLutTex];
-    float2 brdf = brdfLut.SampleLevel(LinearWrap, float2(max(dot(s.normal, V), 0.), s.roughness), 0.).rg;
-    float3 specular = prefiltered * (F * brdf.x + brdf.y);
-
-    float3 kD = 1.0 - F;
-    kD *= s.metallic;
-    float3 ambient = (kD * diffuse + specular);
-
-    return ambient;
+    float3 spec = D * G * F / (4 * nDotV * nDotL);
+    float3 kD = (1 - F) * (1 - s.metallic);
+    return (kD * s.albedo / PI + spec) * l.color * l.intensity * atten * nDotL;
 }
 #endif
 

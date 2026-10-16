@@ -48,7 +48,7 @@ impl Scene for PbrSample {
 
         let mut batch = renderer.gd.begin_upload()?;
 
-        let (sphere_vertices, sphere_indices) = unit_sphere(24, 24, |pos, norm, tangent, binorm, uv| {
+        let (sphere_vertices, sphere_indices) = unit_sphere(32, 32, |pos, norm, tangent, binorm, uv| {
             VertexPbr::new(pos, norm, tangent, binorm, uv)
         });
         let sphere_mesh = Mesh::new(&renderer.gd, &mut batch, &sphere_vertices, &sphere_indices, DrawTopology::TriangleList, AABB { min: Vec3::ZERO, max: Vec3::ONE })?;
@@ -56,9 +56,9 @@ impl Scene for PbrSample {
         let mut materials = Vec::new();
         let mut objects = Vec::new();
         for roughness in 0..SPHERES_AMT_X {
-            let actual_roughness = roughness as f32 / SPHERES_AMT_X as f32;
+            let actual_roughness = roughness as f32 / (SPHERES_AMT_X - 1) as f32;
             for metalness in 0..SPHERES_AMT_Y {
-                let actual_metallness = metalness as f32 / SPHERES_AMT_Y as f32;
+                let actual_metallness = metalness as f32 / (SPHERES_AMT_Y - 1) as f32;
                 materials.push(MaterialParams::Pbr {
                     albedo_tex: renderer.white_tex().srv_ptr(),
                     normal_tex: renderer.flat_normal_tex().srv_ptr(),

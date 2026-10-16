@@ -23,6 +23,7 @@ struct Surface {
     #ifdef PBR
     float roughness;
     float metallic;
+    float ao;
     #else
     float specular;
     float shininess;
@@ -44,7 +45,7 @@ bool LoadSurface(float2 pixel, out Surface s) {
     #else
     s.roughness = m.r;
     s.metallic = m.g;
-    // also maybe AO layer in BA
+    s.ao = m.b;
     #endif
     s.pos = WorldPosFromDepth(pixel / resolution, depth);
     return true;
