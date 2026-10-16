@@ -65,7 +65,7 @@ impl Scene for SponzaWithLights {
 
         let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
 
-        let mut lighting = DeferredLightingPass::new(renderer)?;
+        let mut lighting = DeferredLightingPass::new(renderer, "assets/textures/sky/sky.hdr")?;
         let shadows = ShadowMap::new(renderer, 1024, 512, 512)?;
         lighting.save_local_shadows(&shadows);
         let bloom = BloomPass::new(renderer)?;
@@ -173,10 +173,10 @@ impl Scene for SponzaWithLights {
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
         self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
         let (lights_va, light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), &self.gbuffer, graph)?;
-        self.fog.add_pass(FogProperties {
-            density: 0.12,
-            ..Default::default()
-        }, renderer, Some(shadow), lights_va, light_count, &self.gbuffer, graph)?;
+        // self.fog.add_pass(FogProperties {
+        //     density: 0.12,
+        //     ..Default::default()
+        // }, renderer, Some(shadow), lights_va, light_count, &self.gbuffer, graph)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

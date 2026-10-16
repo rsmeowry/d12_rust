@@ -33,7 +33,7 @@ impl Scene for TesselatedSample {
     const NAME: &'static str = "Tesselation (bricks)";
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
-        let lighting = DeferredLightingPass::new(renderer)?;
+        let lighting = DeferredLightingPass::new(renderer, "assets/textures/sky/sky.hdr")?;
 
         let mut batch = renderer.gd.begin_upload()?;
 

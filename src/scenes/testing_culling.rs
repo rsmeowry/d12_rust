@@ -37,7 +37,7 @@ impl Scene for CullingScene {
     const NAME: &'static str = "Pusheens (10K)";
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
-        let lighting = DeferredLightingPass::new(renderer)?;
+        let lighting = DeferredLightingPass::new(renderer, "assets/textures/sky/sky.hdr")?;
 
         let mut batch = renderer.gd.begin_upload()?;
         let mut materials = Vec::new();

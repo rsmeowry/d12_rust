@@ -37,7 +37,7 @@ impl Scene for PbrSample {
     const NAME: &'static str = "PBR Spheres";
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
-        let lighting = DeferredLightingPass::new(renderer)?;
+        let lighting = DeferredLightingPass::new(renderer, "assets/textures/pbr/warm_reception_dinner_4k.hdr")?;
 
         let mut batch = renderer.gd.begin_upload()?;
 

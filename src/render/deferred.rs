@@ -13,6 +13,7 @@ use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 use glam::{Vec3, Vec4, Vec4Swizzles};
 use std::io::Read;
+use std::path::Path;
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE};
 
@@ -35,7 +36,7 @@ pub struct GBuffer {
 
 impl Renderer {
     pub fn build_gbuffer<V: Vertex>(&mut self, pass_shader: &'static str, topology: DrawTopology) -> anyhow::Result<GBuffer> {
-        let scene_color = self.gr.color(&self.gd, "SceneColor", SCENE_FORMAT, Vec4::new(0.2, 0.3, 0.6, 1.0), ResSize::FitScreen)?;
+        let scene_color = self.gr.color(&self.gd, "SceneColor", SCENE_FORMAT, Vec4::ZERO, ResSize::FitScreen)?; // zero: lighting/sky are blended additively on top
         let scene_depth = self.gr.depth(&self.gd, "SceneDepth", ResSize::FitScreen)?;
         let albedo = self.gr.color(&self.gd, "SceneAlbedo", GB_ALBEDO, Vec4::ZERO, ResSize::FitScreen)?;
         let materials = self.gr.color(&self.gd, "SceneSpecular", GB_MATERIAL, Vec4::ZERO, ResSize::FitScreen)?;
@@ -82,7 +83,7 @@ pub struct DeferredLightingPass {
 }
 
 impl DeferredLightingPass {
-    pub fn new(renderer: &mut Renderer) -> anyhow::Result<Self> {
+    pub fn new<P: AsRef<Path>>(renderer: &mut Renderer, sky_path: P) -> anyhow::Result<Self> {
         let mut batch = renderer.gd.begin_upload()?;
 
         // let sky_tex = Texture::cube_from_hdr(&mut batch, [
@@ -93,7 +94,7 @@ impl DeferredLightingPass {
         //     &std::fs::read("assets/textures/cubemap/sky/front.hdr")?,
         //     &std::fs::read("assets/textures/cubemap/sky/back.hdr")?,
         // ], "Sky")?;
-        let sky_tex = Texture::from_hdr(&mut batch, &std::fs::read("assets/textures/sky/sky.hdr")?, "Sky")?;
+        let sky_tex = Texture::from_hdr(&mut batch, &std::fs::read(sky_path)?, "Sky")?;
 
         let point_light_mesh = unit_sphere(8, 8, |pos, norm, _tangent, _binormal, uv| { Vertex3::new(pos, norm, uv) });
         let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&point_light_mesh.0))?;
