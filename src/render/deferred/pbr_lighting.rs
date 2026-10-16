@@ -41,10 +41,9 @@ impl PbrLightingPass {
         let mut batch = renderer.gd.begin_upload()?;
 
         let sky_tex = Texture::from_hdr(&mut batch, &std::fs::read(sky_path)?, "Sky")?;
-        let ibl_irradiance_tex = Texture::from_hdr(&mut batch, &std::fs::read(irradiance_path)?, "IBLIrradiance")?;
-        let ibl_specular_tex = Texture::from_hdr(&mut batch, &std::fs::read(specular_path)?, "IBLSpecular")?;
-        let brdf_lut_tex = Texture::from_hdr(&mut batch, &std::fs::read(brdf_path)?, "BRDFLut")?;
-        
+        let ibl_irradiance_tex = Texture::from_dds(&mut batch, &std::fs::read(irradiance_path)?, "IBLIrradiance")?;
+        let ibl_specular_tex = Texture::from_dds(&mut batch, &std::fs::read(specular_path)?, "IBLSpecular")?;
+        let brdf_lut_tex = Texture::from_dds(&mut batch, &std::fs::read(brdf_path)?, "BRDFLut")?;
 
         let point_light_mesh = unit_sphere(8, 8, |pos, norm, _tangent, _binormal, uv| { Vertex3::new(pos, norm, uv) });
         let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&point_light_mesh.0))?;
@@ -79,8 +78,17 @@ impl PbrLightingPass {
             ..Default::default()
         })?;
 
-        todo!("bwa");
-        
+        Ok(Self {
+            lights,
+            lights_fullscreen,
+            point_light_mesh,
+            spot_light_mesh,
+            sky_tex,
+            ibl_irradiance_tex,
+            ibl_specular_tex,
+            brdf_lut_tex,
+            local_shadows: vec![],
+        })
     }
 
     pub fn save_local_shadows(&mut self, map: &ShadowMap) {

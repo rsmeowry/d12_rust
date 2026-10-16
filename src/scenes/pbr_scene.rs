@@ -16,6 +16,7 @@ use crate::time::Time;
 use glam::{Mat4, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::deferred::lighting::PhongLightingPass;
+use crate::render::deferred::pbr_lighting::PbrLightingPass;
 use crate::render::perf::frustum::AABB;
 
 #[derive(Debug)]
@@ -26,7 +27,7 @@ pub struct PbrSample {
     materials_buf: ID3D12Resource,
     objects: Vec<ObjectData>,
 
-    lighting: PhongLightingPass,
+    lighting: PbrLightingPass,
     post: PostProcessPass,
     blit: BlitPass,
 }
@@ -38,7 +39,12 @@ impl Scene for PbrSample {
     const NAME: &'static str = "PBR Spheres";
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
-        let lighting = PhongLightingPass::new(renderer, "assets/textures/pbr/warm_reception_dinner_4k.hdr")?;
+        let lighting = PbrLightingPass::new(renderer,
+                                            "assets/textures/pbr/warm_reception_dinner_4k.hdr",
+                                            "assets/textures/pbr/ibl_irradiance.dds",
+                                            "assets/textures/pbr/ibl_specular.dds",
+                                            "assets/textures/pbr/ibl_brdf_lut.dds",
+        )?;
 
         let mut batch = renderer.gd.begin_upload()?;
 
@@ -57,7 +63,7 @@ impl Scene for PbrSample {
                     albedo_tex: renderer.white_tex().srv_ptr(),
                     normal_tex: renderer.flat_normal_tex().srv_ptr(),
                     metal_roughness_tex: renderer.white_tex().srv_ptr(),
-                    base_color: Vec3::ONE,
+                    base_color: Vec3::new(0.9, 0.1, 0.1),
                     metallic: actual_metallness,
                     roughness: actual_roughness,
                 }.to_gpu_material());

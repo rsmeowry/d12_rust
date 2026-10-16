@@ -6,7 +6,7 @@ use image::{EncodableLayout, Rgba32FImage, RgbaImage};
 use std::cell::Cell;
 use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_DIMENSION_TEXTURE2DARRAY, D3D12_DSV_FLAG_NONE, D3D12_DSV_FLAG_READ_ONLY_DEPTH, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_DIMENSION_TEXTURE3D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_SRV_DIMENSION_TEXTURE3D, D3D12_SRV_DIMENSION_TEXTURECUBE, D3D12_TEX2D_ARRAY_DSV, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEX2D_UAV, D3D12_TEX3D_SRV, D3D12_TEXCUBE_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, D3D12_UAV_DIMENSION_TEXTURE2D, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_D32_FLOAT, DXGI_FORMAT_D32_FLOAT_S8X24_UINT, DXGI_FORMAT_R24G8_TYPELESS, DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32G8X24_TYPELESS, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS, DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_SAMPLE_DESC};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_D32_FLOAT, DXGI_FORMAT_D32_FLOAT_S8X24_UINT, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16_FLOAT, DXGI_FORMAT_R24G8_TYPELESS, DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32G8X24_TYPELESS, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS, DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_SAMPLE_DESC};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum TextureKind {
@@ -177,6 +177,50 @@ impl Texture {
             bytemuck::cast_slice(images[4].as_raw()),
             bytemuck::cast_slice(images[5].as_raw()),
         ])?;
+        Ok(tex)
+    }
+
+    pub fn from_dds(batch: &mut UploadBatch, bytes: &[u8], name: &str) -> anyhow::Result<Self> {
+        let fetch_u32 = |offset: usize| -> anyhow::Result<u32> {
+            let b = bytes.get(offset..offset + 4);
+            b.map(|it| u32::from_le_bytes(it.try_into().unwrap())).ok_or_else(|| anyhow!("Failed to read DDS header"))
+        };
+        // https://learn.microsoft.com/en-us/windows/win32/direct3ddds/dds-header
+        let height = fetch_u32(12)?; // +4 cus of first 4 bytes being "DDS "
+        let width = fetch_u32(16)?;
+        let mips = fetch_u32(28)?;
+        let fmt = DXGI_FORMAT(fetch_u32(128)? as i32);
+        let is_cube = fetch_u32(136)? & 0x4 != 0;
+
+        let bytes_per_pixel = match fmt {
+            DXGI_FORMAT_R16G16B16A16_FLOAT => 8,
+            DXGI_FORMAT_R16G16_FLOAT => 4,
+            DXGI_FORMAT_R32G32B32A32_FLOAT => 16,
+            f => anyhow::bail!("invalid DDS format!"),
+        };
+
+        let faces = if is_cube { 6 } else { 1};
+        let mut off = 148;
+        let mut subresources = Vec::with_capacity(faces * mips as usize);
+
+        for _ in 0..faces {
+            for mip in 0..mips {
+                let len = ((width >> mip).max(1) * (height >> mip).max(1) * bytes_per_pixel) as usize;
+                subresources.push(bytes.get(off..off + len).ok_or_else(|| anyhow!("Failed to read DDS data"))?);
+                off += len;
+            }
+        }
+
+        let tex = Self::new(batch.gd(), TextureDesc {
+            kind: TextureKind::SampleSource,
+            width,
+            height,
+            format: fmt,
+            mips,
+            is_cube, depth: 1 }, name)?;
+
+        tex.upload(batch, &subresources)?;
+
         Ok(tex)
     }
 

@@ -10,6 +10,10 @@
     float3 ambientColor;
     float _alsoPad;
     Cascades csm;
+    uint irradianceTex;
+    uint specularTex;
+    uint brdfLutTex;
+    float specularMips;
 };
 
 bool LoadSurface(float2 pixel, out Surface s) {

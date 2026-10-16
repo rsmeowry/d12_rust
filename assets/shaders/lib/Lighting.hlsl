@@ -53,8 +53,60 @@ float3 ShadeLightPhong(Light l, Surface s, float3 V) {
 #endif
 
 #ifdef PBR
+// Throwbridge-Reitz GGX NDF
+float NormalDistributionFunction(Light l, Surface s, float3 V) {
+    float alpha = s.roughness * s.roughness;
+    float alpha2 = alpha * alpha;
+    float3 L = l.direction;
+    float3 H = normalize(V - L);
+    float nDotH = max(dot(s.normal, H), 0.001);
+    float nDotH2 = nDotH * nDotH;
+    float comp = (nDotH2 * (alpha2 - 1) + 1);
+    return alpha2 / (PI * (comp * comp));
+}
+
+// Schlick-GGX Geometry Function
+float GeometrySchlick(float nDotV, float roughness) {
+    float k = (roughness + 1.0) * (roughness + 1.0) / 8.0;
+    return nDotV / (nDotV * (1 - k) + k);
+}
+
+// Smith-Schlick-GGX GF
+float GeometryFunction(Light l, Surface s, float3 V) {
+    float nDotV = max(dot(s.normal, V), 0.001);
+    float nDotL = max(dot(s.normal, -l.direction), 0.001);
+    float schlick1 = GeometrySchlick(nDotV, s.roughness);
+    float schlick2 = GeometrySchlick(nDotL, s.roughness);
+    return schlick1 * schlick2;
+}
+
+// Fresnel-Schlick
+float3 FresnelSchlick(Light l, Surface s, float3 V) {
+    float3 f0 = float3(0.04, 0.04, 0.04); // taking an approx value here
+    f0 = lerp(f0, s.albedo, s.metallic);
+    float3 L = l.direction;
+    float3 H = normalize(V - L);
+    float hDotV = max(dot(H, V), 0.001);
+    float twoPowBullshit = exp2(((-5.55473 * hDotV) - 6.98316) * hDotV);
+    return f0 + (1 - f0) * twoPowBullshit;
+}
+
 float3 ShadeLightPBR(Light l, Surface s, float3 V) {
-    return float3(s.normal.xy, s.roughness);
+    float nDotV = max(dot(s.normal, V), 0.001);
+    float nDotL = max(dot(s.normal, -l.direction), 0.001);
+
+    if(nDotL <= 0.0) {
+        return 0.0;
+    }
+
+    float D = NormalDistributionFunction(l, s, V);
+    float3 F = FresnelSchlick(l, s, V);
+    float G = GeometryFunction(l, s, V);
+
+    // specular (DFG) / 4(nDotV*nDotL)
+    float3 specular = (D * F * G) / (4 * (nDotV * nDotL));
+
+    return specular;
 }
 #endif
 
