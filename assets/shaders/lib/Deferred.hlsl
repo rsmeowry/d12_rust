@@ -21,8 +21,14 @@ bool LoadSurface(float2 pixel, out Surface s) {
     s.albedo = g_Tex2D[albedoTex].Load(px).rgb;
     s.normal = normalize(g_Tex2D[normalTex].Load(px).xyz * 2 - 1);
     float4 m = g_Tex2D[materialTex].Load(px);
+    #ifndef PBR
     s.specular = m.r;
     s.shininess = m.g * 255.0;
+    #else
+    s.roughness = m.r;
+    s.metallic = m.g;
+    // also maybe AO layer in BA
+    #endif
     s.pos = WorldPosFromDepth(pixel / resolution, depth);
     return true;
 }

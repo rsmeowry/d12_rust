@@ -1,6 +1,6 @@
 ﻿use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
-use crate::render::builtin::{VertexPbr, VertexTess};
+use crate::render::builtin::VertexPbr;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::{DeferredLightingPass, GBuffer};
 use crate::render::graph::pass::ResLoad;
@@ -56,7 +56,7 @@ impl Scene for PbrSample {
                     albedo_tex: renderer.white_tex().srv_ptr(),
                     normal_tex: renderer.flat_normal_tex().srv_ptr(),
                     metal_roughness_tex: renderer.white_tex().srv_ptr(),
-                    base_color: Default::default(),
+                    base_color: Vec3::ONE,
                     metallic: actual_metallness,
                     roughness: actual_roughness,
                 }.to_gpu_material());
@@ -72,7 +72,7 @@ impl Scene for PbrSample {
 
         batch.finish()?;
 
-        let gbuffer = renderer.build_gbuffer::<VertexTess>("deferred/GPassPBR.hlsl", DrawTopology::PatchList3)?;
+        let gbuffer = renderer.build_gbuffer::<VertexPbr>("deferred/GPassPBR.hlsl", DrawTopology::TriangleList)?;
 
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;

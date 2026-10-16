@@ -25,7 +25,8 @@ float DistanceAttenuation(float dist, float range) {
     return window * window / (dist * dist + 1.0);
 }
 
-float3 ShadeLight(Light l, Surface s, float3 V) {
+#ifndef PBR
+float3 ShadeLightPhong(Light l, Surface s, float3 V) {
     float3 L;
     float atten = 1.0;
     if (l.type == LIGHT_DIRECTIONAL) {
@@ -46,6 +47,21 @@ float3 ShadeLight(Light l, Surface s, float3 V) {
     float3 R = reflect(-L, s.normal);
     float RdotV = max(dot(R, V), 1e-5);
     float spec = pow(RdotV, max(s.shininess, 1.0)) * s.specular;
-    
+
     return (s.albedo + spec) * NdotL * l.color * l.intensity * atten;
+}
+#endif
+
+#ifdef PBR
+float3 ShadeLightPBR(Light l, Surface s, float3 V) {
+    return float3(s.normal.xy, s.roughness);
+}
+#endif
+
+float3 ShadeLight(Light l, Surface s, float3 V) {
+    #ifndef PBR
+    return ShadeLightPhong(l, s, V);
+    #else
+    return ShadeLightPBR(l, s, V);
+    #endif
 }

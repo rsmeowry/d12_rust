@@ -69,12 +69,12 @@ GBufferOut frag(Varyings i) {
     float4 texNormal = g_Tex2D[mat.normalTex].Sample(AnisoWrap, i.uv) * 2.0 - 1.0;
     float3 normal = normalize(mul(texNormal.xyz, tbnMat));
 
-    float4 roughness = g_Tex2D[mat.metalRoughnessTex].Sample(AnisoWrap, i.uv);
+    float4 roughnessMetallic = g_Tex2D[mat.metalRoughnessTex].Sample(AnisoWrap, i.uv);
 
     GBufferOut o;
     o.albedo = float4(albedo.rgb * mat.baseColor, 1);
     o.normal = float4(normal * 0.5 + 0.5, 0);
-    o.material = float4(roughness.x * mat.roughness, mat.metallic, 0, 0);
+    o.material = float4(roughnessMetallic.g * mat.roughness, roughnessMetallic.r * mat.metallic, 0, 0);
     o.emissive = 0;
     return o;
 }
