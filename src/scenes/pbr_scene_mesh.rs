@@ -1,24 +1,19 @@
-﻿use asset_importer::Color4D;
-use crate::app::RenderOpts;
+﻿use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
-use crate::render::builtin::{Vertex3, VertexPbr};
+use crate::render::builtin::VertexPbr;
+use crate::render::deferred::pbr_lighting::PbrLightingPass;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
-use crate::render::lights::{unit_sphere, GpuLight};
-use crate::render::mesh::{DrawTopology, Mesh};
+use crate::render::lights::GpuLight;
+use crate::render::mesh::DrawTopology;
 use crate::render::pipeline::material::MaterialParams;
-use crate::render::pipeline::PipelineId;
-use crate::render::renderer::{ObjectData, Renderer};
-use crate::render::texture::{MipCount, Texture};
+use crate::render::renderer::Renderer;
 use crate::scenes::Scene;
 use crate::time::Time;
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::render::deferred::lighting::PhongLightingPass;
-use crate::render::deferred::pbr_lighting::PbrLightingPass;
-use crate::render::perf::frustum::AABB;
 
 #[derive(Debug)]
 pub struct PbrSampleMesh {
@@ -31,9 +26,6 @@ pub struct PbrSampleMesh {
     post: PostProcessPass,
     blit: BlitPass,
 }
-
-const SPHERES_AMT_X: usize = 6;
-const SPHERES_AMT_Y: usize = 6;
 
 impl Scene for PbrSampleMesh {
     const NAME: &'static str = "PBR Mesh";

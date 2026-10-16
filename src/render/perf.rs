@@ -60,7 +60,7 @@ impl Culler {
             CullingMode::Octree => {
                 let mut visible = Vec::new();
                 self.scene_octree.query(&frustum, &mut visible);
-                self.culled_objects += (all_objects.len() - visible.len());
+                self.culled_objects += all_objects.len() - visible.len();
                 for i in visible {
                     visible_objects.push(all_objects[i as usize]);
                     visible_meshes.push((all_meshes[i as usize], pso));

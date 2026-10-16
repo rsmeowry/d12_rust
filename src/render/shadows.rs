@@ -2,7 +2,6 @@
 use crate::render::camera::Camera;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::{GraphResources, ResId, ResSize};
-use bytemuck::Zeroable;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::{GpuLight, LIGHT_POINT, LIGHT_SPOT};
 use crate::render::mesh::Mesh;
@@ -12,10 +11,11 @@ use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
+use bytemuck::Zeroable;
 use glam::{FloatExt, Mat4, Vec3, Vec4};
 use std::cell::Cell;
 use std::f32::consts::FRAC_PI_2;
-use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE};
+use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_FRONT};
 
 pub const CASCADE_COUNT: usize = 4;
 pub const CAM_NEAR: f32 = 0.1;
@@ -247,7 +247,7 @@ impl LocalShadows {
                     if self.last_spot + 1 >= MAX_SPOT_SHADOWS {
                         continue; // exhausted our texture limit :(
                     }
-                    let (vp, params) = Self::prepare_spot_light(light, self.spot_size);
+                    let (vp, _params) = Self::prepare_spot_light(light, self.spot_size);
                     let tex = self.spots[self.last_spot];
                     light.shadow_tex = renderer.gr.get(tex)?.srv_ptr();
                     shadows_depth_pass(
@@ -260,7 +260,7 @@ impl LocalShadows {
                     if self.last_point + 1 >= MAX_POINT_SHADOWS {
                         continue;
                     }
-                    let (faces, params) = Self::prepare_point_light(light, self.point_size);
+                    let (faces, _params) = Self::prepare_point_light(light, self.point_size);
                     let tex = self.points[self.last_point];
                     for (face_idx, face) in faces.into_iter().enumerate() {
                         shadows_depth_pass(

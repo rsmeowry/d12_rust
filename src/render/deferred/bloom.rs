@@ -5,7 +5,6 @@ use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, SCENE_FORMAT};
 use anyhow::anyhow;
-use glam::Vec4;
 
 #[derive(Debug)]
 pub struct BloomPass {

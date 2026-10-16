@@ -1,9 +1,9 @@
 ﻿use crate::render::graph::pass::{DepthUse, Pass, PassCtx, ResLoad};
 use crate::render::graph::res::{GraphResources, ResId};
 use crate::render::texture::Texture;
-use crate::wrappers::graphics::{transition_barrier, uav_barrier, GraphicsDevice};
-use std::collections::HashSet;
+use crate::wrappers::graphics::GraphicsDevice;
 use anyhow::bail;
+use std::collections::HashSet;
 use windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 
 pub mod pass;

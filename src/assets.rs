@@ -1,20 +1,19 @@
 pub mod shaders;
 
 use crate::render::mesh::{DrawTopology, Mesh};
+use crate::render::perf::frustum::AABB;
 use crate::render::pipeline::material::GpuMaterial;
+use crate::render::renderer::Renderer;
 use crate::render::texture::{build_mips, MipCount, Texture};
 use crate::render::vertex::{FromVertexProps, Vertex};
 use crate::wrappers::graphics::batching::UploadBatch;
-use crate::wrappers::graphics::GraphicsDevice;
 use asset_importer::postprocess::PostProcessSteps;
 use asset_importer::{Material, TextureType};
+use bitflags::{bitflags, bitflags_match};
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use image::RgbaImage;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use bitflags::{bitflags, bitflags_match};
-use crate::render::perf::frustum::AABB;
-use crate::render::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct MaterialDefinition {
@@ -77,7 +76,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
     let mut texture_paths: Vec<(PathBuf, bool, MipCount, TextureType)> = Vec::new();
 
     for material in scene.materials() {
-        let mut load_single_tex = |mat: &Material, ty: TextureType, flag: LoadTex| {
+        let mut load_single_tex = |_mat: &Material, ty: TextureType, flag: LoadTex| {
             if load_textures.contains(flag) {
                 match material.texture(ty, 0) {
                     Some(t) => {

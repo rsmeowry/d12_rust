@@ -1,17 +1,15 @@
-use std::borrow::Cow;
-use asset_importer::LogLevel::Debug;
 use crate::input::KeyCode;
 use crate::render::camera::Camera;
 use crate::render::deferred::util::DebugTextPass;
 use crate::render::graph::FrameGraph;
 use crate::render::pipeline::Globals;
 use crate::render::renderer::Renderer;
-use crate::scenes::sponza_lights::SponzaWithLights;
 use crate::scenes::Scene;
 use crate::time::Time;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{EulerRot, Quat, Vec2, Vec3};
+use std::borrow::Cow;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;

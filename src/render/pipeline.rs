@@ -6,7 +6,6 @@ use crate::assets::shaders::{ShaderStorage, ShaderType};
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::signature::RootSignature;
 use crate::wrappers::graphics::GraphicsDevice;
-use anyhow::anyhow;
 use glam::{Mat4, Vec2, Vec3};
 use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D::ID3DBlob;
@@ -112,7 +111,7 @@ impl Pipeline {
             unsafe { pso.SetName(&HSTRING::from(format!("Brine::Pipeline_{}", desc.name)))? };
             Ok(Self { pso })
         } else if let Some(cs) = cs {
-            let mut d = D3D12_COMPUTE_PIPELINE_STATE_DESC {
+            let d = D3D12_COMPUTE_PIPELINE_STATE_DESC {
                 pRootSignature: unsafe { std::mem::transmute_copy(&rs.rs) },
                 CS: bytecode(cs),
                 ..Default::default()

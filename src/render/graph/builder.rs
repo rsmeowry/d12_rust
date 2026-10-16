@@ -39,7 +39,7 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
         self
     }
 
-    pub fn writes_depth(mut self, res: ResId, load: ResLoad) -> Self {
+    pub fn writes_depth(self, res: ResId, load: ResLoad) -> Self {
         self.writes_depth_slice(res, load, 0)
     }
 

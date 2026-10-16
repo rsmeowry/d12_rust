@@ -1,7 +1,9 @@
-﻿use std::borrow::Cow;
-use crate::app::RenderOpts;
+﻿use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
-use crate::render::builtin::{Vertex3, VertexPbr};
+use crate::render::builtin::VertexPbr;
+use crate::render::deferred::bloom::{BloomPass, BloomProperties};
+use crate::render::deferred::fog::FogPass;
+use crate::render::deferred::pbr_lighting::PbrLightingPass;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
@@ -12,15 +14,12 @@ use crate::render::perf::Culler;
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
+use crate::render::shadows::{ShadowMap, CASCADE_COUNT};
 use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{Quat, Vec3};
+use std::borrow::Cow;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::render::deferred::bloom::{BloomPass, BloomProperties};
-use crate::render::deferred::fog::{FogPass, FogProperties};
-use crate::render::deferred::lighting::PhongLightingPass;
-use crate::render::deferred::pbr_lighting::PbrLightingPass;
-use crate::render::shadows::{ShadowMap, CASCADE_COUNT};
 
 #[derive(Debug)]
 pub struct SponzaWithLights {
@@ -121,7 +120,7 @@ impl Scene for SponzaWithLights {
         let objects_va = renderer.upload_objects(&objects)?;
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
 
-        let t = time.game_time();
+        let _t = time.game_time();
         let mut lights = vec![
             GpuLight::directional(Vec3::new(-0.3, -0.7, -0.15), Vec3::new(1., 0.95, 0.9), 12.0),
             // GpuLight::point(Vec3::new(4. * t.sin(), 2., -1.2), 12., Vec3::new(1., 0.3, 0.2), 12.),

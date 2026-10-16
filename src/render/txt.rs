@@ -32,7 +32,7 @@ pub struct Glyph {
     pub color: Vec4,
 }
 
-pub fn display_text(text: &str, width: u32, scale: f32, color: Vec4, drop_shadow: bool) -> Vec<Glyph> {
+pub fn display_text(text: &str, _width: u32, scale: f32, color: Vec4, drop_shadow: bool) -> Vec<Glyph> {
     let pos = Vec2::new(8., 8.); //calc_right_position(text, width, scale);
     let mut glyphs = Vec::with_capacity(text.len());
     if drop_shadow {
@@ -42,7 +42,7 @@ pub fn display_text(text: &str, width: u32, scale: f32, color: Vec4, drop_shadow
     glyphs
 }
 
-fn calc_right_position(text: &str, width: u32, scale: f32) -> Vec2 {
+fn _calc_right_position(text: &str, width: u32, scale: f32) -> Vec2 {
     let longest_line = text.split("\n").into_iter().map(|it| it.len()).max().unwrap();
     let width_in_pixels = longest_line as f32 * 8. * scale;
     Vec2::new(width as f32 - width_in_pixels, 8.)
