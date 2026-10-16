@@ -2,14 +2,21 @@
 #define LIGHT_POINT 1
 #define LIGHT_SPOT 2
 
+#define PBR
+
 SamplerComparisonState ShadowCmp : register(s4);
 
 struct Surface {
     float3 pos;
     float3 normal;
     float3 albedo;
+    #ifdef PBR
+    float roughness;
+    float metallic;
+    #else
     float specular;
     float shininess;
+    #endif
 };
 
 float DistanceAttenuation(float dist, float range) {

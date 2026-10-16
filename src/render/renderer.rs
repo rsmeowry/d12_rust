@@ -31,6 +31,7 @@ pub struct Renderer {
     pub gr: GraphResources,
     pub cam: Camera,
     white_tex: Texture,
+    flat_normal_tex: Texture,
     pipeline_mgr: PipelineManager,
     shaders: ShaderStorage,
 }
@@ -45,12 +46,14 @@ impl Renderer {
 
         let mut batch = gd.begin_upload()?;
         let white_tex = Texture::from_rgba8(&mut batch, 1, 1, &[255; 4], false, MipCount::All, "builtin/WHITE")?;
+        let flat_normal_tex = Texture::from_rgba8(&mut batch, 1, 1, &[128, 128, 255, 255], false, MipCount::All, "builtin/FLAT_NORMAL")?;
         batch.finish()?;
 
         Ok(Self {
             pipeline_mgr: PipelineManager::new(&gd)?,
             gr: GraphResources::new(width, height),
             white_tex,
+            flat_normal_tex,
             gd,
             shaders,
             cam
@@ -59,6 +62,10 @@ impl Renderer {
 
     pub fn white_tex(&self) -> &Texture {
         &self.white_tex
+    }
+    
+    pub fn flat_normal_tex(&self) -> &Texture {
+        &self.flat_normal_tex
     }
 
     pub fn rs(&self) -> &RootSignature {

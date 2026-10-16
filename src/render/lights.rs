@@ -1,6 +1,7 @@
 ﻿use bytemuck::Zeroable;
-use glam::{Mat4, Vec2, Vec3, Vec4};
+use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
 use crate::render::builtin::Vertex3;
+use crate::render::vertex::Vertex;
 
 pub const LIGHT_DIRECTIONAL: u32 = 0;
 pub const LIGHT_POINT: u32 = 1;
@@ -63,7 +64,7 @@ pub fn light_cone(details: u32) -> (Vec<Vertex3>, Vec<u32>) {
 }
 
 // https://danielsieger.com/blog/2021/03/27/generating-spheres.html
-pub fn unit_sphere(slices: u32, stacks: u32) -> (Vec<Vertex3>, Vec<u32>) {
+pub fn unit_sphere<TVert: Vertex>(slices: u32, stacks: u32, make_vert: fn (Vec3, Vec3, Vec3, Vec3, Vec2) -> TVert) -> (Vec<TVert>, Vec<u32>) {
     let mut v = Vec::with_capacity(((stacks + 1) * (slices + 1)) as usize);
     for j in 0..=stacks {
         let phi = std::f32::consts::PI * j as f32 / stacks as f32;
@@ -73,7 +74,11 @@ pub fn unit_sphere(slices: u32, stacks: u32) -> (Vec<Vertex3>, Vec<u32>) {
             let (st, ct) = theta.sin_cos();
             let p = [sp * ct, sp * st, cp];
             let uv = [i as f32 / slices as f32, j as f32 / stacks as f32];
-            v.push(Vertex3::new(p, p, uv));
+
+            // https://terathon.com/blog/tangent-space.html
+            let tangent = Vec4::new(-st, ct, 0., -1.);
+            let binormal = Vec3::from(p).cross(tangent.xyz()) * -1.;
+            v.push(make_vert(Vec3::from(p), Vec3::from(p), tangent.xyz(), binormal, Vec2::from(uv)));
         }
     }
 

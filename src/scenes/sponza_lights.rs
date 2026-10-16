@@ -137,6 +137,7 @@ impl Scene for SponzaWithLights {
             scene_color: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
             enable_sobel: 0,
             enable_fly_eye: 0,
+            enable_vignette: 1,
             ..Default::default()
         };
 

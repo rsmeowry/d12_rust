@@ -95,8 +95,6 @@ void CS(uint3 id : SV_DispatchThreadID) {
 
         float alpha = 1.0 - exp(-GetDensity(noiseTex, pos) * dt);
 
-        distanceTravelled += dt;
-
         float3 finalColor = fogColor;
         if((c & 2) == 0) {
             finalColor += SampleMainLight(g2, g_Lights[0], rd, pos);

@@ -33,6 +33,14 @@ pub enum MaterialParams {
         shininess: f32,
         diffuse_k: f32,
         specular_k: f32,
+    },
+    Pbr {
+        albedo_tex: u32,
+        normal_tex: u32,
+        metal_roughness_tex: u32,
+        base_color: Vec3,
+        metallic: f32,
+        roughness: f32
     }
 }
 
@@ -68,6 +76,17 @@ impl MaterialParams {
                         ambient.x, ambient.y, ambient.z, diffuse.x,
                         diffuse.y, diffuse.z, specular.x, specular.y,
                         specular.z, shininess, diffuse_k, specular_k,
+                        0., 0., 0., 0.
+                    ]
+                }
+            }
+            MaterialParams::Pbr { albedo_tex, normal_tex, metal_roughness_tex, base_color, metallic, roughness } => {
+                GpuMaterial {
+                    textures: [albedo_tex, normal_tex, metal_roughness_tex, 0, 0, 0, 0, 0],
+                    unique_params: [
+                        base_color.x, base_color.y, base_color.z, metallic,
+                        roughness, 0., 0., 0.,
+                        0., 0., 0., 0.,
                         0., 0., 0., 0.
                     ]
                 }

@@ -1,6 +1,7 @@
 ﻿pub mod sponza_lights;
 pub mod tesselated_sample;
 pub mod testing_culling;
+pub mod pbr_scene;
 
 use crate::app::RenderOpts;
 use crate::render::graph::FrameGraph;
