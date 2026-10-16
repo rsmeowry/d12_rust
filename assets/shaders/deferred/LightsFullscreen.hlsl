@@ -1,6 +1,6 @@
 ﻿#include <../lib/Core.hlsl>
-#include <../lib/Lighting.hlsl>
 #include <../lib/Deferred.hlsl>
+#include <../lib/Lighting.hlsl>
 #include <../lib/Shadows.hlsl>
 
 StructuredBuffer<Light> g_Lights : register(t3);

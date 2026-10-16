@@ -1,4 +1,6 @@
-﻿#include <../../lib/Core.hlsl>
+﻿#define COMPUTE
+
+#include <../../lib/Core.hlsl>
 #include <../../lib/Lighting.hlsl>
 
 cbuffer FogPass : register(b2) {

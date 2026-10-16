@@ -32,6 +32,8 @@ struct Cascades {
     uint enabled;
 };
 
+#define PBR
+
 Texture2D g_Tex2D[1024] : register(t0, space1);
 TextureCube g_TexCube[1024] : register(t0, space2);
 Texture3D g_Tex3D[1024] : register(t0, space3);
@@ -59,3 +61,4 @@ float DitherInterleavedGradientNoise(float b, float2 fragcoord, const in float t
     noise = (noise * 2.0) - 1.0;
     return b + noise / 255.0;
 }
+

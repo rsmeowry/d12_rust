@@ -16,6 +16,19 @@
     float specularMips;
 };
 
+struct Surface {
+    float3 pos;
+    float3 normal;
+    float3 albedo;
+    #ifdef PBR
+    float roughness;
+    float metallic;
+    #else
+    float specular;
+    float shininess;
+    #endif
+};
+
 bool LoadSurface(float2 pixel, out Surface s) {
     s = (Surface) 0;
     int3 px = int3(pixel, 0);

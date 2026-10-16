@@ -2,22 +2,7 @@
 #define LIGHT_POINT 1
 #define LIGHT_SPOT 2
 
-#define PBR
-
 SamplerComparisonState ShadowCmp : register(s4);
-
-struct Surface {
-    float3 pos;
-    float3 normal;
-    float3 albedo;
-    #ifdef PBR
-    float roughness;
-    float metallic;
-    #else
-    float specular;
-    float shininess;
-    #endif
-};
 
 float DistanceAttenuation(float dist, float range) {
     float r = dist / range;
@@ -25,6 +10,7 @@ float DistanceAttenuation(float dist, float range) {
     return window * window / (dist * dist + 1.0);
 }
 
+#ifndef COMPUTE
 #ifndef PBR
 float3 ShadeLightPhong(Light l, Surface s, float3 V) {
     float3 L;
@@ -53,6 +39,8 @@ float3 ShadeLightPhong(Light l, Surface s, float3 V) {
 #endif
 
 #ifdef PBR
+SamplerState LinearWrap : register(s0);
+
 // Throwbridge-Reitz GGX NDF
 float NormalDistributionFunction(Light l, Surface s, float3 V) {
     float alpha = s.roughness * s.roughness;
@@ -83,15 +71,14 @@ float GeometryFunction(Light l, Surface s, float3 V) {
 // Fresnel-Schlick
 float3 FresnelSchlick(Light l, Surface s, float3 V) {
     float3 f0 = float3(0.04, 0.04, 0.04); // taking an approx value here
-    f0 = lerp(f0, s.albedo, s.metallic);
-    float3 L = l.direction;
-    float3 H = normalize(V - L);
-    float hDotV = max(dot(H, V), 0.001);
-    float twoPowBullshit = exp2(((-5.55473 * hDotV) - 6.98316) * hDotV);
-    return f0 + (1 - f0) * twoPowBullshit;
+    float cosTheta = max(dot(s.normal, V), 0.0);
+    float oneMinusR = 1.0 - s.roughness;
+    return f0 + (max(float3(oneMinusR, oneMinusR, oneMinusR), f0) - f0) * pow(clamp(1.0 -
+            cosTheta, 0.0, 1.0), 5.0);
 }
 
 float3 ShadeLightPBR(Light l, Surface s, float3 V) {
+    // specular
     float nDotV = max(dot(s.normal, V), 0.001);
     float nDotL = max(dot(s.normal, -l.direction), 0.001);
 
@@ -103,10 +90,23 @@ float3 ShadeLightPBR(Light l, Surface s, float3 V) {
     float3 F = FresnelSchlick(l, s, V);
     float G = GeometryFunction(l, s, V);
 
-    // specular (DFG) / 4(nDotV*nDotL)
-    float3 specular = (D * F * G) / (4 * (nDotV * nDotL));
+    // irradiance
+    TextureCube irradianceMap = g_TexCube[irradianceTex];
+    float3 irradiance = irradianceMap.SampleLevel(LinearWrap, s.normal, 0).rgb;
+    float3 diffuse = irradiance * s.albedo;
 
-    return specular;
+    // prefiltered environment
+    float3 R = reflect(-V, s.normal);
+    float3 prefiltered = g_TexCube[specularTex].SampleLevel(LinearWrap, R, s.roughness * (specularMips - 1)).rgb;
+    Texture2D brdfLut = g_Tex2D[brdfLutTex];
+    float2 brdf = brdfLut.SampleLevel(LinearWrap, float2(max(dot(s.normal, V), 0.), s.roughness), 0.).rg;
+    float3 specular = prefiltered * (F * brdf.x + brdf.y);
+
+    float3 kD = 1.0 - F;
+    kD *= s.metallic;
+    float3 ambient = (kD * diffuse + specular);
+
+    return ambient;
 }
 #endif
 
@@ -117,3 +117,5 @@ float3 ShadeLight(Light l, Surface s, float3 V) {
     return ShadeLightPBR(l, s, V);
     #endif
 }
+
+#endif
