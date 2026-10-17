@@ -42,7 +42,7 @@ impl Scene for PbrSampleMesh {
 
         let mut materials = Vec::new();
         let scene = load_assimp_scene::<VertexPbr, _>(
-            &renderer, &mut batch, "assets/models/bananas/bananas_1k.gltf",
+            &renderer, &mut batch, "assets/models/bull_head/bull_head_1k.gltf",
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
             |mat, tex| MaterialParams::Pbr {
@@ -133,7 +133,7 @@ impl Scene for PbrSampleMesh {
                 Ok(())
             });
 
-        self.lighting.add_pass(lights, renderer, None, 1.0, &self.gbuffer, graph)?;
+        self.lighting.add_pass(lights, renderer, None, 1.0, &self.gbuffer, graph, opts)?;
         self.post.add_pass(post_props, None, renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 

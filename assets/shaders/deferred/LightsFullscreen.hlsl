@@ -31,11 +31,15 @@ float4 frag(float4 pos : SV_Position) : SV_Target {
         return float4(SampleSky(pos.xy), 0);
 
     if (debugView == 1)
-        return float4(s.albedo, 0);
-    if (debugView == 2)
         return float4(s.normal, 0);
+    #ifdef PBR
+    if (debugView == 2)
+        return float4(s.metallic.xxx, 0);
     if (debugView == 3)
-        return float4(frac(s.pos), 0);
+        return float4(s.roughness.xxx, 0);
+    if (debugView == 4)
+        return float4(s.ao.xxx, 0);
+    #endif
 
     float3 V = normalize(cameraPos - s.pos);
     float3 color = s.albedo * ambientColor;

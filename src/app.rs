@@ -154,7 +154,7 @@ impl<S: Scene> App<S> {
         }
 
         if input.was_released(KeyCode::F7) {
-            self.opts.debug_view_type = (self.opts.debug_view_type + 1) % 4;
+            self.opts.debug_view_type = (self.opts.debug_view_type + 1) % 5;
         }
 
         if input.was_released(KeyCode::F8) {
