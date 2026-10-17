@@ -42,7 +42,7 @@ impl Scene for TesselatedSample {
 
         let mut materials = Vec::new();
         let object = load_assimp_scene::<VertexTess, _>(
-            &renderer, &mut batch, "assets/models/bricks/BrickSphere.gltf",
+            &renderer, &mut batch, "assets/models/bricks/torus.gltf",
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL, DrawTopology::PatchList3,
             |_mat, tex| MaterialParams::PhongTess {

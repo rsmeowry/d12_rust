@@ -5,7 +5,7 @@ use crate::render::perf::frustum::AABB;
 use crate::render::pipeline::material::GpuMaterial;
 use crate::render::renderer::Renderer;
 use crate::render::texture::{build_mips, MipCount, Texture};
-use crate::render::vertex::{FromVertexProps, Vertex};
+use crate::render::vertex::{FromVertexProps, LodVertex, Vertex};
 use crate::wrappers::graphics::batching::UploadBatch;
 use asset_importer::postprocess::PostProcessSteps;
 use asset_importer::{Material, TextureType};
@@ -14,6 +14,7 @@ use glam::{Mat4, Vec2, Vec3, Vec4};
 use image::RgbaImage;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use crate::wrappers::graphics::GraphicsDevice;
 
 #[derive(Debug)]
 pub struct MaterialDefinition {
@@ -25,7 +26,9 @@ pub struct MaterialDefinition {
 pub struct LoadedScene {
     pub mesh_indices: Vec<(usize, Mat4)>,
     pub meshes: Vec<(Mesh, u32)>,
+    pub mesh_lods: Vec<Vec<(Mesh, u32)>>,
     pub textures: Vec<Texture>,
+    pub use_lods: bool,
 }
 
 impl LoadedScene {
@@ -54,7 +57,7 @@ bitflags! {
     }
 }
 
-pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
+pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>>(
     renderer: &Renderer,
     batch: &mut UploadBatch<'_>,
     path: P,
@@ -156,7 +159,8 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
         materials.push(make_material(&material, tex_set))
     }
 
-    let built: Vec<(Mesh, u32)> = scene.meshes().map(|mesh| {
+
+    let built: Vec<(Mesh, u32, Vec<V>, Vec<u32>)> = scene.meshes().map(|mesh| {
         let positions = mesh
             .vertices().iter()
             .map(|it| Vec3::new(it.x, it.y, it.z)).collect::<Vec<_>>();
@@ -184,8 +188,15 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
             let vert = V::from_vertex_props(positions[i], normals[i], tangents[i], binormals[i], uvs[i], Vec4::ONE);
             vertices.push(vert);
         }
-        Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions)).map(|it| (it, base + mesh.material_index() as u32))
+        let vc = vertices.clone();
+        let ic = indices.clone();
+        Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions)).map(|it| (it, base + mesh.material_index() as u32, vc, ic))
     }).collect::<anyhow::Result<_>>()?;
+
+    let mut optimized: Vec<Vec<(Mesh, u32)>> = Vec::new();
+    for (mesh, idx, vertices, indices) in &built {
+        optimized.push(optimize_mesh(batch, *mesh.aabb(), vertices, indices, *idx));
+    }
 
     let mut out = Vec::new();
     let mut stack = vec![(scene.root_node().unwrap(), Mat4::IDENTITY)];
@@ -199,9 +210,77 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps, P: AsRef<Path>>(
         }
     }
 
+    
     Ok(LoadedScene {
         mesh_indices: out,
-        meshes: built,
+        meshes: built.into_iter().map(|it| (it.0, it.1)).collect(),
         textures,
+        mesh_lods: optimized,
+        use_lods: true
     })
+}
+
+fn optimize_mesh<TVert: LodVertex>(batch: &mut UploadBatch, aabb: AABB, vertices: &[TVert], indices: &[u32], idx: u32) -> Vec<(Mesh, u32)> {
+    let target_levels = vec![
+        32,
+        16,
+        8,
+    ];
+
+    let mut collapsed_vertices: Vec<Vec<TVert>> = Vec::new();
+    let mut collapsed_indices: Vec<Vec<u32>> = Vec::new();
+
+    for level in &target_levels {
+        optimize_mesh_to_level(aabb, *level as u32, &vertices, &indices, &mut collapsed_vertices, &mut collapsed_indices);
+    }
+
+    let mut meshes = Vec::new();
+    for (i, _) in target_levels.iter().enumerate() {
+        let mesh = Mesh::new(batch.gd(), batch, &collapsed_vertices[i], &collapsed_indices[i], DrawTopology::TriangleList, aabb).unwrap();
+        meshes.push((mesh, idx));
+    }
+
+    meshes
+}
+
+fn optimize_mesh_to_level<TVert: LodVertex + bytemuck::Zeroable + Copy>(aabb: AABB, target_cnt: u32, vertices: &[TVert], indices: &[u32], collapsed_vertices: &mut Vec<Vec<TVert>>, collapsed_indices: &mut Vec<Vec<u32>>) {
+    let cell_size = (aabb.max - aabb.min).length() / target_cnt as f32;
+    let mut cells: HashMap<(i32, i32, i32), usize> = HashMap::new();
+    let mut sums: Vec<(TVert, u32)> = Vec::new();
+    let mut remap: Vec<u32> = Vec::with_capacity(vertices.len());
+
+    for vertex in vertices {
+        let pos = vertex.pos();
+        let resized = (pos / cell_size).floor();
+        let (a, b, c) = (resized[0] as i32, resized[1] as i32, resized[2] as i32);
+        let id = *cells.entry((a, b, c)).or_insert_with(|| {
+            sums.push((bytemuck::Zeroable::zeroed(), 0));
+            sums.len() - 1
+        });
+        let (sum, count) = sums.get_mut(id).unwrap();
+        sum.add(vertex);
+        *count += 1;
+        remap.push(id as u32);
+    }
+
+    let collapsed = sums
+        .iter_mut()
+        .map(|(vert, count)| {
+            vert.div(*count as f32);
+            *vert
+        })
+        .collect::<Vec<_>>();
+
+    let mut collapsed_idx: Vec<u32> = Vec::new();
+    for chunk in indices.chunks_exact(3) {
+        let a: u32 = remap[chunk[0] as usize];
+        let b: u32 = remap[chunk[1] as usize];
+        let c: u32 = remap[chunk[2] as usize];
+        if a != b && a != c && b != c {
+            collapsed_idx.extend(chunk);
+        }
+    }
+
+    collapsed_vertices.push(collapsed);
+    collapsed_indices.push(collapsed_idx);
 }

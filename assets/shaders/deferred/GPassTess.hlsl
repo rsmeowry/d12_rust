@@ -140,9 +140,15 @@ Varyings domain(HullConsts input, float3 bary: SV_DomainLocation, const OutputPa
     ObjectData obj = g_Objects[drawIndex];
     PhongTessMaterial mat = g_Materials[obj.materialId];
 
+
     float displacement = DISP * (g_Tex2D[mat.displacementMap].SampleLevel(AnisoWrap, uv, 0).x - 0.5);
 
-    pos += displacement * normalW;
+//    pos += displacement * normalW;
+    float3 centerW = mul((float3x3)obj.model, float3(0, 0, 0));
+    float3 outDir = normalize(pos - centerW);
+    float2 scrolledWave = frac(distance(pos - time * outDir, centerW) * 0.7) * 2.0;
+    float sineWave = sin(dot(scrolledWave, scrolledWave));
+    pos += sineWave * normalW * displacement * 1.0;
     o.pos = mul(viewProj, float4(pos, 1.0));
     o.normalW = normalW;
     o.tangentW = tangentW;

@@ -8,8 +8,14 @@ use windows::Win32::Graphics::Dxgi::Common::{
 };
 use windows::core::PCSTR;
 
-pub trait Vertex: bytemuck::Pod {
+pub trait Vertex: bytemuck::Pod + bytemuck::Zeroable + Copy {
     const LAYOUT: &'static [D3D12_INPUT_ELEMENT_DESC];
+}
+
+pub trait LodVertex: Vertex {
+    fn pos(&self) -> Vec3;
+    fn add(&mut self, other: &Self);
+    fn div(&mut self, v: f32);
 }
 
 pub trait VertexAttr {

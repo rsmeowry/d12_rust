@@ -10,7 +10,7 @@ use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
 use crate::render::mesh::{DrawTopology, Mesh};
-use crate::render::perf::Culler;
+use crate::render::perf::{Culler, NO_LOD};
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
@@ -112,7 +112,8 @@ impl Scene for SponzaWithLights {
                 scene,
                 pso,
                 &frustum,
-                opts
+                opts,
+                NO_LOD
             );
         }
         self.culler.finish(opts);

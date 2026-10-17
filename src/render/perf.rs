@@ -19,6 +19,8 @@ pub struct Culler {
     elapsed_time_ms: f64,
 }
 
+pub const NO_LOD: usize = 999;
+
 impl Culler {
     pub fn new(objects: &[ObjectData], meshes: &[&Mesh]) -> Self {
         let boxes = objects.iter().zip(meshes)
@@ -39,7 +41,8 @@ impl Culler {
                                 all_meshes: &Vec<&'a Mesh>,
                                 pso: PipelineId,
                                 frustum: &Frustum,
-                                opts: &mut RenderOpts) {
+                                opts: &mut RenderOpts,
+    ) {
         let began = Instant::now();
         self.total_objects += all_objects.len();
         match opts.culling_mode {
@@ -77,8 +80,16 @@ impl Culler {
                             scene: &'a LoadedScene,
                             pso: PipelineId,
                             frustum: &Frustum,
-                            opts: &mut RenderOpts) {
-        let (all_objects, all_meshes) = scene.to_objects_and_draws();
+                            opts: &mut RenderOpts,
+                            lod_level: usize,
+    ) {
+        let mut all_objects;
+        let mut all_meshes;
+        if lod_level == 999 {
+            (all_objects, all_meshes) = scene.to_objects_and_draws();
+        } else {
+            (all_objects, all_meshes) = scene.to_objects_and_draws_lod(lod_level);
+        }
         self.push_visible_raw(visible_objects, visible_meshes, &all_objects, &all_meshes, pso, frustum, opts);
     }
 

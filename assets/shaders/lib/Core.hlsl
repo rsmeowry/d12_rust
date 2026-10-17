@@ -32,7 +32,7 @@ struct Cascades {
     uint enabled;
 };
 
-#define PBR
+//#define PBR
 
 Texture2D g_Tex2D[1024] : register(t0, space1);
 TextureCube g_TexCube[1024] : register(t0, space2);

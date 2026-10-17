@@ -1,4 +1,7 @@
+use crate::render::perf::frustum::Frustum;
 use crate::scenes::sponza_lights::SponzaWithLights;
+use crate::scenes::tesselated_sample::TesselatedSample;
+use crate::scenes::testing_culling::CullingScene;
 
 pub mod assets;
 pub mod input;
@@ -9,5 +12,5 @@ mod app;
 mod scenes;
 
 fn main() -> anyhow::Result<()> {
-    app::App::<SponzaWithLights>::new()?.run()
+    app::App::<CullingScene>::new()?.run()
 }

@@ -128,6 +128,21 @@ impl Renderer {
 }
 
 impl LoadedScene {
+    pub fn to_objects_and_draws_lod(&self, lod: usize) -> (Vec<ObjectData>, Vec<&Mesh>) {
+        let mut objects = Vec::new();
+        let mut draws = Vec::new();
+        for (mesh_idx, model) in &self.mesh_indices {
+            let (mesh, material) = &self.mesh_lods[lod][*mesh_idx];
+            objects.push(ObjectData {
+                model: *model,
+                material_id: *material,
+                _pad: [0; 3]
+            });
+            draws.push(mesh);
+        }
+        (objects, draws)
+    }
+
     pub fn to_objects_and_draws(&self) -> (Vec<ObjectData>, Vec<&Mesh>) {
         let mut objects = Vec::new();
         let mut draws = Vec::new();

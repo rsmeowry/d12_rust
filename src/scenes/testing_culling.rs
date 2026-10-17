@@ -1,5 +1,5 @@
 ﻿use crate::app::RenderOpts;
-use crate::assets::{load_assimp_scene, LoadTex};
+use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
 use crate::render::builtin::Vertex3;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
@@ -24,7 +24,7 @@ pub struct CullingScene {
 
     textures: Vec<Texture>,
     objects: Vec<ObjectData>,
-    mesh: Mesh,
+    scene: LoadedScene,
 
     materials_buf: ID3D12Resource,
 
@@ -86,7 +86,7 @@ impl Scene for CullingScene {
 
             culler,
             objects,
-            mesh,
+            scene,
             textures,
             materials_buf,
             lighting,
