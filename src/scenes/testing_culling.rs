@@ -22,7 +22,6 @@ use crate::render::deferred::lighting::PhongLightingPass;
 pub struct CullingScene {
     gbuffer: GBuffer,
 
-    textures: Vec<Texture>,
     objects: Vec<ObjectData>,
     scene: LoadedScene,
 
@@ -33,6 +32,9 @@ pub struct CullingScene {
     post: PostProcessPass,
     blit: BlitPass
 }
+
+const MAX_DIST: f32 = 80.;
+const MAX_LOD_LEVEL: u32 = 3;
 
 impl Scene for CullingScene {
     const NAME: &'static str = "Pusheens (10K)";
@@ -57,7 +59,7 @@ impl Scene for CullingScene {
                 specular_k: 0.7,
             }.to_gpu_material()
         )?;
-        let (mesh, _model, textures) = scene.into_single_mesh();
+        let (mesh, _model) = scene.as_first_mesh();
 
         for _ in 0..10000 {
             let pos = Vec3::new(rand::random(), rand::random(), rand::random()) * 200. - 100.;
@@ -78,7 +80,8 @@ impl Scene for CullingScene {
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
-        let culler = Culler::new(&objects, &vec![&mesh; objects.len()]);
+        let meshes = vec![mesh; 10000];
+        let culler = Culler::new(&objects, &meshes);
 
         Ok(Self {
             gbuffer,
@@ -87,7 +90,6 @@ impl Scene for CullingScene {
             culler,
             objects,
             scene,
-            textures,
             materials_buf,
             lighting,
             post
@@ -100,12 +102,17 @@ impl Scene for CullingScene {
 
         let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
 
+        let mut levels = vec![];
         let frustum = renderer.cam.frustum();
         self.culler.push_visible_raw(
             &mut objects,
             &mut draws,
             &self.objects,
-            &vec![&self.mesh; self.objects.len()],
+            &self.objects.iter().map(|each| {
+                let lod_level = distance_to_lod_level(renderer.cam.pos().distance(each.model.transform_point3(Vec3::ZERO)), MAX_DIST, MAX_LOD_LEVEL);
+                levels.push(lod_level);
+                self.scene.fetch_mesh_lod(0, lod_level)
+            }).collect::<Vec<_>>(),
             pass,
             &frustum,
             opts
@@ -167,3 +174,7 @@ impl Scene for CullingScene {
     }
 }
 
+// TODO: maybe switch from linear to logarithmic here
+fn distance_to_lod_level(dist: f32, max_dist: f32, max_lod_level: u32) -> usize {
+    (((dist / max_dist) * max_lod_level as f32).round() as usize).min(max_lod_level as usize)
+}

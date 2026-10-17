@@ -132,7 +132,7 @@ impl LoadedScene {
         let mut objects = Vec::new();
         let mut draws = Vec::new();
         for (mesh_idx, model) in &self.mesh_indices {
-            let (mesh, material) = &self.mesh_lods[lod][*mesh_idx];
+            let (mesh, material) = if self.use_lods && lod > 0 { &self.mesh_lods[*mesh_idx][lod - 1] } else { &self.meshes[*mesh_idx] };
             objects.push(ObjectData {
                 model: *model,
                 material_id: *material,
@@ -156,5 +156,13 @@ impl LoadedScene {
             draws.push(mesh);
         }
         (objects, draws)
+    }
+
+    pub fn fetch_mesh_lod(&self, idx: usize, lod: usize) -> &Mesh {
+        if !self.use_lods || lod == 0 {
+            &self.meshes.get(idx).unwrap().0
+        } else {
+            &self.mesh_lods.get(idx).unwrap().get(lod - 1).unwrap().0
+        }
     }
 }

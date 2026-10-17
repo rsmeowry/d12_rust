@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::app::{CullingMode, RenderOpts};
 use crate::assets::LoadedScene;
 use crate::render::mesh::Mesh;
-use crate::render::perf::frustum::Frustum;
+use crate::render::perf::frustum::{Frustum, AABB};
 use crate::render::perf::octree::Octree;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::ObjectData;
@@ -26,6 +26,10 @@ impl Culler {
         let boxes = objects.iter().zip(meshes)
             .map(|(o, m)| m.aabb().transformed(o.model))
             .collect();
+        Self::from_ws_boxes(boxes)
+    }
+
+    pub fn from_ws_boxes(boxes: Vec<AABB>) -> Self {
         Self {
             total_objects: 0,
             culled_objects: 0,

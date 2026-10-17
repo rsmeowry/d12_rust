@@ -14,8 +14,6 @@ pub trait Vertex: bytemuck::Pod + bytemuck::Zeroable + Copy {
 
 pub trait LodVertex: Vertex {
     fn pos(&self) -> Vec3;
-    fn add(&mut self, other: &Self);
-    fn div(&mut self, v: f32);
 }
 
 pub trait VertexAttr {

@@ -36,6 +36,11 @@ impl LoadedScene {
         let mesh = self.meshes.into_iter().next().unwrap();
         (mesh.0, self.mesh_indices[0].1, self.textures)
     }
+
+    pub fn as_first_mesh(&self) -> (&Mesh, Mat4) {
+        let mesh = self.meshes.first().unwrap();
+        (&mesh.0, self.mesh_indices[0].1)
+    }
 }
 
 #[derive(Debug)]
@@ -246,30 +251,35 @@ fn optimize_mesh<TVert: LodVertex>(batch: &mut UploadBatch, aabb: AABB, vertices
 fn optimize_mesh_to_level<TVert: LodVertex + bytemuck::Zeroable + Copy>(aabb: AABB, target_cnt: u32, vertices: &[TVert], indices: &[u32], collapsed_vertices: &mut Vec<Vec<TVert>>, collapsed_indices: &mut Vec<Vec<u32>>) {
     let cell_size = (aabb.max - aabb.min).length() / target_cnt as f32;
     let mut cells: HashMap<(i32, i32, i32), usize> = HashMap::new();
-    let mut sums: Vec<(TVert, u32)> = Vec::new();
+    let mut centroids: Vec<(Vec3, u32)> = Vec::new();
     let mut remap: Vec<u32> = Vec::with_capacity(vertices.len());
 
     for vertex in vertices {
         let pos = vertex.pos();
-        let resized = (pos / cell_size).floor();
+        let resized = ((pos - aabb.min) / cell_size).floor();
         let (a, b, c) = (resized[0] as i32, resized[1] as i32, resized[2] as i32);
         let id = *cells.entry((a, b, c)).or_insert_with(|| {
-            sums.push((bytemuck::Zeroable::zeroed(), 0));
-            sums.len() - 1
+            centroids.push((Vec3::ZERO, 0));
+            centroids.len() - 1
         });
-        let (sum, count) = sums.get_mut(id).unwrap();
-        sum.add(vertex);
-        *count += 1;
+        centroids[id].0 += pos;
+        centroids[id].1 += 1;
         remap.push(id as u32);
     }
+    for (sum, cnt) in centroids.iter_mut() {
+        *sum /= *cnt as f32;
+    }
 
-    let collapsed = sums
-        .iter_mut()
-        .map(|(vert, count)| {
-            vert.div(*count as f32);
-            *vert
-        })
-        .collect::<Vec<_>>();
+    // finding a real vertex that is the closest to the centroid
+    let mut best: Vec<(f32, usize)> = vec![(f32::MAX, usize::MAX); centroids.len()];
+    for (i, v) in vertices.iter().enumerate() {
+        let id = remap[i] as usize;
+        let d = v.pos().distance_squared(centroids[id].0);
+        if d < best[id].0 {
+            best[id] = (d, i);
+        }
+    }
+    let collapsed: Vec<TVert> = best.iter().map(|&(_, i)| vertices[i]).collect();
 
     let mut collapsed_idx: Vec<u32> = Vec::new();
     for chunk in indices.chunks_exact(3) {
@@ -277,7 +287,7 @@ fn optimize_mesh_to_level<TVert: LodVertex + bytemuck::Zeroable + Copy>(aabb: AA
         let b: u32 = remap[chunk[1] as usize];
         let c: u32 = remap[chunk[2] as usize];
         if a != b && a != c && b != c {
-            collapsed_idx.extend(chunk);
+            collapsed_idx.extend_from_slice(&[a, b, c]);
         }
     }
 
