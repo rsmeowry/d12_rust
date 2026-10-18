@@ -25,9 +25,12 @@ struct Light {
 
 struct Cascades {
     float4x4 vp[4];
+    float4x4 staticVp[4];
     float4 splits;
     float4 texel;
+    float4 staticTexel;
     uint4 tex;
+    uint4 staticTex;
     float3 camForward;
     uint enabled;
 };

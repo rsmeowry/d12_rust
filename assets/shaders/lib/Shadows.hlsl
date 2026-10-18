@@ -1,5 +1,4 @@
-﻿// expects `Cascades csm` declared in the includer's cbuffer
-#define PCF_RADIUS 1
+﻿#define PCF_RADIUS 1
 #define LOCAL_NORMAL_OFFSET 1.5
 #define NORMAL_OFFSET 1.5
 
@@ -55,14 +54,30 @@ float PointShadow(Light l, float3 pos, float3 offset, bool usePcf) {
 
 float ShadowInCascade(uint cascade, float3 pos, float3 offset, bool usePcf) {
     float3 posOff = pos + offset * csm.texel[cascade] * NORMAL_OFFSET;
+    float3 staticPosOff = pos + offset * csm.staticTexel[cascade] * NORMAL_OFFSET;
     float4 p = mul(csm.vp[cascade], float4(posOff, 1));
+    float4 staticP = mul(csm.staticVp[cascade], float4(staticPosOff, 1));
     p.xyz /= p.w;
+    staticP.xyz /= staticP.w;
     float2 uv = p.xy * float2(0.5, -0.5) + 0.5;
-    if (any(uv < 0) || any(uv > 1) || p.z < 0 || p.z > 1)
-        return 1;
+    float2 staticUv = staticP.xy * float2(0.5, -0.5) + 0.5;
+    float dynamicShadow = 0;
+    float staticShadow = 0;
+    if (any(uv < 0) || any(uv > 1) || p.z < 0 || p.z > 1) {
+        dynamicShadow = 1;
+    } else {
+        Texture2D map = g_Tex2D[NonUniformResourceIndex(csm.tex[cascade])];
+        dynamicShadow = usePcf ? PCF(map, uv, p.z) : map.SampleCmpLevelZero(ShadowCmp, uv, p.z);
+    }
 
-    Texture2D map = g_Tex2D[NonUniformResourceIndex(csm.tex[cascade])];
-    return usePcf ? PCF(map, uv, p.z) : map.SampleCmpLevelZero(ShadowCmp, uv, p.z);
+    if (any(staticUv < 0) || any(staticUv > 1) || staticP.z < 0 || staticP.z > 1) {
+        staticShadow = 1;
+    } else {
+        Texture2D map = g_Tex2D[NonUniformResourceIndex(csm.staticTex[cascade])];
+        staticShadow = usePcf ? PCF(map, staticUv, staticP.z) : map.SampleCmpLevelZero(ShadowCmp, staticUv, staticP.z);
+    }
+
+    return dynamicShadow * staticShadow;
 }
 
 float SampleCascades(float3 pos, float3 offset, bool usePcf) {

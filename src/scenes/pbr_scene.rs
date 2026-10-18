@@ -48,7 +48,7 @@ impl Scene for PbrSample {
         let (sphere_vertices, sphere_indices) = unit_sphere(32, 32, |pos, norm, tangent, binorm, uv| {
             VertexPbr::new(pos, norm, tangent, binorm, uv)
         });
-        let sphere_mesh = Mesh::new(&renderer.gd, &mut batch, &sphere_vertices, &sphere_indices, DrawTopology::TriangleList, AABB { min: Vec3::ZERO, max: Vec3::ONE })?;
+        let sphere_mesh = Mesh::new(&renderer.gd, &mut batch, &sphere_vertices, &sphere_indices, DrawTopology::TriangleList, AABB { min: Vec3::ZERO, max: Vec3::ONE }, true)?;
 
         let mut materials = Vec::new();
         let mut objects = Vec::new();

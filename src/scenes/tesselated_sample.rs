@@ -1,5 +1,5 @@
 ﻿use crate::app::RenderOpts;
-use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
+use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexTess;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
@@ -45,6 +45,7 @@ impl Scene for TesselatedSample {
             &renderer, &mut batch, "assets/models/bricks/torus.gltf",
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL, DrawTopology::PatchList3,
+            false, LodCount::NoLods,
             |_mat, tex| MaterialParams::PhongTess {
                 albedo: tex.albedo,
                 normal: tex.normal,

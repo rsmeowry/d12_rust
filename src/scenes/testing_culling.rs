@@ -1,5 +1,5 @@
 ﻿use crate::app::RenderOpts;
-use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
+use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::Vertex3;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
@@ -49,6 +49,7 @@ impl Scene for CullingScene {
             &renderer, &mut batch, "assets/models/pusheen_holding_cookie/scene.gltf",
             &mut materials,
             LoadTex::ALBEDO, DrawTopology::TriangleList,
+            true, LodCount::Lods(MAX_LOD_LEVEL as usize + 1),
             |_mat, tex| MaterialParams::Phong {
                 tex: tex.albedo,
                 ambient: Vec3::new(0.03, 0.03, 0.03),

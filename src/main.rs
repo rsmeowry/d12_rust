@@ -13,5 +13,5 @@ mod app;
 mod scenes;
 
 fn main() -> anyhow::Result<()> {
-    app::App::<PbrSampleMesh>::new()?.run()
+    app::App::<SponzaWithLights>::new()?.run()
 }

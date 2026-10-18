@@ -1,5 +1,5 @@
 ﻿use crate::app::RenderOpts;
-use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
+use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::deferred::fog::FogPass;
@@ -49,6 +49,7 @@ impl Scene for SponzaWithLights {
             &renderer, &mut batch, "assets/sponza_old/Sponza.gltf",
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
+            true, LodCount::NoLods,
             |mat, tex| MaterialParams::Pbr {
                 albedo_tex: tex.albedo,
                 normal_tex: tex.normal,
@@ -72,7 +73,7 @@ impl Scene for SponzaWithLights {
                                                 "assets/textures/sky/sponza/garden_sky_specular.dds",
                                                 "assets/textures/pbr/ibl_brdf_lut.dds"
         )?;
-        let shadows = ShadowMap::new(renderer, 1024, 512, 512)?;
+        let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512)?;
         lighting.save_local_shadows(&shadows);
         let bloom = BloomPass::new(renderer)?;
         let fog = FogPass::new(Some(&shadows), renderer)?;

@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use crate::assets::shaders::ShaderStorage;
 use crate::assets::LoadedScene;
 use crate::render::graph::res::GraphResources;
@@ -35,6 +36,7 @@ pub struct Renderer {
     flat_normal_tex: Texture,
     pipeline_mgr: PipelineManager,
     shaders: ShaderStorage,
+    frame_count: Cell<u32>
 }
 
 impl Renderer {
@@ -59,7 +61,8 @@ impl Renderer {
             flat_normal_tex,
             gd,
             shaders,
-            cam
+            cam,
+            frame_count: Cell::new(0)
         })
     }
 
@@ -82,6 +85,8 @@ impl Renderer {
     pub fn pipelines(&self) -> &PipelineManager {
         &self.pipeline_mgr
     }
+    
+    pub fn frame_count(&self) -> u32 { self.frame_count.get() }
 
     pub fn create_pipeline(&mut self, desc: PipelineDesc) -> anyhow::Result<PipelineId> {
         self.pipeline_mgr.create(&self.gd, &self.shaders, desc)
@@ -101,6 +106,7 @@ impl Renderer {
     // waits for this frame's slot, resets the command list and binds the root signature with globals.
     // can only use frame alloc after this
     pub fn begin_frame(&self, globals: &Globals) -> anyhow::Result<()> {
+        self.frame_count.set(self.frame_count.get() + 1);
         self.gd.prepare_rt()?;
         let globals_va = self.gd.frame_context()?.frame_alloc.push(globals)?;
         self.rs().bind(self.gd.command_list()?, globals_va, self.gd.srv_heap_start()?);

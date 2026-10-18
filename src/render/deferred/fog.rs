@@ -91,8 +91,9 @@ impl FogPass {
             .writes_uav(self.fog_out, ResLoad::Preserve);
 
         if let Some(s) = &shadows {
-            for cascade in s.cascades {
-                march = march.reads(cascade);
+            for (cascade_idx, _) in s.cascades.iter().enumerate() {
+                march = march.reads(s.cascades[cascade_idx]);
+                march = march.reads(s.cascades_static[cascade_idx]);
             }
         }
 

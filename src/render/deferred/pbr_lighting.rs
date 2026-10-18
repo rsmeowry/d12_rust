@@ -47,9 +47,9 @@ impl PbrLightingPass {
         let brdf_lut_tex = Texture::from_dds(&mut batch, &std::fs::read(brdf_path)?, "BRDFLut")?;
 
         let point_light_mesh = unit_sphere(8, 8, |pos, norm, _tangent, _binormal, uv| { Vertex3::new(pos, norm, uv) });
-        let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&point_light_mesh.0))?;
+        let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&point_light_mesh.0), false)?;
         let spot_light_mesh = light_cone(8);
-        let spot_light_mesh = Mesh::new(&renderer.gd, &mut batch, &spot_light_mesh.0, &spot_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&spot_light_mesh.0))?;
+        let spot_light_mesh = Mesh::new(&renderer.gd, &mut batch, &spot_light_mesh.0, &spot_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&spot_light_mesh.0), false)?;
 
         batch.finish()?;
 
@@ -140,8 +140,11 @@ impl PbrLightingPass {
         }
 
         if let Some(shadows) = shadows {
-            for cascade in shadows.cascades {
-                pass = pass.reads(cascade);
+            for cascade_idx in 0..shadows.cascades.len() {
+                pass = pass
+                    .reads(shadows.cascades[cascade_idx])
+                    .reads(shadows.cascades_static[cascade_idx])
+                ;
             }
         }
 

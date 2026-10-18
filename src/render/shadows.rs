@@ -21,6 +21,7 @@ pub const CASCADE_COUNT: usize = 4;
 pub const CAM_NEAR: f32 = 0.1;
 pub const SHADOW_DISTANCE: f32 = 35.;
 pub const SHADOW_EXTEND: f32 = 25.;
+pub const STATIC_MARGIN: f32 = 1.5;
 pub const LOCAL_NEAR: f32 = CAM_NEAR / 2.;
 pub const CUBE_FACES: [(Vec3, Vec3); 6] = [
     (Vec3::X, Vec3::Y),
@@ -33,14 +34,18 @@ pub const CUBE_FACES: [(Vec3, Vec3); 6] = [
 pub const MAX_SPOT_SHADOWS: usize = 8;
 pub const MAX_POINT_SHADOWS: usize = 8;
 
+// https://dev.epicgames.com/documentation/unreal-engine/movable-light-mobility-in-unreal-engine
+// static caching logic from here but applied to cascades
 #[derive(Debug)]
 pub struct ShadowMap {
     pipeline: PipelineId,
     cascades: [ResId; CASCADE_COUNT],
-    last_vp: [(Mat4, f32); CASCADE_COUNT],
-    last_drawn: Cell<[usize; CASCADE_COUNT]>,
-    size: u32,
-    frame_idx: u32,
+    cascades_static: [ResId; CASCADE_COUNT],
+    dynamic_vp: [(Mat4, f32); CASCADE_COUNT],
+    statics: [StaticCascade; CASCADE_COUNT],
+    static_light_dir: Vec3,
+    static_size: u32,
+    dynamic_size: u32,
     local_shadows: LocalShadows
 }
 
@@ -58,9 +63,12 @@ pub struct LocalShadows {
 #[derive(Debug, Clone, Copy)]
 pub struct ShadowCascades {
     pub cascades: [ResId; CASCADE_COUNT],
+    pub cascades_static: [ResId; CASCADE_COUNT],
     pub view_proj: [Mat4; CASCADE_COUNT],
+    pub static_view_proj: [Mat4; CASCADE_COUNT],
     pub splits: Vec4, // distances, just assuming we have 4 cascades (🙏🙏)
     pub texel_sizes: Vec4, // texel sizes for each cascade
+    pub static_texel_sizes: Vec4,
     pub drawn: [usize; CASCADE_COUNT], // how many objects per cascade
 }
 
@@ -68,9 +76,12 @@ pub struct ShadowCascades {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GpuCascades {
     pub vp: [Mat4; CASCADE_COUNT],
+    pub static_vp: [Mat4; CASCADE_COUNT],
     pub splits: Vec4,
     pub texel: Vec4,
+    pub texel_static: Vec4,
     pub tex: [u32; CASCADE_COUNT],
+    pub tex_static: [u32; CASCADE_COUNT],
     pub cam_forward: Vec3,
     pub enabled: u32,
 }
@@ -84,15 +95,31 @@ impl GpuCascades {
         for (dst, id) in tex.iter_mut().zip(s.cascades) {
             *dst = gr.get(id)?.srv_ptr();
         }
-        Ok(Self { vp: s.view_proj, splits: s.splits, texel: s.texel_sizes, tex, cam_forward, enabled: 1 })
+        let mut tex_static = [0u32; CASCADE_COUNT];
+        for (dst, id) in tex_static.iter_mut().zip(s.cascades_static) {
+            *dst = gr.get(id)?.srv_ptr();
+        }
+        Ok(Self { vp: s.view_proj, static_vp: s.static_view_proj, splits: s.splits, texel: s.texel_sizes, texel_static: s.static_texel_sizes, tex, tex_static, cam_forward, enabled: 1 })
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+struct StaticCascade {
+    vp: Mat4,
+    texel: f32,
+    center_ls: Vec3, // texel-snapped
+    cover: f32,
+    valid: bool,
+    dirty: bool,
+}
+
 impl ShadowMap {
-    pub fn new(renderer: &mut Renderer, size: u32, spot_size: u32, point_size: u32) -> anyhow::Result<Self> {
+    pub fn new(renderer: &mut Renderer, dynamic_size: u32, static_size: u32, spot_size: u32, point_size: u32) -> anyhow::Result<Self> {
         let mut cascades = [ResId::default(); CASCADE_COUNT];
+        let mut cascades_static = [ResId::default(); CASCADE_COUNT];
         for i in 0..CASCADE_COUNT {
-            cascades[i] = renderer.gr.depth(&renderer.gd, &format!("Shadows{i}"), ResSize::Fixed(size, size))?
+            cascades[i] = renderer.gr.depth(&renderer.gd, &format!("Shadows{i}"), ResSize::Fixed(dynamic_size, dynamic_size))?;
+            cascades_static[i] = renderer.gr.depth(&renderer.gd, &format!("ShadowsStatic{i}"), ResSize::Fixed(static_size, static_size))?;
         }
         let pipeline = renderer.create_pipeline(PipelineDesc {
             name: "ShadowDepth",
@@ -123,12 +150,27 @@ impl ShadowMap {
         Ok(Self {
             pipeline,
             cascades,
-            last_vp: [(Mat4::IDENTITY, 0.); CASCADE_COUNT],
-            frame_idx: 0,
-            last_drawn: Cell::new([0; CASCADE_COUNT]),
-            size,
+            cascades_static,
+            dynamic_vp: [(Mat4::IDENTITY, 0.); CASCADE_COUNT],
+            statics: [StaticCascade {
+                vp: Mat4::IDENTITY,
+                texel: 0.0,
+                center_ls: Default::default(),
+                cover: 0.0,
+                valid: false,
+                dirty: true,
+            }; CASCADE_COUNT],
+            dynamic_size,
+            static_size,
             local_shadows: LocalShadows { pipeline, spots, spot_size, last_spot: 0, point_size, points, last_point: 0 },
+            static_light_dir: Default::default(),
         })
+    }
+
+    pub fn invalidate_static(&mut self) {
+        for i in 0..CASCADE_COUNT {
+            self.statics[i].valid = false;
+        }
     }
 
     fn calc_splits(n: f32, f: f32, lambda: f32) -> [f32; CASCADE_COUNT + 1] {
@@ -140,7 +182,7 @@ impl ShadowMap {
         })
     }
 
-    fn cascade_matrix(cam: &Camera, dir: Vec3, near: f32, far: f32, size: u32) -> (Mat4, f32) {
+    fn fit_sphere(cam: &Camera, near: f32, far: f32) -> (Vec3, f32) {
         // taking frustum edges
         let theta = (cam.fov_rad() * 0.5).tan();
         let tw = theta * cam.aspect();
@@ -157,16 +199,22 @@ impl ShadowMap {
         }
 
         // taking a sphere around frustum
-        let mut center = corners.iter().sum::<Vec3>() / 8.;
+        let center = corners.iter().sum::<Vec3>() / 8.;
         let mut rad = corners.iter().map(|each| each.distance(center)).fold(0., f32::max);
         rad = (rad * 16.).ceil() / 16.; // quantizing cus floats can be noisy sometimes
+
+        (center, rad)
+    }
+
+    fn build_cascade_matrix(dir: Vec3, center: Vec3, rad: f32, size: u32) -> (Mat4, f32, Vec3) {
         let texel = 2.0 * rad / size as f32;
 
         // calculating lightspace matrix
-        let light_view = glam::camera::lh::view::look_to_mat4(Vec3::ZERO, dir, Vec3::X);
+        let up = if dir.y.abs() < 0.99 { Vec3::Y } else { Vec3::X };
+        let light_view = glam::camera::lh::view::look_to_mat4(Vec3::ZERO, dir, up);
 
         // snapping center to texels
-        center = light_view.transform_point3(center);
+        let mut center = light_view.transform_point3(center);
         center.x = (center.x / texel).floor() * texel;
         center.y = (center.y / texel).floor() * texel;
 
@@ -176,7 +224,7 @@ impl ShadowMap {
             center.y - rad, center.y + rad,
             center.z + rad, center.z - rad - SHADOW_EXTEND
         );
-        (proj * light_view, texel)
+        (proj * light_view, texel, center)
     }
 
     pub fn fetch_all_local_shadows(&self) -> Vec<ResId> {
@@ -184,16 +232,45 @@ impl ShadowMap {
     }
 
     pub fn update(&mut self, main_light: GpuLight, lambda: f32, renderer: &Renderer) {
-        // incrementing first so add_global_shadows_pass sees the same frame_idx we decided on
-        self.frame_idx += 1;
+        for i in 0..CASCADE_COUNT {
+            self.statics[i].dirty = false;
+        }
+
+        // checking if we should rebake static shadowmaps
+        if self.static_light_dir.dot(main_light.direction) < 0.9999 {
+            self.static_light_dir = main_light.direction;
+            self.invalidate_static();
+        }
+
         let splits = Self::calc_splits(CAM_NEAR, SHADOW_DISTANCE, lambda);
         for i in 0..CASCADE_COUNT {
-            // checking if we should even update this cascade
-            if self.frame_idx % (i + 1) as u32 != 0 {
-                continue;
+            // for dynamics
+            let (center, rad) = Self::fit_sphere(&renderer.cam, splits[i], splits[i + 1]);
+            let (vp, texel, _) = Self::build_cascade_matrix(main_light.direction, center, rad, self.dynamic_size);
+
+            self.dynamic_vp[i] = (vp, texel);
+
+            // for statics
+            let up = if main_light.direction.y.abs() < 0.99 { Vec3::Y } else { Vec3::X };
+            let light_view = glam::camera::lh::view::look_to_mat4(Vec3::ZERO, main_light.direction, up);
+            let center_ls = light_view.transform_point3(center);
+            let dist = (center_ls - self.statics[i].center_ls).abs();
+            let static_fits = self.statics[i].valid &&
+                dist.x + rad <= self.statics[i].cover &&
+                dist.y + rad <= self.statics[i].cover &&
+                dist.z + rad <= self.statics[i].cover;
+
+            if !static_fits {
+                self.statics[i].cover = (rad * STATIC_MARGIN * 16.).ceil() / 16.;
+
+                let (static_vp, texel, center_ls) = Self::build_cascade_matrix(main_light.direction, center, self.statics[i].cover, self.static_size);
+
+                self.statics[i].vp = static_vp;
+                self.statics[i].texel = texel;
+                self.statics[i].center_ls = center_ls;
+                self.statics[i].valid = true;
+                self.statics[i].dirty = true;
             }
-            let (vp, texel) = Self::cascade_matrix(&renderer.cam, main_light.direction, splits[i], splits[i + 1], self.size);
-            self.last_vp[i] = (vp, texel);
         }
     }
 
@@ -203,31 +280,38 @@ impl ShadowMap {
 
         let mut shadows = ShadowCascades {
             cascades: self.cascades,
+            cascades_static: self.cascades_static,
+            static_view_proj: [Mat4::IDENTITY; CASCADE_COUNT],
             view_proj: [Mat4::IDENTITY; CASCADE_COUNT],
             splits: Vec4::new(splits[1], splits[2], splits[3], splits[4]),
             texel_sizes: Default::default(),
+            static_texel_sizes: Default::default(),
             drawn: [0; CASCADE_COUNT],
         };
 
         let pass_names = ["ShadowPass0", "ShadowPass1", "ShadowPass2", "ShadowPass3"];
+        let pass_names_static = ["StaticShadowPass0", "StaticShadowPass1", "StaticShadowPass2", "StaticShadowPass3"];
         for i in 0..CASCADE_COUNT {
-            let (vp, texel) = self.last_vp[i];
+            let (vp, texel) = self.dynamic_vp[i];
             shadows.view_proj[i] = vp;
             shadows.texel_sizes[i] = texel;
+            shadows.static_texel_sizes[i] = self.statics[i].texel;
+            shadows.static_view_proj[i] = self.statics[i].vp;
 
-            if self.frame_idx % (i + 1) as u32 != 0 {
-                shadows.drawn[i] = self.last_drawn.get()[i];
-                continue;
-            }
-
+            // dynamic
             shadows.drawn[i] =
                 shadows_depth_pass(
                     graph, renderer, self.pipeline,
                     pass_names[i], self.cascades[i], 0,
-                    vp, objects_va, objects, meshes)?;
-        }
-        self.last_drawn.set(shadows.drawn);
+                    vp, objects_va, objects, meshes, StaticObjects::IncludeDynamic, ResLoad::Clear)?;
 
+            if self.statics[i].dirty {
+                shadows.drawn[i] += shadows_depth_pass(
+                    graph, renderer, self.pipeline,
+                    pass_names_static[i], self.cascades_static[i], 0,
+                    self.statics[i].vp, objects_va, objects, meshes, StaticObjects::IncludeStatic, ResLoad::Clear)?;
+            }
+        }
 
         Ok(shadows)
     }
@@ -253,7 +337,7 @@ impl LocalShadows {
                     shadows_depth_pass(
                         graph, renderer, self.pipeline,
                         "SpotLight", tex, 0, vp,
-                        objects_va, objects, meshes)?;
+                        objects_va, objects, meshes, StaticObjects::IncludeAll, ResLoad::Clear)?;
                     self.last_spot += 1;
                 },
                 LIGHT_POINT => {
@@ -267,7 +351,7 @@ impl LocalShadows {
                             graph, renderer, self.pipeline,
                             "PointLight",
                             tex, face_idx as u32, face,
-                            objects_va, objects, meshes)?;
+                            objects_va, objects, meshes, StaticObjects::IncludeAll, ResLoad::Clear)?;
                     }
                     light.shadow_tex = renderer.gr.get(tex)?.srv_ptr();
 
@@ -301,16 +385,16 @@ impl LocalShadows {
 
 fn shadows_depth_pass<'f>(graph: &mut FrameGraph<'f>, renderer: &'f Renderer, pso: PipelineId,
                   name: &'static str, target: ResId, slice: u32, vp: Mat4, objects_va: u64,
-                  objects: &[ObjectData], meshes: &[&'f Mesh]) -> anyhow::Result<usize> {
+                  objects: &[ObjectData], meshes: &[&'f Mesh], statics: StaticObjects, load: ResLoad) -> anyhow::Result<usize> {
     let frustum = Frustum::from_view_proj(vp);
     let draws: Vec<(&'f Mesh, u32)> = meshes.iter().zip(objects).enumerate()
-        .filter(|(_, (m, o))| frustum.contains(m.aabb(), o.model))
+        .filter(|(_, (m, o))| statics.applies_to(m) && frustum.contains(m.aabb(), o.model))
         .map(|(idx, (m, _))| (*m, idx as u32))
         .collect();
     let vp_va = renderer.upload_cbuffer(&vp)?;
     let (rs, pipelines, n) = (renderer.rs(), renderer.pipelines(), draws.len());
     graph.add_pass(name)
-        .writes_depth_slice(target, ResLoad::Clear, slice)
+        .writes_depth_slice(target, load, slice)
         .exec(move |ctx| {
             rs.set_pass(ctx.cmd, vp_va);
             rs.set_objects(ctx.cmd, objects_va);
@@ -322,4 +406,21 @@ fn shadows_depth_pass<'f>(graph: &mut FrameGraph<'f>, renderer: &'f Renderer, ps
             Ok(())
         });
     Ok(n)
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum StaticObjects {
+    IncludeAll,
+    IncludeStatic,
+    IncludeDynamic
+}
+
+impl StaticObjects {
+    fn applies_to(&self, mesh: &Mesh) -> bool {
+        match self {
+            StaticObjects::IncludeAll => true,
+            StaticObjects::IncludeStatic => mesh.is_static(),
+            StaticObjects::IncludeDynamic => !mesh.is_static()
+        }
+    }
 }

@@ -1,5 +1,5 @@
 ﻿use crate::app::RenderOpts;
-use crate::assets::{load_assimp_scene, LoadTex, LoadedScene};
+use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
@@ -45,6 +45,7 @@ impl Scene for PbrSampleMesh {
             &renderer, &mut batch, "assets/models/bull_head/bull_head_1k.gltf",
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
+            true, LodCount::NoLods,
             |mat, tex| MaterialParams::Pbr {
                 albedo_tex: tex.albedo,
                 normal_tex: tex.normal,

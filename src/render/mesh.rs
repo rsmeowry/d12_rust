@@ -14,7 +14,8 @@ pub struct Mesh {
     ibv: D3D12_INDEX_BUFFER_VIEW,
     indices: u32,
     topology: DrawTopology,
-    aabb: AABB
+    aabb: AABB,
+    is_static: bool,
 }
 
 impl Mesh {
@@ -25,6 +26,7 @@ impl Mesh {
         indices: &[u32],
         topology: DrawTopology,
         aabb: AABB,
+        is_static: bool,
     ) -> anyhow::Result<Self> {
         let id: u16 = rand::random();
 
@@ -48,8 +50,13 @@ impl Mesh {
             ibv,
             indices: indices.len() as u32,
             topology,
-            aabb
+            aabb,
+            is_static
         })
+    }
+    
+    pub fn is_static(&self) -> bool { 
+        self.is_static
     }
 
     pub fn aabb(&self) -> &AABB {

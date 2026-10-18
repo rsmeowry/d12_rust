@@ -69,6 +69,8 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
     materials: &mut Vec<GpuMaterial>,
     load_textures: LoadTex,
     topology: DrawTopology,
+    is_static: bool,
+    lods: LodCount,
     make_material: impl Fn(&asset_importer::material::Material, TextureSet) -> GpuMaterial,
 ) -> anyhow::Result<LoadedScene> {
     let pathbuf = path.as_ref().to_path_buf();
@@ -195,12 +197,14 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
         }
         let vc = vertices.clone();
         let ic = indices.clone();
-        Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions)).map(|it| (it, base + mesh.material_index() as u32, vc, ic))
+        Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions), is_static).map(|it| (it, base + mesh.material_index() as u32, vc, ic))
     }).collect::<anyhow::Result<_>>()?;
 
     let mut optimized: Vec<Vec<(Mesh, u32)>> = Vec::new();
-    for (mesh, idx, vertices, indices) in &built {
-        optimized.push(optimize_mesh(batch, *mesh.aabb(), vertices, indices, *idx));
+    if let LodCount::Lods(lod_count) = lods {
+        for (mesh, idx, vertices, indices) in &built {
+            optimized.push(optimize_mesh(batch, *mesh.aabb(), is_static, vertices, indices, *idx, lod_count));
+        }
     }
 
     let mut out = Vec::new();
@@ -221,16 +225,20 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
         meshes: built.into_iter().map(|it| (it.0, it.1)).collect(),
         textures,
         mesh_lods: optimized,
-        use_lods: true
+        use_lods: lods != LodCount::NoLods
     })
 }
 
-fn optimize_mesh<TVert: LodVertex>(batch: &mut UploadBatch, aabb: AABB, vertices: &[TVert], indices: &[u32], idx: u32) -> Vec<(Mesh, u32)> {
+fn optimize_mesh<TVert: LodVertex>(batch: &mut UploadBatch, aabb: AABB, is_static: bool, vertices: &[TVert], indices: &[u32], idx: u32, level: usize) -> Vec<(Mesh, u32)> {
     let target_levels = vec![
+        64,
         32,
         16,
         8,
-    ];
+        4,
+        2,
+        1
+    ].into_iter().take(level).collect::<Vec<_>>();
 
     let mut collapsed_vertices: Vec<Vec<TVert>> = Vec::new();
     let mut collapsed_indices: Vec<Vec<u32>> = Vec::new();
@@ -241,7 +249,7 @@ fn optimize_mesh<TVert: LodVertex>(batch: &mut UploadBatch, aabb: AABB, vertices
 
     let mut meshes = Vec::new();
     for (i, _) in target_levels.iter().enumerate() {
-        let mesh = Mesh::new(batch.gd(), batch, &collapsed_vertices[i], &collapsed_indices[i], DrawTopology::TriangleList, aabb).unwrap();
+        let mesh = Mesh::new(batch.gd(), batch, &collapsed_vertices[i], &collapsed_indices[i], DrawTopology::TriangleList, aabb, is_static).unwrap();
         meshes.push((mesh, idx));
     }
 
@@ -293,4 +301,10 @@ fn optimize_mesh_to_level<TVert: LodVertex + bytemuck::Zeroable + Copy>(aabb: AA
 
     collapsed_vertices.push(collapsed);
     collapsed_indices.push(collapsed_idx);
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum LodCount {
+    NoLods,
+    Lods(usize)
 }
