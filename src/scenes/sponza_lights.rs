@@ -8,8 +8,9 @@ use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
-use crate::render::lights::GpuLight;
+use crate::render::lights::{unit_sphere, GpuLight};
 use crate::render::mesh::{DrawTopology, Mesh};
+use crate::render::perf::frustum::AABB;
 use crate::render::perf::{Culler, NO_LOD};
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
@@ -17,7 +18,7 @@ use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::shadows::{ShadowMap, CASCADE_COUNT};
 use crate::scenes::Scene;
 use crate::time::Time;
-use glam::{Quat, Vec3};
+use glam::{Mat4, Quat, Vec3};
 use std::borrow::Cow;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 
@@ -26,6 +27,8 @@ pub struct SponzaWithLights {
     gbuffer: GBuffer,
 
     sponza: LoadedScene,
+    sphere: Mesh,
+    sphere_mat_idx: u32,
 
     materials_buf: ID3D12Resource,
 
@@ -60,6 +63,18 @@ impl Scene for SponzaWithLights {
                 roughness: mat.roughness_factor().unwrap_or(0.5),
             }.to_gpu_material()
         )?;
+        let sphere = unit_sphere(32, 32, |pos, norm, tan, binorm, uv| VertexPbr::new(pos, norm, tan, binorm, uv));
+        let sphere = Mesh::new(batch.gd(), &mut batch, &sphere.0, &sphere.1, DrawTopology::TriangleList, AABB { min: Vec3::ZERO, max: Vec3::ONE }, false)?;
+        let sphere_mat_idx = materials.len() as u32;
+        materials.push(MaterialParams::Pbr {
+            albedo_tex: renderer.white_tex().srv_ptr(),
+            normal_tex: renderer.flat_normal_tex().srv_ptr(),
+            metal_roughness_tex: renderer.white_tex().srv_ptr(),
+            occlusion_tex: renderer.white_tex().srv_ptr(),
+            base_color: Vec3::new(0.8, 0.8, 0.7),
+            metallic: 0.7,
+            roughness: 0.3
+        }.to_gpu_material());
 
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "Sponza/MaterialBuffer")?;
 
@@ -88,6 +103,9 @@ impl Scene for SponzaWithLights {
             gbuffer,
             blit,
 
+            sphere,
+            sphere_mat_idx,
+
             shadows,
             culler,
             bloom,
@@ -102,9 +120,18 @@ impl Scene for SponzaWithLights {
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
-
         let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
 
+        // sphere
+        let sphere_obj = ObjectData {
+            model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + time.game_time().sin(), -1.)),
+            material_id: self.sphere_mat_idx,
+            _pad: [0; 3],
+        };
+        objects.push(sphere_obj);
+        draws.push((&self.sphere, pass));
+
+        // sponza
         let frustum = renderer.cam.frustum();
         for (scene, pso) in [(&self.sponza, pass)] {
             self.culler.push_visible(
@@ -172,7 +199,9 @@ impl Scene for SponzaWithLights {
                 Ok(())
             });
 
-        let (all_objects, all_meshes) = self.sponza.to_objects_and_draws();
+        let (mut all_objects, mut all_meshes) = self.sponza.to_objects_and_draws();
+        all_objects.push(sphere_obj);
+        all_meshes.push(&self.sphere);
 
         // shadowws (global and local)
         let all_objects_va = renderer.upload_objects(&all_objects)?;
