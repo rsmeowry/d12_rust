@@ -19,7 +19,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 font8x8 = "0.3.1"
 bitflags = "2.13.2"
-egui = { version = "0.37.0", features = ["bytemuck"] }
+egui = { version = "0.37.0", features = ["bytemuck", "default_fonts"] }
 
 [dependencies.windows]
 version = "0.62.2"

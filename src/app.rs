@@ -23,6 +23,7 @@ const HEIGHT: u32 = 600;
 pub struct App<S: Scene> {
     renderer: Renderer,
 
+    is_focused: bool,
     egui_pass: EguiPass,
     egui: egui::Context,
     egui_ui_out: Option<(Vec<egui::ClippedPrimitive>, egui::TexturesDelta, f32)>,
@@ -87,6 +88,7 @@ impl<S: Scene> App<S> {
             frames: 0,
             fps: 0,
 
+            is_focused: true,
             egui: egui::Context::default(),
             egui_pass,
             egui_ui_out: None,
@@ -144,10 +146,12 @@ impl<S: Scene> App<S> {
         let dt = self.time.delta_time();
 
         if input.was_released(KeyCode::Escape) {
+            self.is_focused = false;
             self.window.set_cursor_locked(false)?;
         }
 
         if input.was_released(KeyCode::F) {
+            self.is_focused = true;
             self.window.set_cursor_locked(true)?;
         }
 
@@ -224,6 +228,7 @@ impl<S: Scene> App<S> {
         }
 
         if let Some((prims, tex, ppp)) = &self.egui_ui_out {
+            self.egui_pass.update_textures(&self.renderer.gd, tex)?;
             self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.resolution.x, self.globals.resolution.y), &self.renderer, &mut graph)?;
         }
 
@@ -233,6 +238,9 @@ impl<S: Scene> App<S> {
     }
 
     fn handle_camera_movement(&mut self) {
+        if !self.is_focused {
+            return;
+        }
         let input = self.window.input();
         self.controller.yaw += (input.mouse_delta().x * MOUSE_SENSITIVITY).to_radians();
         self.controller.pitch += (input.mouse_delta().y * MOUSE_SENSITIVITY).to_radians();
