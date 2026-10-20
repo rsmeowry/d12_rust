@@ -13,6 +13,7 @@ impl<'a> FrameGraph<'a> {
             partial_depth: false,
             writes_uav: Vec::new(),
             has_side_effects: false,
+            uses_backbuffer: false
         }
     }
 }
@@ -26,6 +27,7 @@ pub struct PassBuilder<'g, 'f> {
     partial_depth: bool,
     writes_uav: Vec<(ResId, ResLoad)>,
     has_side_effects: bool,
+    uses_backbuffer: bool,
 }
 
 impl<'g, 'f> PassBuilder<'g, 'f> {
@@ -62,6 +64,12 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
     }
 
     pub fn uses_backbuffer(mut self) -> Self {
+        self.uses_backbuffer = true;
+        self.has_side_effects = true;
+        self
+    }
+
+    pub fn has_side_effects(mut self) -> Self {
         self.has_side_effects = true;
         self
     }
@@ -75,6 +83,7 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
             uses_depth: self.uses_depth,
             partial_depth: self.partial_depth,
             has_side_effects: self.has_side_effects,
+            uses_backbuffer: self.uses_backbuffer,
             writes_uav: self.writes_uav,
             exec: Box::new(exec)
         });

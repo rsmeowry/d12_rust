@@ -19,6 +19,7 @@ impl RootSignature {
     pub const PASS_DATA: u32 = 9; // b2 - root cbv for pass data
     pub const LIGHTS_DATA: u32 = 10; // t3 - root srv for lights
     pub const TEX3D: u32 = 11; // t0 space3 - textures 3D
+    pub const PARTICLES: u32 = 12; // u0-u2 space4: pool, deadlist, sortlist
 
     pub fn new(dev: &ID3D12Device) -> anyhow::Result<Self> {
         let tex2d_range = D3D12_DESCRIPTOR_RANGE {
@@ -58,6 +59,14 @@ impl RootSignature {
             NumDescriptors: u32::MAX,
             BaseShaderRegister: 0,
             RegisterSpace: 2,
+            OffsetInDescriptorsFromTableStart: 0,
+        };
+
+        let particles_range = D3D12_DESCRIPTOR_RANGE {
+            RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+            NumDescriptors: 3,
+            BaseShaderRegister: 0,
+            RegisterSpace: 4,
             OffsetInDescriptorsFromTableStart: 0,
         };
 
@@ -192,6 +201,17 @@ impl RootSignature {
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
             },
+            // u0 space4 - particles
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE {
+                        NumDescriptorRanges: 1,
+                        pDescriptorRanges: &particles_range
+                    },
+                },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+            },
         ];
 
         let samplers = [
@@ -278,6 +298,10 @@ impl RootSignature {
 
     pub fn set_compute_pass(&self, cmd: &ID3D12GraphicsCommandList, pass: u64) {
         unsafe { cmd.SetComputeRootConstantBufferView(Self::PASS_DATA, pass) }
+    }
+
+    pub fn set_compute_particles(&self, cmd: &ID3D12GraphicsCommandList, table: D3D12_GPU_DESCRIPTOR_HANDLE) {
+        unsafe { cmd.SetComputeRootDescriptorTable(Self::PARTICLES, table) }
     }
 }
 

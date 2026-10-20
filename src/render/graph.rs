@@ -30,7 +30,7 @@ impl<'a> FrameGraph<'a> {
             let colors: Vec<&Texture> = pass.writes_color.iter().map(|it| res.get(it.0)).collect::<anyhow::Result<_>>()?;
             let depth = pass.uses_depth.iter().map(|it| res.get(it.0).map(|j| (j, it.2))).next().transpose()?;
 
-            if pass.has_side_effects {
+            if pass.uses_backbuffer {
                 gd.bind_backbuffer(depth.map(|d| d.0))?;
             } else if !colors.is_empty() || depth.is_some() {
                 gd.set_render_targets(&colors, depth, pass.uses_depth.is_some_and(|d| d.1 == DepthUse::Test))?;

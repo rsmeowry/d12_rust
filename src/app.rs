@@ -189,8 +189,8 @@ impl<S: Scene> App<S> {
         let egui_inputs = self.window.input_mut().collect_egui_input(self.globals.resolution.x as u32, self.globals.resolution.y as u32, self.time.game_time());
 
         let out = self.egui.run_ui(egui_inputs, |ctx| {
-            egui::Window::new(format!("Rendering: {}", S::NAME)).show(ctx, |ui| {
-                ui.label(format!("FPS: {}", self.fps));
+            egui::Window::new(format!("Brine: {}", S::NAME)).show(ctx, |ui| {
+                ui.label(format!("FPS: {} | mspf: {:.2}ms", self.fps, (1.0 / self.fps as f32) * 1000.));
 
                 egui::CollapsingHeader::new("Rendering Options").show(ui, |header_ui| {
                     Probe::new(&mut self.opts).show(header_ui);
