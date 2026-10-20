@@ -1,10 +1,10 @@
 use crate::wrappers::event::InputEvent;
+use egui::MouseWheelUnit::Line;
+use egui::{pos2, Modifiers, TouchPhase};
 use flume::Receiver;
 use glam::Vec2;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::collections::HashSet;
-use egui::{pos2, Modifiers, PointerButton, Pos2, TouchPhase};
-use egui::MouseWheelUnit::Line;
 
 #[derive(Debug, Clone)]
 pub struct InputDevice {

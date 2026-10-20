@@ -18,10 +18,8 @@ use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::shadows::{ShadowMap, CASCADE_COUNT};
 use crate::scenes::Scene;
 use crate::time::Time;
-use glam::{Mat4, Quat, Vec3};
-use std::borrow::Cow;
-use std::collections::HashMap;
 use egui::Ui;
+use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 
 #[derive(Debug)]

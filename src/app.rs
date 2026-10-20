@@ -217,7 +217,7 @@ impl<S: Scene> App<S> {
 
         let cam_pos = self.renderer.cam.pos();
 
-        let mut text = format!("FPS: {} | tpf: {:.2}ms\nCamera: {cam_pos:.2}\nScene: {}", self.fps, 1000. / self.fps as f32, S::NAME);
+        let text = format!("FPS: {} | tpf: {:.2}ms\nCamera: {cam_pos:.2}\nScene: {}", self.fps, 1000. / self.fps as f32, S::NAME);
         if let Some((prims, tex, ppp)) = &self.egui_ui_out {
             self.egui_pass.update_textures(&self.renderer.gd, tex)?;
             self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.resolution.x, self.globals.resolution.y), &self.renderer, &mut graph)?;

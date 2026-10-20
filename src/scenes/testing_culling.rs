@@ -1,7 +1,7 @@
-﻿use egui::Ui;
-use crate::app::RenderOpts;
+﻿use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::Vertex3;
+use crate::render::deferred::lighting::PhongLightingPass;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
@@ -12,12 +12,11 @@ use crate::render::perf::Culler;
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
-use crate::render::texture::Texture;
 use crate::scenes::Scene;
 use crate::time::Time;
+use egui::Ui;
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::render::deferred::lighting::PhongLightingPass;
 
 #[derive(Debug)]
 pub struct CullingScene {

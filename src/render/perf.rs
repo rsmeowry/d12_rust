@@ -1,12 +1,11 @@
-﻿use std::borrow::Cow;
-use std::time::Instant;
-use crate::app::{CullingMode, RenderOpts};
+﻿use crate::app::{CullingMode, RenderOpts};
 use crate::assets::LoadedScene;
 use crate::render::mesh::Mesh;
 use crate::render::perf::frustum::{Frustum, AABB};
 use crate::render::perf::octree::Octree;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::ObjectData;
+use std::time::Instant;
 
 pub mod frustum;
 pub mod octree;
@@ -87,8 +86,8 @@ impl Culler {
                             opts: &mut RenderOpts,
                             lod_level: usize,
     ) {
-        let mut all_objects;
-        let mut all_meshes;
+        let all_objects;
+        let all_meshes;
         if lod_level == 999 {
             (all_objects, all_meshes) = scene.to_objects_and_draws();
         } else {

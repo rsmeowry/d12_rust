@@ -13,7 +13,6 @@ use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 use bytemuck::Zeroable;
 use glam::{FloatExt, Mat4, Vec3, Vec4};
-use std::cell::Cell;
 use std::f32::consts::FRAC_PI_2;
 use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_FRONT};
 

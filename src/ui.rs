@@ -1,19 +1,18 @@
-﻿use std::collections::HashMap;
-use std::sync::Arc;
-use anyhow::anyhow;
-use egui::{ColorImage, ImageData, TextureId, TexturesDelta};
-use egui::epaint::{ImageDelta, Primitive};
-use windows::Win32::Foundation::RECT;
-use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_INDEX_BUFFER_VIEW};
-use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R32_UINT;
-use crate::render::graph::FrameGraph;
+﻿use crate::render::graph::FrameGraph;
 use crate::render::pipeline::desc::{Blend, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
 use crate::render::texture::{MipCount, Texture};
 use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
+use egui::epaint::{ImageDelta, Primitive};
+use egui::{ColorImage, ImageData, TextureId, TexturesDelta};
+use std::collections::HashMap;
+use std::sync::Arc;
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_INDEX_BUFFER_VIEW};
+use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R32_UINT;
 
 #[derive(Debug)]
 pub struct EguiPass {
