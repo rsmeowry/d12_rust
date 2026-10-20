@@ -12,6 +12,7 @@ use crate::time::Time;
 pub trait Scene: Sized {
     const NAME: &'static str;
 
+    fn ui(&mut self, ui: &mut egui::Ui) -> anyhow::Result<()>;
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self>;
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()>;
 }

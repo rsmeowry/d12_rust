@@ -20,6 +20,8 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{Mat4, Quat, Vec3};
 use std::borrow::Cow;
+use std::collections::HashMap;
+use egui::Ui;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 
 #[derive(Debug)]
@@ -38,11 +40,19 @@ pub struct SponzaWithLights {
     fog: FogPass,
     lighting: PbrLightingPass,
     post: PostProcessPass,
-    blit: BlitPass
+    blit: BlitPass,
+    debug_lines: Vec<String>,
 }
 
 impl Scene for SponzaWithLights {
     const NAME: &'static str = "Sponza (w/ lights)";
+
+    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        for line in std::mem::take(&mut self.debug_lines) {
+            ui.label(line);
+        }
+        Ok(())
+    }
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let mut batch = renderer.gd.begin_upload()?;
@@ -97,8 +107,7 @@ impl Scene for SponzaWithLights {
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
-
-
+        
         Ok(Self {
             gbuffer,
             blit,
@@ -113,7 +122,8 @@ impl Scene for SponzaWithLights {
             sponza,
             materials_buf,
             lighting,
-            post
+            post,
+            debug_lines: vec![]
         })
     }
 
@@ -230,7 +240,7 @@ impl Scene for SponzaWithLights {
 
         // debug
         for i in 0..CASCADE_COUNT {
-            opts.push_debug_line(Cow::Owned(format!("cascade {i}: <= {:.1}m | {} drawn", shadow.splits[i], shadow.drawn[i])))
+            self.debug_lines.push(format!("cascade {i}: <= {:.1}m | {} drawn", shadow.splits[i], shadow.drawn[i]))
         }
 
         Ok(())

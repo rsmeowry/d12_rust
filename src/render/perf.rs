@@ -98,7 +98,6 @@ impl Culler {
     }
 
     pub fn finish(&mut self, opts: &mut RenderOpts) {
-        opts.push_debug_line(Cow::Owned(format!("Culling: {:?} | Vis: {} / {} | T: {:.2}ms", opts.culling_mode, self.total_objects - self.culled_objects, self.total_objects, self.elapsed_time_ms)));
         self.total_objects = 0;
         self.culled_objects = 0;
         self.elapsed_time_ms = 0.;

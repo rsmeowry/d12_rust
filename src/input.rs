@@ -3,7 +3,7 @@ use flume::Receiver;
 use glam::Vec2;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::collections::HashSet;
-use egui::{pos2, Modifiers, MouseWheelSource, PointerButton, Pos2, TouchPhase};
+use egui::{pos2, Modifiers, PointerButton, Pos2, TouchPhase};
 use egui::MouseWheelUnit::Line;
 
 #[derive(Debug, Clone)]
@@ -90,7 +90,7 @@ impl InputDevice {
                 self.egui_events.push(egui::Event::PointerMoved(pos2(x as f32, y as f32)));
             }
             InputEvent::Wheel(whl) => {
-                self.egui_events.push(egui::Event::MouseWheel { source: MouseWheelSource::Wheel, phase: TouchPhase::Move,  unit: Line, modifiers: Modifiers::default(), delta: egui::Vec2::new(0., whl)})
+                self.egui_events.push(egui::Event::MouseWheel { phase: TouchPhase::Move,  unit: Line, modifiers: Modifiers::default(), delta: egui::Vec2::new(0., whl)})
             }
             InputEvent::Char(c) => {
                 self.egui_events.push(egui::Event::Text(c.to_string()))

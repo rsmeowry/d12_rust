@@ -1,4 +1,5 @@
-﻿use crate::app::RenderOpts;
+﻿use egui::Ui;
+use crate::app::RenderOpts;
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
@@ -34,6 +35,10 @@ pub const SPHERES_AMT_Y: usize = 6;
 
 impl Scene for PbrSample {
     const NAME: &'static str = "PBR Spheres";
+
+    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let lighting = PbrLightingPass::new(renderer,

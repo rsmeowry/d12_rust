@@ -2,20 +2,15 @@ use crate::input::KeyCode;
 use crate::render::camera::Camera;
 use crate::render::deferred::util::DebugTextPass;
 use crate::render::graph::FrameGraph;
-use crate::render::pipeline::{Globals, PipelineId};
+use crate::render::pipeline::Globals;
 use crate::render::renderer::Renderer;
 use crate::scenes::Scene;
 use crate::time::Time;
+use crate::ui::EguiPass;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::window::{NativeWindow, WindowProps};
+use egui_probe::{EguiProbe, Probe};
 use glam::{EulerRot, Quat, Vec2, Vec3};
-use std::borrow::Cow;
-use egui::epaint::Primitive;
-use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_BACK, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE};
-use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-use crate::render::pipeline::desc::{Blend, PipelineDesc};
-use crate::ui::EguiPass;
-use crate::wrappers::graphics::GraphicsDevice;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -174,7 +169,7 @@ impl<S: Scene> App<S> {
         }
 
         if input.was_released(KeyCode::F7) {
-            self.opts.debug_view_type = (self.opts.debug_view_type + 1) % 5;
+            self.opts.debug_view_type = DebugViewType::from_u32((self.opts.debug_view_type as u32 + 1) % 5);
         }
 
         if input.was_released(KeyCode::F8) {
@@ -193,10 +188,18 @@ impl<S: Scene> App<S> {
 
         let egui_inputs = self.window.input_mut().collect_egui_input(self.globals.resolution.x as u32, self.globals.resolution.y as u32, self.time.game_time());
 
-        let out = self.egui.run_pass(egui_inputs, |ctx| {
-            egui::Window::new("Render").show(ctx, |ui| {
-                ui.checkbox(&mut self.opts.use_wireframe, "Wireframe");
-                ui.add(egui::Slider::new(&mut self.opts.debug_view_type, 0..=4).text("Debug view"));
+        let out = self.egui.run_ui(egui_inputs, |ctx| {
+            egui::Window::new(format!("Rendering: {}", S::NAME)).show(ctx, |ui| {
+                ui.label(format!("FPS: {}", self.fps));
+
+                egui::CollapsingHeader::new("Rendering Options").show(ui, |header_ui| {
+                    Probe::new(&mut self.opts).show(header_ui);
+                    egui::widgets::global_theme_preference_buttons(header_ui);
+                });
+
+                egui::CollapsingHeader::new("Scene info").show(ui, |header_ui| {
+                    self.scene.ui(header_ui).unwrap();
+                });
             });
         });
         let prims = self.egui.tessellate(out.shapes, out.pixels_per_point);
@@ -215,18 +218,6 @@ impl<S: Scene> App<S> {
         let cam_pos = self.renderer.cam.pos();
 
         let mut text = format!("FPS: {} | tpf: {:.2}ms\nCamera: {cam_pos:.2}\nScene: {}", self.fps, 1000. / self.fps as f32, S::NAME);
-
-
-        for line in &self.opts.debug_lines {
-            text.push('\n');
-            text.push_str(&line);
-        }
-        self.opts.debug_lines.clear();
-
-        if self.opts.enable_dbg_text {
-            self.text.add_pass(text, self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
-        }
-
         if let Some((prims, tex, ppp)) = &self.egui_ui_out {
             self.egui_pass.update_textures(&self.renderer.gd, tex)?;
             self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.resolution.x, self.globals.resolution.y), &self.renderer, &mut graph)?;
@@ -293,7 +284,7 @@ impl Default for ControllerInfo {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, EguiProbe)]
 pub enum CullingMode {
     #[default]
     Off,
@@ -301,17 +292,34 @@ pub enum CullingMode {
     Octree,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, EguiProbe)]
 pub struct RenderOpts {
-    debug_lines: Vec<Cow<'static, str>>,
     pub culling_mode: CullingMode,
     pub use_wireframe: bool,
-    pub debug_view_type: u32,
+    pub debug_view_type: DebugViewType,
     pub enable_dbg_text: bool,
 }
 
-impl RenderOpts {
-    pub fn push_debug_line(&mut self, line: Cow<'static, str>) {
-        self.debug_lines.push(line);
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, EguiProbe, Default)]
+pub enum DebugViewType {
+    #[default]
+    Default,
+    Normals,
+    Metallic,
+    Roughness,
+    AO
+}
+
+impl DebugViewType {
+    pub fn from_u32(u: u32) -> Self {
+        match u {
+            0 => Self::Default,
+            1 => Self::Normals,
+            2 => Self::Metallic,
+            3 => Self::Roughness,
+            4 => Self::AO,
+            _ => Self::Default,
+        }
     }
 }

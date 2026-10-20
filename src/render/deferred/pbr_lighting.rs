@@ -111,7 +111,7 @@ impl PbrLightingPass {
             material: gr.get(gbuffer.materials)?.srv_ptr(),
             depth: gr.get(gbuffer.scene_depth)?.srv_ptr(),
             dir_count: first_point,
-            debug_view: opts.debug_view_type,
+            debug_view: opts.debug_view_type as u32,
             sky_tex: self.sky_tex.srv_ptr(),
             _pad: 0.,
             ambient: Vec3::ONE * ambient_strength,

@@ -1,4 +1,5 @@
-﻿use crate::app::RenderOpts;
+﻿use egui::Ui;
+use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
@@ -29,6 +30,10 @@ pub struct PbrSampleMesh {
 
 impl Scene for PbrSampleMesh {
     const NAME: &'static str = "PBR Mesh";
+
+    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let lighting = PbrLightingPass::new(renderer,

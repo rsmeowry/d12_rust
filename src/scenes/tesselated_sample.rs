@@ -1,4 +1,5 @@
-﻿use crate::app::RenderOpts;
+﻿use egui::Ui;
+use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexTess;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
@@ -32,6 +33,10 @@ pub struct TesselatedSample {
 
 impl Scene for TesselatedSample {
     const NAME: &'static str = "Tesselation (bricks)";
+
+    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let lighting = PhongLightingPass::new(renderer, "assets/textures/sky/sky.hdr")?;

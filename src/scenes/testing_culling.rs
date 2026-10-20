@@ -1,4 +1,5 @@
-﻿use crate::app::RenderOpts;
+﻿use egui::Ui;
+use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::Vertex3;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
@@ -38,6 +39,10 @@ const MAX_LOD_LEVEL: u32 = 3;
 
 impl Scene for CullingScene {
     const NAME: &'static str = "Pusheens (10K)";
+
+    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let lighting = PhongLightingPass::new(renderer, "assets/textures/sky/sky.hdr")?;
