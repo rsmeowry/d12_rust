@@ -140,6 +140,10 @@ impl NativeWindow {
         &self.input_device
     }
 
+    pub fn input_mut(&mut self) -> &mut InputDevice {
+        &mut self.input_device
+    }
+
     pub fn create(props: WindowProps) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = flume::unbounded();
         let (input_tx, input_rx) = flume::unbounded();
@@ -367,6 +371,24 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
             WM_APP_TOGGLE_FULLSCREEN => {
                 toggle_fullscreen(hwnd, state).expect("Failed to toggle fullscreen");
                 LRESULT(1)
+            },
+            WM_MOUSEWHEEL => {
+                // scary bullshit
+                let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as f32 / 120.0; // WHEEL_DELTA
+                state.input_tx.send(InputEvent::Wheel(delta)).expect("Failed to send input event");
+                LRESULT(0)
+            }
+            WM_MOUSEMOVE => {
+                // super scary bullshit
+                let (x, y) = ((lparam.0 & 0xFFFF) as i16 as i32, ((lparam.0 >> 16) & 0xFFFF) as i16 as i32);
+                state.input_tx.send(InputEvent::CursorPos { x, y }).expect("Failed to send input event");
+                LRESULT(0)
+            }
+            WM_CHAR => {
+                if let Some(c) = char::from_u32(wparam.0 as u32).filter(|c| !c.is_control()) {
+                    state.input_tx.send(InputEvent::Char(c)).expect("Failed to send input event");
+                }
+                LRESULT(0)
             }
             _ => DefWindowProcW(hwnd, msg, wparam, lparam),
         }

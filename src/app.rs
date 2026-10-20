@@ -2,7 +2,7 @@ use crate::input::KeyCode;
 use crate::render::camera::Camera;
 use crate::render::deferred::util::DebugTextPass;
 use crate::render::graph::FrameGraph;
-use crate::render::pipeline::Globals;
+use crate::render::pipeline::{Globals, PipelineId};
 use crate::render::renderer::Renderer;
 use crate::scenes::Scene;
 use crate::time::Time;
@@ -10,12 +10,22 @@ use crate::wrappers::event::WindowEvent;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use glam::{EulerRot, Quat, Vec2, Vec3};
 use std::borrow::Cow;
+use egui::epaint::Primitive;
+use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_BACK, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE};
+use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+use crate::render::pipeline::desc::{Blend, PipelineDesc};
+use crate::ui::EguiPass;
+use crate::wrappers::graphics::GraphicsDevice;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 
 pub struct App<S: Scene> {
     renderer: Renderer,
+
+    egui_pass: EguiPass,
+    egui: egui::Context,
+    egui_ui_out: Option<(Vec<egui::ClippedPrimitive>, egui::TexturesDelta, f32)>,
 
     text: DebugTextPass,
     scene: S,
@@ -63,6 +73,8 @@ impl<S: Scene> App<S> {
         let mut opts = RenderOpts::default();
         opts.enable_dbg_text = true;
 
+        let egui_pass = EguiPass::new(&mut renderer)?;
+
         Ok(Self {
             renderer,
 
@@ -74,6 +86,10 @@ impl<S: Scene> App<S> {
             last_title_update: 0.,
             frames: 0,
             fps: 0,
+
+            egui: egui::Context::default(),
+            egui_pass,
+            egui_ui_out: None,
 
             window,
 
@@ -170,6 +186,18 @@ impl<S: Scene> App<S> {
         self.globals.view_proj = self.renderer.cam.view_proj();
         self.globals.inv_view_proj = self.renderer.cam.view_proj().inverse();
         self.globals.camera_pos = self.renderer.cam.pos();
+
+        let egui_inputs = self.window.input_mut().collect_egui_input(self.globals.resolution.x as u32, self.globals.resolution.y as u32, self.time.game_time());
+
+        let out = self.egui.run_pass(egui_inputs, |ctx| {
+            egui::Window::new("Render").show(ctx, |ui| {
+                ui.checkbox(&mut self.opts.use_wireframe, "Wireframe");
+                ui.add(egui::Slider::new(&mut self.opts.debug_view_type, 0..=4).text("Debug view"));
+            });
+        });
+        let prims = self.egui.tessellate(out.shapes, out.pixels_per_point);
+        self.egui_ui_out = Some((prims, out.textures_delta, out.pixels_per_point));
+
         Ok(())
     }
 
@@ -184,6 +212,7 @@ impl<S: Scene> App<S> {
 
         let mut text = format!("FPS: {} | tpf: {:.2}ms\nCamera: {cam_pos:.2}\nScene: {}", self.fps, 1000. / self.fps as f32, S::NAME);
 
+
         for line in &self.opts.debug_lines {
             text.push('\n');
             text.push_str(&line);
@@ -192,6 +221,10 @@ impl<S: Scene> App<S> {
 
         if self.opts.enable_dbg_text {
             self.text.add_pass(text, self.globals.resolution.x as usize, &self.renderer, &mut graph)?;
+        }
+
+        if let Some((prims, tex, ppp)) = &self.egui_ui_out {
+            self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.resolution.x, self.globals.resolution.y), &self.renderer, &mut graph)?;
         }
 
         graph.execute(&self.renderer.gd, &self.renderer.gr)?;

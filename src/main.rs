@@ -11,6 +11,7 @@ pub mod time;
 pub mod wrappers;
 mod app;
 mod scenes;
+pub mod ui;
 
 fn main() -> anyhow::Result<()> {
     app::App::<SponzaWithLights>::new()?.run()
