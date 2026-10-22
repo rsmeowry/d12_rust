@@ -12,11 +12,12 @@
 #define SNAPSHOT 8192
 
 static const float2 QUAD_CORNERS[4] = { float2(-1, -1), float2(-1, 1), float2(1, -1), float2(1, 1) };
+static const float2 QUAD_UVS[4] = { float2(0., 1.), float2(0., 0.), float2(1, 1.), float2(1., 0.) };
 
 void BillboardTowards(float3 forward, out float3 right, out float3 up) {
     float3 rUp = abs(forward.y) < 0.99 ? float3(0, 1, 0) : float3(1, 0, 0);
-    right = normalize(cross(rUp, forward));
-    up = cross(forward, right);
+    right = normalize(cross(forward, rUp));
+    up = cross(right, forward);
 }
 
 // https://en.wikipedia.org/wiki/Permuted_congruential_generator

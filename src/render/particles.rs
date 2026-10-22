@@ -1,6 +1,7 @@
 ﻿use glam::Vec3;
 
 pub mod simulate;
+pub mod draw;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
