@@ -21,6 +21,7 @@ use crate::time::Time;
 use egui::Ui;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::particles::simulate::{ComputeParticlesPass, ParticleSimulation, SimulateParticleProps};
 
 #[derive(Debug)]
 pub struct SponzaWithLights {
@@ -31,6 +32,8 @@ pub struct SponzaWithLights {
     sphere_mat_idx: u32,
 
     materials_buf: ID3D12Resource,
+
+    particles: ParticleSimulation,
 
     shadows: ShadowMap,
     culler: Culler,
@@ -103,6 +106,8 @@ impl Scene for SponzaWithLights {
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
+        let particles = ParticleSimulation::new(renderer, 4096)?;
+
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
         
@@ -113,6 +118,7 @@ impl Scene for SponzaWithLights {
             sphere,
             sphere_mat_idx,
 
+            particles,
             shadows,
             culler,
             bloom,
@@ -206,6 +212,15 @@ impl Scene for SponzaWithLights {
                 }
                 Ok(())
             });
+
+        // particles: simulate
+        self.particles.add_pass(SimulateParticleProps {
+            emitter: Vec3::new(0., 3., 0.),
+            gravity: Default::default(),
+            rate: 256.0,
+            spread: 0.8,
+            ..Default::default()
+        }, time.delta_time(), renderer, &self.gbuffer, graph)?;
 
         let (mut all_objects, mut all_meshes) = self.sponza.to_objects_and_draws();
         all_objects.push(sphere_obj);

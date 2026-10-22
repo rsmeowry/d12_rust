@@ -521,7 +521,7 @@ impl GraphicsDevice {
     }
 
     pub fn create_readback_buffer<S: AsRef<str>>(dev: &ID3D12Device, size: usize, name: S) -> anyhow::Result<ID3D12Resource> {
-        Self::create_committed_buffer(dev, D3D12_HEAP_TYPE_READBACK, size, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, name)
+        Self::create_committed_buffer(dev, D3D12_HEAP_TYPE_READBACK, size, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAG_NONE, name)
     }
 
     /// creates an UPLOAD type buffer that lives on the RAM (slow !! but can write ig)

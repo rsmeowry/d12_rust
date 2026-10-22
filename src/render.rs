@@ -11,3 +11,4 @@ pub mod lights;
 pub mod deferred;
 pub mod perf;
 pub mod shadows;
+pub mod particles;
