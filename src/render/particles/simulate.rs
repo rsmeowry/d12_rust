@@ -1,6 +1,6 @@
 ﻿use std::cell::Cell;
 use glam::{Vec2, Vec3};
-use windows::Win32::Graphics::Direct3D12::{ID3D12CommandSignature, ID3D12GraphicsCommandList, ID3D12Resource, D3D12_BUFFER_UAV, D3D12_BUFFER_UAV_FLAG_NONE, D3D12_BUFFER_UAV_FLAG_RAW, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_UAV_DIMENSION_BUFFER, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
+use windows::Win32::Graphics::Direct3D12::{ID3D12CommandSignature, ID3D12GraphicsCommandList, ID3D12Resource, D3D12_BUFFER_UAV, D3D12_BUFFER_UAV_FLAG_NONE, D3D12_BUFFER_UAV_FLAG_RAW, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_RANGE, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_UAV_DIMENSION_BUFFER, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_UNKNOWN};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
@@ -79,7 +79,8 @@ pub struct ParticleSimulation {
     cs_emit: PipelineId,
     cs_simulate: PipelineId,
     initialized: Cell<bool>,
-    emit_accum: Cell<f32>
+    emit_accum: Cell<f32>,
+    last_counts: Cell<[u32; 2]>,
 }
 
 impl ParticleSimulation {
@@ -103,7 +104,7 @@ impl ParticleSimulation {
         let dead_list = GraphicsDevice::create_uav_buffer(dev, (max * 4) as usize, "ParticlesDeadList")?;
         let sort_list = GraphicsDevice::create_uav_buffer(dev, (max * 4 * 2) as usize, "ParticlesSortList")?;
         let counters = GraphicsDevice::create_uav_buffer(dev, 8192 + 4, "ParticlesCounters")?;
-        let readback = GraphicsDevice::create_readback_buffer(dev, 8, "ParticlesReadback")?;
+        let readback = GraphicsDevice::create_readback_buffer(dev, 8 * GraphicsDevice::FRAMES_IN_FLIGHT, "ParticlesReadback")?;
 
         // descriptors
         let heap = gd.srv_heap()?;
@@ -158,11 +159,17 @@ impl ParticleSimulation {
             cs_simulate,
             initialized: Cell::new(false),
             emit_accum: Cell::new(0.0),
+            last_counts: Cell::new([0; 2]),
         })
     }
 
     pub fn reset(&self) {
         self.initialized.set(false);
+    }
+
+    pub fn particle_counts(&self) -> (u32, u32) {
+        let g = self.last_counts.get();
+        (g[0], g[1])
     }
 
     pub fn add_pass<'a>(&'a self, props: SimulateParticleProps, dt: f32, rd: &'a Renderer, gbuf: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
@@ -196,11 +203,21 @@ impl ParticleSimulation {
             _pad: [0; 2],
         })?;
 
+        // preparing readback data
+        let off = rd.gd.frame_index()? * 8;
+        unsafe {
+            let mut ptr = std::ptr::null_mut();
+            self.readback.Map(0, Some(&D3D12_RANGE { Begin: off, End: off + 8 }), Some(&mut ptr))?;
+            let counts = ptr.cast::<u8>().add(off).cast::<[u32; 2]>().read_unaligned();
+            self.readback.Unmap(0, Some(&D3D12_RANGE::default()));
+            self.last_counts.set(counts); // free/alive
+        }
 
         let sim_data = SimData {
             pass_va,
             emit_amt,
-            should_init
+            should_init,
+            off
         };
 
         // adding a sim pass
@@ -261,8 +278,8 @@ impl ParticleSimulation {
                 transition_barrier(&self.particles_buf, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
                 transition_barrier(&self.sort_list, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
             ]);
-            cmd.CopyBufferRegion(&self.readback, 0, &self.counters, 0, 4);
-            cmd.CopyBufferRegion(&self.readback, 4, &self.counters, 4096, 4);
+            cmd.CopyBufferRegion(&self.readback, sim.off as u64, &self.counters, 0, 4);
+            cmd.CopyBufferRegion(&self.readback, sim.off as u64 + 4, &self.counters, 4096, 4);
         }
 
         Ok(())
@@ -273,5 +290,6 @@ impl ParticleSimulation {
 struct SimData {
     pass_va: u64,
     emit_amt: u32,
-    should_init: bool
+    should_init: bool,
+    off: usize
 }

@@ -10,6 +10,7 @@ use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::{unit_sphere, GpuLight};
 use crate::render::mesh::{DrawTopology, Mesh};
+use crate::render::particles::simulate::{ParticleSimulation, SimulateParticleProps};
 use crate::render::perf::frustum::AABB;
 use crate::render::perf::{Culler, NO_LOD};
 use crate::render::pipeline::material::MaterialParams;
@@ -21,7 +22,8 @@ use crate::time::Time;
 use egui::Ui;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::render::particles::simulate::{ComputeParticlesPass, ParticleSimulation, SimulateParticleProps};
+
+const MAX_PARTICLES: usize = 4096;
 
 #[derive(Debug)]
 pub struct SponzaWithLights {
@@ -49,9 +51,18 @@ impl Scene for SponzaWithLights {
     const NAME: &'static str = "Sponza (w/ lights)";
 
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        ui.heading("Cascades");
         for line in std::mem::take(&mut self.debug_lines) {
             ui.label(line);
         }
+
+        ui.add_space(16.);
+        ui.heading("Particles");
+        let (free, alive) = self.particles.particle_counts();
+        ui.label(format!("Alive: {alive}"));
+        ui.label(format!("Free: {free}"));
+        ui.label(format!("Fits maximum ({MAX_PARTICLES}): {}", (free + alive) as usize == MAX_PARTICLES));
+
         Ok(())
     }
 
@@ -106,7 +117,7 @@ impl Scene for SponzaWithLights {
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
-        let particles = ParticleSimulation::new(renderer, 4096)?;
+        let particles = ParticleSimulation::new(renderer, MAX_PARTICLES as u32)?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
@@ -217,8 +228,9 @@ impl Scene for SponzaWithLights {
         self.particles.add_pass(SimulateParticleProps {
             emitter: Vec3::new(0., 3., 0.),
             gravity: Default::default(),
-            rate: 256.0,
+            rate: 512.0,
             spread: 0.8,
+            lifetime: 1.6,
             ..Default::default()
         }, time.delta_time(), renderer, &self.gbuffer, graph)?;
 
