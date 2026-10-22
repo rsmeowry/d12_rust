@@ -234,11 +234,12 @@ impl Scene for SponzaWithLights {
 
         // particles: simulate
         self.particles_sim.add_pass(SimulateParticleProps {
-            emitter: Vec3::new(0., 3., 0.),
+            emitter: Vec3::new(0., 3., -1.),
             gravity: Default::default(),
-            rate: 512.0,
-            spread: 0.8,
+            rate: 1024.,
+            spread: 0.6,
             lifetime: 1.6,
+            velocity_base: Vec3::Y * 2.,
             ..Default::default()
         }, time.delta_time(), renderer, &self.gbuffer, graph)?;
 

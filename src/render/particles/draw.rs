@@ -1,14 +1,13 @@
-﻿use windows::Win32::Graphics::Direct3D12::{ID3D12CommandSignature, ID3D12Resource, D3D12_COMMAND_SIGNATURE_DESC, D3D12_CULL_MODE_NONE, D3D12_DRAW_ARGUMENTS, D3D12_INDIRECT_ARGUMENT_DESC, D3D12_INDIRECT_ARGUMENT_TYPE_DRAW, D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT};
-use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
-use crate::render::deferred::GBuffer;
-use crate::render::graph::FrameGraph;
+﻿use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
-use crate::render::graph::res::ResId;
+use crate::render::graph::FrameGraph;
 use crate::render::particles::simulate::ParticleSimulation;
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
 use crate::render::texture::Texture;
+use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
+use windows::Win32::Graphics::Direct3D12::{ID3D12CommandSignature, D3D12_COMMAND_SIGNATURE_DESC, D3D12_CULL_MODE_NONE, D3D12_DRAW_ARGUMENTS, D3D12_INDIRECT_ARGUMENT_DESC, D3D12_INDIRECT_ARGUMENT_TYPE_DRAW, D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT};
 
 #[derive(Debug)]
 pub struct ParticleRendering {

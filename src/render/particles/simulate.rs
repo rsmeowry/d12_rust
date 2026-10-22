@@ -1,14 +1,14 @@
-﻿use std::cell::Cell;
-use glam::{Vec2, Vec3};
-use windows::Win32::Graphics::Direct3D12::{ID3D12CommandSignature, ID3D12GraphicsCommandList, ID3D12Resource, D3D12_BUFFER_UAV, D3D12_BUFFER_UAV_FLAG_NONE, D3D12_BUFFER_UAV_FLAG_RAW, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_RANGE, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_UAV_DIMENSION_BUFFER, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_UNKNOWN};
-use crate::render::deferred::GBuffer;
+﻿use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
 use crate::render::particles::PARTICLE_STRIDE;
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
 use crate::wrappers::graphics::{transition_barrier, uav_barrier, GraphicsDevice};
+use glam::{Vec2, Vec3};
+use std::cell::Cell;
+use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_BUFFER_UAV, D3D12_BUFFER_UAV_FLAG_NONE, D3D12_BUFFER_UAV_FLAG_RAW, D3D12_GPU_DESCRIPTOR_HANDLE, D3D12_RANGE, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_UAV_DIMENSION_BUFFER, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R32_TYPELESS, DXGI_FORMAT_UNKNOWN};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
