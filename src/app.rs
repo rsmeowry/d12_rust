@@ -33,6 +33,7 @@ pub struct App<S: Scene> {
     fps: u32,
 
     window: NativeWindow,
+    timings: Vec<(&'static str, f32)>,
 
     opts: RenderOpts,
     controller: ControllerInfo
@@ -89,6 +90,7 @@ impl<S: Scene> App<S> {
             egui_ui_out: None,
 
             window,
+            timings: Vec::new(),
 
             opts,
             controller: ControllerInfo::default()
@@ -200,6 +202,12 @@ impl<S: Scene> App<S> {
                 egui::CollapsingHeader::new("Scene info").show(ui, |header_ui| {
                     self.scene.ui(header_ui).unwrap();
                 });
+
+                egui::CollapsingHeader::new("Timings").show(ui, |header_ui| {
+                    for timing in std::mem::take(&mut self.timings) {
+                        header_ui.label(format!("*{}*: {:.2}ms", timing.0, timing.1));
+                    }
+                })
             });
         });
         let prims = self.egui.tessellate(out.shapes, out.pixels_per_point);
@@ -223,7 +231,7 @@ impl<S: Scene> App<S> {
             self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.resolution.x, self.globals.resolution.y), &self.renderer, &mut graph)?;
         }
 
-        graph.execute(&self.renderer.gd, &self.renderer.gr)?;
+        self.timings = graph.execute(&self.renderer.gd, &self.renderer.gr)?;
 
         self.renderer.gd.display_rt()
     }

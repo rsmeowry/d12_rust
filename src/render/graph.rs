@@ -4,6 +4,7 @@ use crate::render::texture::Texture;
 use crate::wrappers::graphics::GraphicsDevice;
 use anyhow::bail;
 use std::collections::HashSet;
+use std::time::Instant;
 use windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 
 pub mod pass;
@@ -11,17 +12,21 @@ pub mod res;
 pub mod builder;
 
 pub struct FrameGraph<'a> {
-    passes: Vec<Pass<'a>>
+    passes: Vec<Pass<'a>>,
 }
 
 impl<'a> FrameGraph<'a> {
     pub fn new() -> Self {
-        Self { passes: Vec::new() }
+        Self {
+            passes: Vec::with_capacity(8)
+        }
     }
 
-    pub fn execute(self, gd: &GraphicsDevice, res: &GraphResources) -> anyhow::Result<()> {
+    pub fn execute(self, gd: &GraphicsDevice, res: &GraphResources) -> anyhow::Result<Vec<(&'static str, f32)>> {
         let cmd = gd.command_list()?;
-        for pass in self.cull_passes(res) {
+        let mut timings: Vec<(&'static str, f32)> = self.passes.iter().map(|it| (it.name, 0.)).collect();
+        for (pass_idx, pass) in self.cull_passes(res) {
+            let pass_begin = Instant::now();
             // transition all into readable state
             for r in &pass.reads {
                 res.get(*r)?.transition(cmd, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
@@ -54,11 +59,13 @@ impl<'a> FrameGraph<'a> {
             }
 
             (pass.exec)(&PassCtx::new(&cmd, gd, res))?;
+            let elapsed_millis = pass_begin.elapsed().as_secs_f32() * 1000.0;
+            timings[pass_idx] = (pass.name, elapsed_millis);
         }
-        Ok(())
+        Ok(timings)
     }
 
-    fn cull_passes(self, res: &GraphResources) -> Vec<Pass<'a>> {
+    fn cull_passes(self, res: &GraphResources) -> Vec<(usize, Pass<'a>)> {
         let mut needed_res: HashSet<ResId> = HashSet::new();
         let mut alive = vec![false; self.passes.len()];
 
@@ -81,7 +88,7 @@ impl<'a> FrameGraph<'a> {
             needed_res.extend(writes.filter(|it| it.1 == ResLoad::Preserve).map(|it| it.0))
         }
 
-        self.passes.into_iter().zip(alive).filter_map(|it| it.1.then_some(it.0)).collect()
+        self.passes.into_iter().enumerate().zip(alive).filter_map(|it| it.1.then_some(it.0)).collect()
     }
 }
 
