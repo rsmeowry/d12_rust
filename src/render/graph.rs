@@ -5,7 +5,7 @@ use crate::wrappers::graphics::GraphicsDevice;
 use anyhow::bail;
 use std::collections::HashSet;
 use std::time::Instant;
-use windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+use windows::Win32::Graphics::Direct3D12::{ID3D12QueryHeap, ID3D12Resource, D3D12_QUERY_TYPE_TIMESTAMP, D3D12_RANGE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 
 pub mod pass;
 pub mod res;
@@ -24,9 +24,18 @@ impl<'a> FrameGraph<'a> {
 
     pub fn execute(self, gd: &GraphicsDevice, res: &GraphResources) -> anyhow::Result<Vec<(&'static str, f32)>> {
         let cmd = gd.command_list()?;
-        let mut timings: Vec<(&'static str, f32)> = self.passes.iter().map(|it| (it.name, 0.)).collect();
-        for (pass_idx, pass) in self.cull_passes(res) {
-            let pass_begin = Instant::now();
+        let base = gd.frame_index()? * GraphicsDevice::MAX_TS;
+        let frame = gd.frame_context()?;
+        let passes = self.cull_passes(res);
+        let (query_heap, readback, ms_per_tick) = gd.timings()?;
+        let gpu = read_timing_slot(readback, base, &frame.ts_names.borrow(), ms_per_tick)?;
+        let names: Vec<&'static str> = passes.iter().map(|(_, p)| p.name).collect();
+
+        unsafe {
+            cmd.EndQuery(query_heap, D3D12_QUERY_TYPE_TIMESTAMP, base as u32);
+        }
+
+        for (pass_idx, pass) in passes {
             GraphicsDevice::begin_event(cmd, pass.name);
             // transition all into readable state
             for r in &pass.reads {
@@ -60,12 +69,17 @@ impl<'a> FrameGraph<'a> {
             }
 
             (pass.exec)(&PassCtx::new(&cmd, gd, res))?;
+            unsafe {
+                cmd.EndQuery(query_heap, D3D12_QUERY_TYPE_TIMESTAMP, (base + pass_idx + 1) as u32);
+            }
             GraphicsDevice::end_event(cmd);
-            
-            let elapsed_millis = pass_begin.elapsed().as_secs_f32() * 1000.0;
-            timings[pass_idx] = (pass.name, elapsed_millis);
         }
-        Ok(timings)
+        unsafe {
+            cmd.ResolveQueryData(query_heap, D3D12_QUERY_TYPE_TIMESTAMP, base as u32, names.len() as u32 + 1, readback, (base * 8) as u64);
+        }
+        *frame.ts_names.borrow_mut() = names;
+
+        Ok(gpu)
     }
 
     fn cull_passes(self, res: &GraphResources) -> Vec<(usize, Pass<'a>)> {
@@ -100,5 +114,21 @@ fn writes_depth(pass: &Pass) -> Vec<(ResId, ResLoad)> {
         vec![(d.0, load)]
     } else {
         vec![]
+    }
+}
+
+fn read_timing_slot(buf: &ID3D12Resource, base: usize, names: &[&'static str], ms_per_tick: f64) -> anyhow::Result<Vec<(&'static str, f32)>> {
+    let n = names.len() + 1;
+    let range = D3D12_RANGE { Begin: base * 8, End: (base + n) * 8 };
+    unsafe {
+        let mut ptr = std::ptr::null_mut();
+        buf.Map(0, Some(&range), Some(&mut ptr))?;
+
+        let ts = std::slice::from_raw_parts(ptr.cast::<u64>().add(base), n);
+        let out = names.iter().zip(ts.windows(2))
+            .map(|(name, w)| (*name, (w[1].wrapping_sub(w[0]) as f64 * ms_per_tick) as f32))
+            .collect();
+        buf.Unmap(0, Some(&D3D12_RANGE::default()));
+        Ok(out)
     }
 }

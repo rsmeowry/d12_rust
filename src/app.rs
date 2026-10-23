@@ -203,8 +203,11 @@ impl<S: Scene> App<S> {
                     self.scene.ui(header_ui).unwrap();
                 });
 
-                egui::CollapsingHeader::new("CPU Timings").show(ui, |header_ui| {
-                    for timing in std::mem::take(&mut self.timings) {
+                egui::CollapsingHeader::new("Pass Timings").show(ui, |header_ui| {
+                    for timing in &self.timings {
+                        if timing.1 < 0.02 {
+                            continue;
+                        }
                         header_ui.label(format!("{}: {:.2}ms", timing.0, timing.1));
                     }
                 })

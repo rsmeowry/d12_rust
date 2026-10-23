@@ -1,4 +1,4 @@
-﻿use std::cell::Cell;
+﻿use std::cell::{Cell, RefCell};
 use windows::Win32::Graphics::Direct3D12::{ID3D12CommandAllocator, ID3D12Fence};
 use crate::wrappers::graphics::alloc::FrameAllocator;
 
@@ -7,4 +7,5 @@ pub struct FrameContext {
     pub command_alloc: ID3D12CommandAllocator,
     pub fence_value: Cell<u64>,
     pub frame_alloc: FrameAllocator,
+    pub ts_names: RefCell<Vec<&'static str>>
 }
