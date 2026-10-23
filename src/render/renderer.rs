@@ -31,10 +31,6 @@ pub struct Renderer {
     pub gd: GraphicsDevice,
     pub gr: GraphResources,
     pub cam: Camera,
-    pub albedo_sink: ResId,
-    pub normal_sink: ResId,
-    pub material_sink: ResId,
-    pub emissive_sink: ResId,
     white_tex: Texture,
     gray_tex: Texture,
     flat_normal_tex: Texture,
@@ -58,10 +54,6 @@ impl Renderer {
         batch.finish()?;
 
         let mut gr = GraphResources::new(width, height);
-        let albedo_sink = gr.color(&gd, "AlbedoSink", GB_ALBEDO, Vec4::ZERO, ResSize::Fixed(64, 64))?;
-        let normal_sink = gr.color(&gd, "NormalSink", GB_NORMALS, Vec4::ZERO, ResSize::Fixed(64, 64))?;
-        let material_sink = gr.color(&gd, "AlbedoSink", GB_MATERIAL, Vec4::ZERO, ResSize::Fixed(64, 64))?;
-        let emissive_sink = gr.color(&gd, "AlbedoSink", SCENE_FORMAT, Vec4::ZERO, ResSize::Fixed(64, 64))?;
 
         Ok(Self {
             pipeline_mgr: PipelineManager::new(&gd)?,
@@ -72,10 +64,6 @@ impl Renderer {
             gd,
             shaders,
             cam,
-            albedo_sink,
-            normal_sink,
-            material_sink,
-            emissive_sink,
             frame_count: Cell::new(0),
         })
     }

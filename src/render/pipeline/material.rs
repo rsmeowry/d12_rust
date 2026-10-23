@@ -45,7 +45,8 @@ pub enum MaterialParams {
     },
     Billboard {
         albedo_tex: u32,
-        normal_tex: u32
+        normal_tex: u32,
+        material_tex: u32,
     }
 }
 
@@ -96,9 +97,9 @@ impl MaterialParams {
                     ]
                 }
             }
-            MaterialParams::Billboard { albedo_tex, normal_tex } => {
+            MaterialParams::Billboard { albedo_tex, normal_tex, material_tex } => {
                 GpuMaterial {
-                    textures: [albedo_tex, normal_tex, 0, 0, 0, 0, 0, 0],
+                    textures: [albedo_tex, normal_tex, material_tex, 0, 0, 0, 0, 0],
                     unique_params: [0.; 16],
                 }
             }

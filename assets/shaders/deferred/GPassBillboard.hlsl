@@ -9,7 +9,8 @@ struct ObjectData {
 struct BillboardMaterial {
     uint albedoTex;
     uint normalTex;
-    uint _texPad[6];
+    uint materialTex;
+    uint _texPad[5];
 
     float _pad[16];
 };
@@ -76,11 +77,12 @@ GBufferOut frag(GSOut i) {
     clip(tex.a - 0.5);
     float3 nv = g_Tex2D[mat.normalTex].Sample(LinearClamp, i.uv).xyz * 2 - 1;
     float3 n = normalize(i.right * nv.x + i.up * nv.y - i.forward * nv.z);
+    float4 texMat = g_Tex2D[mat.materialTex].Sample(LinearClamp, i.uv);
 
     GBufferOut o;
     o.albedo = float4(tex.rgb, 1);
     o.normal = float4(n * 0.5 + 0.5, 0);
-    o.material = float4(0.5, 0, 0, 0);
+    o.material = texMat;
     o.emissive = 0;
     return o;
 }

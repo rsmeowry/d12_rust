@@ -1,5 +1,9 @@
 ﻿#include "../lib/Core.hlsl"
 
+cbuffer BakePass : register(b2) {
+    float4x4 bakeViewProj;
+}
+
 struct ObjectData {
     float4x4 model;
     uint materialId;
@@ -47,7 +51,7 @@ Varyings vertBake(Attributes i) {
     ObjectData obj = g_Objects[drawIndex];
     float4 posW = mul(obj.model, float4(i.pos, 1.0));
     Varyings o;
-    o.pos = mul(viewProj, posW);
+    o.pos = mul(bakeViewProj, posW);
     o.normalW = mul((float3x3) obj.model, i.normal);
     o.uv = i.uv;
     return o;

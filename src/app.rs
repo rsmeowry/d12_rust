@@ -229,9 +229,10 @@ impl<S: Scene> App<S> {
         let cam_pos = self.renderer.cam.pos();
 
         let text = format!("FPS: {} | tpf: {:.2}ms\nCamera: {cam_pos:.2}\nScene: {}", self.fps, 1000. / self.fps as f32, S::NAME);
-        if let Some((prims, tex, ppp)) = &self.egui_ui_out {
+        if let Some((prims, tex, ppp)) = &mut self.egui_ui_out {
             self.egui_pass.update_textures(&self.renderer.gd, tex)?;
             self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.resolution.x, self.globals.resolution.y), &self.renderer, &mut graph)?;
+            tex.clear();
         }
 
         let k = 1.0 - (-self.time.delta_time() / TIMINGS_SMOOTHING_SECS).exp();
@@ -303,7 +304,7 @@ impl Default for ControllerInfo {
     }
 }
 
-#[derive(Debug, Clone, Default, EguiProbe)]
+#[derive(Debug, Copy, Clone, Default, EguiProbe)]
 pub enum CullingMode {
     Off,
     #[default]
@@ -311,7 +312,7 @@ pub enum CullingMode {
     Octree,
 }
 
-#[derive(Debug, Clone, Default, EguiProbe)]
+#[derive(Debug, Copy, Clone, Default, EguiProbe)]
 pub struct RenderOpts {
     pub culling_mode: CullingMode,
     pub use_wireframe: bool,

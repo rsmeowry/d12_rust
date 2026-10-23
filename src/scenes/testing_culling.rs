@@ -17,7 +17,7 @@ use crate::time::Time;
 use egui::Ui;
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::render::perf::lod::{LodRenderer, BILLBOARD_DIST};
+use crate::render::perf::lod::LodRenderer;
 
 #[derive(Debug)]
 pub struct CullingScene {
@@ -27,6 +27,7 @@ pub struct CullingScene {
     scene: LoadedScene,
 
     materials_buf: ID3D12Resource,
+    max_dist: f32,
 
     lod: LodRenderer,
     culler: Culler,
@@ -35,13 +36,13 @@ pub struct CullingScene {
     blit: BlitPass
 }
 
-const MAX_DIST: f32 = 80.;
 const MAX_LOD_LEVEL: u32 = 3;
 
 impl Scene for CullingScene {
     const NAME: &'static str = "Pusheens (10K)";
 
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        ui.add(egui::Slider::new(&mut self.max_dist, 0.5..=120.0).text("Max distance"));
         Ok(())
     }
 
@@ -81,7 +82,7 @@ impl Scene for CullingScene {
         batch.finish()?;
 
         let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
-        let lod = LodRenderer::new(&scene, renderer, &mut materials, gbuffer.gpass)?;
+        let lod = LodRenderer::new(&scene, renderer, &mut materials, 128)?;
 
         let mut batch = renderer.gd.begin_upload()?;
 
@@ -99,6 +100,7 @@ impl Scene for CullingScene {
         Ok(Self {
             gbuffer,
             blit,
+            max_dist: 80.,
 
             lod,
             culler,
@@ -123,7 +125,7 @@ impl Scene for CullingScene {
             &mut draws,
             &self.objects,
             &self.objects.iter().map(|each| {
-                let lod_level = distance_to_lod_level(renderer.cam.pos().distance(each.model.transform_point3(Vec3::ZERO)), MAX_DIST, MAX_LOD_LEVEL);
+                let lod_level = distance_to_lod_level(renderer.cam.pos().distance(each.model.transform_point3(Vec3::ZERO)), self.max_dist, MAX_LOD_LEVEL);
                 levels.push(lod_level);
                 self.scene.fetch_mesh_lod(0, lod_level)
             }).collect::<Vec<_>>(),
@@ -135,7 +137,7 @@ impl Scene for CullingScene {
 
         let cam_pos = renderer.cam.pos();
         let (far, near): (Vec<_>, Vec<_>) = objects.into_iter().zip(draws)
-            .partition(|(o, _)| cam_pos.distance(o.model.transform_point3(Vec3::ZERO)) > BILLBOARD_DIST);
+            .partition(|(o, _)| cam_pos.distance(o.model.transform_point3(Vec3::ZERO)) > self.max_dist);
         let (mut objects, draws): (Vec<ObjectData>, Vec<_>) = near.into_iter().unzip();
         let first_billboard = objects.len() as u32;
         objects.extend(far.iter().map(|(o, (mesh, _))| self.lod.billboard_for_mesh(o, mesh.aabb(), 0)));
@@ -165,7 +167,10 @@ impl Scene for CullingScene {
         };
 
         // bake billboards
-        self.lod.add_pass(&self.scene, renderer, &self.gbuffer, materials_va, graph)?;
+        self.lod.add_pass(
+            &self.scene, renderer, materials_va,
+                Mat4::from_rotation_y(std::f32::consts::PI),//Mat4::from_scale_rotation_translation(Vec3::splat(12.), Quat::from_rotation_y(180.), Vec3::ZERO + 1. * Vec3::Z + 6. * Vec3::X),
+            graph)?;
 
         // scene draw pass
         let mut pass = graph
@@ -179,6 +184,7 @@ impl Scene for CullingScene {
         pass = self.lod.reads_all_baked(pass);
         let lod = &self.lod;
 
+        let opts_clone = opts.clone();
         pass.exec(move |ctx| {
             rs.set_objects(ctx.cmd, objects_va);
             rs.set_materials(ctx.cmd, materials_va);
@@ -191,11 +197,11 @@ impl Scene for CullingScene {
                 rs.set_draw_index(ctx.cmd, i as u32);
                 mesh.draw(ctx.cmd);
             }
-            lod.draw_billboards(ctx.cmd, renderer, first_billboard, billboard_count);
+            lod.draw_billboards(ctx.cmd, renderer, &opts_clone, first_billboard, billboard_count);
             Ok(())
             });
 
-        self.lighting.add_pass(lights, renderer, None, &self.gbuffer, opts, graph)?;
+        self.lighting.add_pass(lights, renderer, None, &self.gbuffer, &opts, graph)?;
         self.post.add_pass(post_props, None, renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 

@@ -14,12 +14,12 @@ float2 SkyUV(float2 pixel) {
     return float2(atan2(dir.z, dir.x) / (2 * PI) + 0.5, acos(dir.y) / PI);
 }
 
-float3 SampleSky(float2 pixel, float dx, float dy) {
+float3 SampleSky(float2 pixel) {
 #if SKY_CUBEMAP
     float3 dir = normalize(WorldPosFromDepth(pixel / resolution, 1.) - cameraPos);
     return g_TexCube[skyTex].Sample(LinearWrap, dir, 0).rgb * SKY_INTENSITY;
 #else
-    return g_Tex2D[skyTex].SampleGrad(LinearWrap, pixel, dx, dy).rgb * SKY_INTENSITY;
+    return g_Tex2D[skyTex].SampleLevel(LinearWrap, SkyUV(pixel), 0).rgb * SKY_INTENSITY;
 #endif
 }
 
@@ -29,15 +29,9 @@ float4 vert(uint id : SV_VertexID) : SV_Position {
 }
 
 float4 frag(float4 pos : SV_Position) : SV_Target {
-    float2 skyUv = SkyUV(pos.xy);
-    float2 dx = ddx(skyUv);
-    float2 dy = ddy(skyUv);
-    dx.x -= round(dx.x);
-    dy.x -= round(dy.x);
-
     Surface s;
     if (!LoadSurface(pos.xy, s)) {
-        return float4(SampleSky(skyUv, dx, dy), 0);
+        return float4(SampleSky(pos.xy), 0);
     }
 
     if (debugView == 1)
