@@ -42,6 +42,10 @@ pub enum MaterialParams {
         base_color: Vec3,
         metallic: f32,
         roughness: f32
+    },
+    Billboard {
+        albedo_tex: u32,
+        normal_tex: u32
     }
 }
 
@@ -90,6 +94,12 @@ impl MaterialParams {
                         0., 0., 0., 0.,
                         0., 0., 0., 0.
                     ]
+                }
+            }
+            MaterialParams::Billboard { albedo_tex, normal_tex } => {
+                GpuMaterial {
+                    textures: [albedo_tex, normal_tex, 0, 0, 0, 0, 0, 0],
+                    unique_params: [0.; 16],
                 }
             }
         }

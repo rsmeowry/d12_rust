@@ -17,6 +17,7 @@ use crate::time::Time;
 use egui::Ui;
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::perf::lod::{LodRenderer, BILLBOARD_DIST};
 
 #[derive(Debug)]
 pub struct CullingScene {
@@ -27,6 +28,7 @@ pub struct CullingScene {
 
     materials_buf: ID3D12Resource,
 
+    lod: LodRenderer,
     culler: Culler,
     lighting: PhongLightingPass,
     post: PostProcessPass,
@@ -76,11 +78,17 @@ impl Scene for CullingScene {
             objects.push(object_data);
         }
 
+        batch.finish()?;
+
+        let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
+        let lod = LodRenderer::new(&scene, renderer, &mut materials, gbuffer.gpass)?;
+
+        let mut batch = renderer.gd.begin_upload()?;
+
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
 
         batch.finish()?;
 
-        let gbuffer = renderer.build_gbuffer::<Vertex3>("deferred/GPass.hlsl", DrawTopology::TriangleList)?;
 
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
@@ -92,6 +100,7 @@ impl Scene for CullingScene {
             gbuffer,
             blit,
 
+            lod,
             culler,
             objects,
             scene,
@@ -124,6 +133,13 @@ impl Scene for CullingScene {
         );
         self.culler.finish(opts);
 
+        let cam_pos = renderer.cam.pos();
+        let (far, near): (Vec<_>, Vec<_>) = objects.into_iter().zip(draws)
+            .partition(|(o, _)| cam_pos.distance(o.model.transform_point3(Vec3::ZERO)) > BILLBOARD_DIST);
+        let (mut objects, draws): (Vec<ObjectData>, Vec<_>) = near.into_iter().unzip();
+        let first_billboard = objects.len() as u32;
+        objects.extend(far.iter().map(|(o, (mesh, _))| self.lod.billboard_for_mesh(o, mesh.aabb(), 0)));
+        let billboard_count = objects.len() as u32 - first_billboard;
 
         let objects_va = renderer.upload_objects(&objects)?;
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
@@ -148,30 +164,38 @@ impl Scene for CullingScene {
             ..Default::default()
         };
 
+        // bake billboards
+        self.lod.add_pass(&self.scene, renderer, &self.gbuffer, materials_va, graph)?;
+
         // scene draw pass
-        graph
+        let mut pass = graph
             .add_pass("GPass")
             .writes_depth(self.gbuffer.scene_depth, ResLoad::Clear)
             .writes(self.gbuffer.albedo, ResLoad::Clear)
             .writes(self.gbuffer.normals, ResLoad::Clear)
             .writes(self.gbuffer.materials, ResLoad::Clear)
-            .writes(self.gbuffer.scene_color, ResLoad::Clear)
-            .exec(move |ctx| {
-                rs.set_objects(ctx.cmd, objects_va);
-                rs.set_materials(ctx.cmd, materials_va);
-                let mut bound = None;
-                for (i, (mesh, pso)) in draws.iter().enumerate() {
-                    if bound != Some(*pso) {
-                        pipelines.get(*pso).bind(ctx.cmd);
-                        bound = Some(*pso);
-                    }
-                    rs.set_draw_index(ctx.cmd, i as u32);
-                    mesh.draw(ctx.cmd);
+            .writes(self.gbuffer.scene_color, ResLoad::Clear);
+
+        pass = self.lod.reads_all_baked(pass);
+        let lod = &self.lod;
+
+        pass.exec(move |ctx| {
+            rs.set_objects(ctx.cmd, objects_va);
+            rs.set_materials(ctx.cmd, materials_va);
+            let mut bound = None;
+            for (i, (mesh, pso)) in draws.iter().enumerate() {
+                if bound != Some(*pso) {
+                    pipelines.get(*pso).bind(ctx.cmd);
+                    bound = Some(*pso);
                 }
-                Ok(())
+                rs.set_draw_index(ctx.cmd, i as u32);
+                mesh.draw(ctx.cmd);
+            }
+            lod.draw_billboards(ctx.cmd, renderer, first_billboard, billboard_count);
+            Ok(())
             });
 
-        self.lighting.add_pass(lights, renderer, None, &self.gbuffer, graph)?;
+        self.lighting.add_pass(lights, renderer, None, &self.gbuffer, opts, graph)?;
         self.post.add_pass(post_props, None, renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 

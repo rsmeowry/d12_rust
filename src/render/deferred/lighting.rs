@@ -2,6 +2,7 @@
 use glam::Vec3;
 use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+use crate::app::RenderOpts;
 use crate::render::builtin::{aabb_from_vertices3, Vertex3};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
@@ -88,7 +89,7 @@ impl PhongLightingPass {
         self.local_shadows.extend(map.fetch_all_local_shadows());
     }
 
-    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<(u64, u32)> {
+    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, gbuffer: &GBuffer, opts: &RenderOpts, graph: &mut FrameGraph<'a>) -> anyhow::Result<(u64, u32)> {
         lights.sort_by_key(|l| l.kind);
         let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
         let first_spot = lights.partition_point(|l| l.kind < LIGHT_SPOT) as u32;
@@ -103,7 +104,7 @@ impl PhongLightingPass {
             material: gr.get(gbuffer.materials)?.srv_ptr(),
             depth: gr.get(gbuffer.scene_depth)?.srv_ptr(),
             dir_count: first_point,
-            debug_view: 0,
+            debug_view: opts.debug_view_type as u32,
             sky_tex: self.sky_tex.srv_ptr(),
             _pad: 0.,
             ambient: Vec3::ONE * 0.07,

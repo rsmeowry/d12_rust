@@ -35,7 +35,7 @@ struct Cascades {
     uint enabled;
 };
 
-#define PBR
+//#define PBR
 
 Texture2D g_Tex2D[1024] : register(t0, space1);
 TextureCube g_TexCube[1024] : register(t0, space2);
@@ -45,6 +45,15 @@ RWByteAddressBuffer g_RWBuffers[1024] : register(u0, space2);
 RWByteAddressBuffer g_RWScratch : register(u0);
 
 static const float PI = 3.14159265;
+
+void BillboardTowards(float3 forward, out float3 right, out float3 up) {
+    float3 rUp = abs(forward.y) < 0.99 ? float3(0, 1, 0) : float3(1, 0, 0);
+    right = normalize(cross(forward, rUp));
+    up = cross(right, forward);
+}
+
+static const float2 QUAD_CORNERS[4] = { float2(-1, -1), float2(-1, 1), float2(1, -1), float2(1, 1) };
+static const float2 QUAD_UVS[4] = { float2(0., 1.), float2(0., 0.), float2(1, 1.), float2(1., 0.) };
 
 float3 WorldPosFromDepth(float2 uv, float depth) {
     float4 clip = float4(uv.x * 2 - 1, 1 - uv.y * 2, depth, 1);

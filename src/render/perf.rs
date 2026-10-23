@@ -9,6 +9,7 @@ use std::time::Instant;
 
 pub mod frustum;
 pub mod octree;
+pub mod lod;
 
 #[derive(Debug)]
 pub struct Culler {

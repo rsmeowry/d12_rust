@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use crate::assets::shaders::ShaderStorage;
 use crate::assets::LoadedScene;
-use crate::render::graph::res::GraphResources;
+use crate::render::graph::res::{GraphResources, ResId, ResSize};
 use crate::render::graph::FrameGraph;
 use crate::render::mesh::Mesh;
 use crate::render::pipeline::desc::PipelineDesc;
@@ -9,7 +9,7 @@ use crate::render::pipeline::signature::RootSignature;
 use crate::render::pipeline::{Globals, PipelineId, PipelineManager};
 use crate::render::texture::{MipCount, Texture};
 use crate::wrappers::graphics::GraphicsDevice;
-use glam::Mat4;
+use glam::{Mat4, Vec4};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
 use crate::render::camera::Camera;
@@ -31,6 +31,10 @@ pub struct Renderer {
     pub gd: GraphicsDevice,
     pub gr: GraphResources,
     pub cam: Camera,
+    pub albedo_sink: ResId,
+    pub normal_sink: ResId,
+    pub material_sink: ResId,
+    pub emissive_sink: ResId,
     white_tex: Texture,
     gray_tex: Texture,
     flat_normal_tex: Texture,
@@ -53,16 +57,26 @@ impl Renderer {
         let flat_normal_tex = Texture::from_rgba8(&mut batch, 1, 1, &[128, 128, 255, 255], false, MipCount::All, "builtin/FLAT_NORMAL")?;
         batch.finish()?;
 
+        let mut gr = GraphResources::new(width, height);
+        let albedo_sink = gr.color(&gd, "AlbedoSink", GB_ALBEDO, Vec4::ZERO, ResSize::Fixed(64, 64))?;
+        let normal_sink = gr.color(&gd, "NormalSink", GB_NORMALS, Vec4::ZERO, ResSize::Fixed(64, 64))?;
+        let material_sink = gr.color(&gd, "AlbedoSink", GB_MATERIAL, Vec4::ZERO, ResSize::Fixed(64, 64))?;
+        let emissive_sink = gr.color(&gd, "AlbedoSink", SCENE_FORMAT, Vec4::ZERO, ResSize::Fixed(64, 64))?;
+
         Ok(Self {
             pipeline_mgr: PipelineManager::new(&gd)?,
-            gr: GraphResources::new(width, height),
+            gr,
             white_tex,
             gray_tex,
             flat_normal_tex,
             gd,
             shaders,
             cam,
-            frame_count: Cell::new(0)
+            albedo_sink,
+            normal_sink,
+            material_sink,
+            emissive_sink,
+            frame_count: Cell::new(0),
         })
     }
 
