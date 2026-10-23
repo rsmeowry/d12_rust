@@ -4,8 +4,7 @@ use crate::render::texture::Texture;
 use crate::wrappers::graphics::GraphicsDevice;
 use anyhow::bail;
 use std::collections::HashSet;
-use std::time::Instant;
-use windows::Win32::Graphics::Direct3D12::{ID3D12QueryHeap, ID3D12Resource, D3D12_QUERY_TYPE_TIMESTAMP, D3D12_RANGE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_QUERY_TYPE_TIMESTAMP, D3D12_RANGE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 
 pub mod pass;
 pub mod res;
@@ -29,13 +28,14 @@ impl<'a> FrameGraph<'a> {
         let passes = self.cull_passes(res);
         let (query_heap, readback, ms_per_tick) = gd.timings()?;
         let gpu = read_timing_slot(readback, base, &frame.ts_names.borrow(), ms_per_tick)?;
-        let names: Vec<&'static str> = passes.iter().map(|(_, p)| p.name).collect();
+        let names: Vec<&'static str> = passes.iter().map(|p| p.name).collect();
+        anyhow::ensure!(names.len() < GraphicsDevice::MAX_TS, "Too many passes for timestamps: {}", names.len());
 
         unsafe {
             cmd.EndQuery(query_heap, D3D12_QUERY_TYPE_TIMESTAMP, base as u32);
         }
 
-        for (pass_idx, pass) in passes {
+        for (i, pass) in passes.into_iter().enumerate() {
             GraphicsDevice::begin_event(cmd, pass.name);
             // transition all into readable state
             for r in &pass.reads {
@@ -70,7 +70,7 @@ impl<'a> FrameGraph<'a> {
 
             (pass.exec)(&PassCtx::new(&cmd, gd, res))?;
             unsafe {
-                cmd.EndQuery(query_heap, D3D12_QUERY_TYPE_TIMESTAMP, (base + pass_idx + 1) as u32);
+                cmd.EndQuery(query_heap, D3D12_QUERY_TYPE_TIMESTAMP, (base + i + 1) as u32);
             }
             GraphicsDevice::end_event(cmd);
         }
@@ -82,7 +82,7 @@ impl<'a> FrameGraph<'a> {
         Ok(gpu)
     }
 
-    fn cull_passes(self, res: &GraphResources) -> Vec<(usize, Pass<'a>)> {
+    fn cull_passes(self, res: &GraphResources) -> Vec<Pass<'a>> {
         let mut needed_res: HashSet<ResId> = HashSet::new();
         let mut alive = vec![false; self.passes.len()];
 
@@ -105,7 +105,7 @@ impl<'a> FrameGraph<'a> {
             needed_res.extend(writes.filter(|it| it.1 == ResLoad::Preserve).map(|it| it.0))
         }
 
-        self.passes.into_iter().enumerate().zip(alive).filter_map(|it| it.1.then_some(it.0)).collect()
+        self.passes.into_iter().zip(alive).filter_map(|it| it.1.then_some(it.0)).collect()
     }
 }
 

@@ -4,19 +4,21 @@
 #include <../lib/Shadows.hlsl>
 
 StructuredBuffer<Light> g_Lights : register(t3);
-SamplerState AnisoWrap : register(s3);
 
 #define SKY_INTENSITY 1.2
 #define SKY_CUBEMAP 0
 
-float3 SampleSky(float2 pixel) {
+float2 SkyUV(float2 pixel) {
     float3 dir = normalize(WorldPosFromDepth(pixel / resolution, 1.) - cameraPos);
+    return float2(atan2(dir.z, dir.x) / (2 * PI) + 0.5, acos(dir.y) / PI);
+}
 
+float3 SampleSky(float2 pixel, float dx, float dy) {
 #if SKY_CUBEMAP
-    return g_TexCube[skyTex].Sample(AnisoWrap, dir, 0).rgb * SKY_INTENSITY;
+    float3 dir = normalize(WorldPosFromDepth(pixel / resolution, 1.) - cameraPos);
+    return g_TexCube[skyTex].Sample(LinearWrap, dir, 0).rgb * SKY_INTENSITY;
 #else
-    float2 uv = float2(atan2(dir.z, dir.x) / (2 * PI) + 0.5, acos(dir.y) / PI);
-    return g_Tex2D[skyTex].Sample(AnisoWrap, uv, 0).rgb * SKY_INTENSITY;
+    return g_Tex2D[skyTex].SampleGrad(LinearWrap, pixel, dx, dy).rgb * SKY_INTENSITY;
 #endif
 }
 
@@ -26,9 +28,16 @@ float4 vert(uint id : SV_VertexID) : SV_Position {
 }
 
 float4 frag(float4 pos : SV_Position) : SV_Target {
+    float2 skyUv = SkyUV(pos.xy);
+    float2 dx = ddx(skyUv);
+    float2 dy = ddy(skyUv);
+    dx.x -= round(dx.x);
+    dy.x -= round(dy.x);
+
     Surface s;
-    if (!LoadSurface(pos.xy, s))
-        return float4(SampleSky(pos.xy), 0);
+    if (!LoadSurface(pos.xy, s)) {
+        return float4(SampleSky(skyUv, dx, dy), 0);
+    }
 
     if (debugView == 1)
         return float4(s.normal, 0);

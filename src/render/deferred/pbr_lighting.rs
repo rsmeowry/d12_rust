@@ -15,7 +15,7 @@ use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, SCENE_FORMAT};
 use crate::render::shadows::{GpuCascades, ShadowCascades, ShadowMap};
-use crate::render::texture::Texture;
+use crate::render::texture::{MipCount, Texture};
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 
@@ -41,7 +41,7 @@ impl PbrLightingPass {
     ) -> anyhow::Result<Self> {
         let mut batch = renderer.gd.begin_upload()?;
 
-        let sky_tex = Texture::from_hdr(&mut batch, &std::fs::read(sky_path)?, "Sky")?;
+        let sky_tex = Texture::from_hdr(&mut batch, &std::fs::read(sky_path)?, MipCount::All, "Sky")?;
         let ibl_irradiance_tex = Texture::from_dds(&mut batch, &std::fs::read(irradiance_path)?, "IBLIrradiance")?;
         let ibl_specular_tex = Texture::from_dds(&mut batch, &std::fs::read(specular_path)?, "IBLSpecular")?;
         let brdf_lut_tex = Texture::from_dds(&mut batch, &std::fs::read(brdf_path)?, "BRDFLut")?;

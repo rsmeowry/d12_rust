@@ -2,7 +2,7 @@ use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::{transition_barrier, uav_barrier, GraphicsDevice};
 use anyhow::anyhow;
 use glam::Vec4;
-use image::{EncodableLayout, Rgba32FImage, RgbaImage};
+use image::{EncodableLayout, Rgba, Rgba32FImage, RgbaImage};
 use std::cell::Cell;
 use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_CLEAR_VALUE, D3D12_CLEAR_VALUE_0, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING, D3D12_DEPTH_STENCIL_VALUE, D3D12_DEPTH_STENCIL_VIEW_DESC, D3D12_DEPTH_STENCIL_VIEW_DESC_0, D3D12_DSV_DIMENSION_TEXTURE2D, D3D12_DSV_DIMENSION_TEXTURE2DARRAY, D3D12_DSV_FLAG_NONE, D3D12_DSV_FLAG_READ_ONLY_DEPTH, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_PLACED_SUBRESOURCE_FOOTPRINT, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_DIMENSION_TEXTURE3D, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATES, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_SHADER_RESOURCE_VIEW_DESC, D3D12_SHADER_RESOURCE_VIEW_DESC_0, D3D12_SRV_DIMENSION_TEXTURE2D, D3D12_SRV_DIMENSION_TEXTURE3D, D3D12_SRV_DIMENSION_TEXTURECUBE, D3D12_TEX2D_ARRAY_DSV, D3D12_TEX2D_DSV, D3D12_TEX2D_SRV, D3D12_TEX2D_UAV, D3D12_TEX3D_SRV, D3D12_TEXCUBE_SRV, D3D12_TEXTURE_COPY_LOCATION, D3D12_TEXTURE_COPY_LOCATION_0, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, D3D12_UAV_DIMENSION_TEXTURE2D, D3D12_UNORDERED_ACCESS_VIEW_DESC, D3D12_UNORDERED_ACCESS_VIEW_DESC_0};
@@ -128,7 +128,7 @@ impl Texture {
             is_cube: false,
             depth: 1
         }, name)?;
-        let mips = mips.iter().map(|it| it.as_bytes()).collect::<Vec<_>>();
+        let mips = mips.iter().map(|it|  it.as_bytes()).collect::<Vec<_>>();
         base.upload(batch, &mips)?;
         Ok(base)
     }
@@ -145,17 +145,21 @@ impl Texture {
         Ok(base)
     }
 
-    pub fn from_hdr(batch: &mut UploadBatch, bytes: &[u8], name: &str) -> anyhow::Result<Self> {
+    pub fn from_hdr(batch: &mut UploadBatch, bytes: &[u8], mips: MipCount, name: &str) -> anyhow::Result<Self> {
         let img = image::load_from_memory(bytes)?.to_rgba32f();
+        let width = img.width();
+        let height = img.height();
+        let mips = build_mips_hdr(img, mips);
         let tex = Self::new(batch.gd(), TextureDesc {
             kind: TextureKind::SampleSource,
-            width: img.width(), height: img.height(),
+            width, height,
             format: DXGI_FORMAT_R32G32B32A32_FLOAT,
-            mips: 1,
+            mips: mips.len() as u32,
             is_cube: false,
             depth: 1
         }, name)?;
-        tex.upload(batch, &[bytemuck::cast_slice(img.as_raw())])?;
+        let mips = mips.iter().map(|it| it.as_bytes()).collect::<Vec<_>>();
+        tex.upload(batch, &mips)?;
         Ok(tex)
     }
 
@@ -491,18 +495,49 @@ pub enum MipCount {
     Limit(u32)
 }
 
-pub fn build_mips(img: RgbaImage, mips: MipCount) -> Vec<RgbaImage> {
-    let max = match mips { MipCount::All => u32::MAX, MipCount::Limit(v) => v}.clamp(1, mip_count(img.width(), img.height()));
-    let mut mips = vec![img];
-    while let Some(prev) =
-        mips.last().filter(|m| m.width() > 1 || m.height() > 1)
-        && (mips.len() as u32) < max
-    {
+macro_rules! mips_fns {
+    ($($fn_name:ident : $img_ty:ty),+ $(,)?) => {
+        $(
+        pub fn $fn_name(img: $img_ty, mips: MipCount) -> Vec<$img_ty> {
+            let max = match mips { MipCount::All => u32::MAX, MipCount::Limit(v) => v}.clamp(1, mip_count(img.width(), img.height()));
+            let mut mips = vec![img];
+            while let Some(prev) =
+                mips.last().filter(|m| m.width() > 1 || m.height() > 1)
+                && (mips.len() as u32) < max
+            {
+                let (w, h) = ((prev.width() / 2).max(1), (prev.height() / 2).max(1));
+                let next = image::imageops::resize(prev, w, h, image::imageops::FilterType::Triangle);
+                mips.push(next);
+            }
+            mips
+        }
+        )+
+
+    };
+}
+
+mips_fns!(
+    build_mips: RgbaImage
+);
+
+pub fn build_mips_hdr(img: Rgba32FImage, mips: MipCount) -> Vec<Rgba32FImage> {
+    let max = match mips {
+        MipCount::All => u32::MAX,
+        MipCount::Limit(v) => v
+    }.clamp(1, mip_count(img.width(), img.height()));
+    let mut out = vec![img];
+    while (out.len() as u32) < max {
+        let prev = out.last().unwrap();
         let (w, h) = ((prev.width() / 2).max(1), (prev.height() / 2).max(1));
-        let next = image::imageops::resize(prev, w, h, image::imageops::FilterType::Triangle);
-        mips.push(next);
+        // box 2x2
+        let next = Rgba32FImage::from_fn(w, h, |x, y| {
+            let at = |dx: u32, dy: u32| prev.get_pixel((2 * x + dx).min(prev.width() - 1), (2 * y + dy).min(prev.height() - 1)).0;
+            let (a, b, c, d) = (at(0, 0), at(1, 0), at(0, 1), at(1, 1));
+            Rgba(std::array::from_fn(|i| (a[i] + b[i] + c[i] + d[i]) * 0.25))
+        });
+        out.push(next);
     }
-    mips
+    out
 }
 
 fn mip_count(w: u32, h: u32) -> u32 {

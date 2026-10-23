@@ -13,7 +13,7 @@ use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, SCENE_FORMAT};
 use crate::render::shadows::{GpuCascades, ShadowCascades, ShadowMap};
-use crate::render::texture::Texture;
+use crate::render::texture::{MipCount, Texture};
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 
@@ -39,7 +39,7 @@ impl PhongLightingPass {
         //     &std::fs::read("assets/textures/cubemap/sky/front.hdr")?,
         //     &std::fs::read("assets/textures/cubemap/sky/back.hdr")?,
         // ], "Sky")?;
-        let sky_tex = Texture::from_hdr(&mut batch, &std::fs::read(sky_path)?, "Sky")?;
+        let sky_tex = Texture::from_hdr(&mut batch, &std::fs::read(sky_path)?, MipCount::All, "Sky")?;
 
         let point_light_mesh = unit_sphere(8, 8, |pos, norm, _tangent, _binormal, uv| { Vertex3::new(pos, norm, uv) });
         let point_light_mesh = Mesh::new(&renderer.gd, &mut batch, &point_light_mesh.0, &point_light_mesh.1, DrawTopology::TriangleList, aabb_from_vertices3(&point_light_mesh.0), false)?;

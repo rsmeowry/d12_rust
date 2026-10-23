@@ -234,7 +234,14 @@ impl<S: Scene> App<S> {
             self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.resolution.x, self.globals.resolution.y), &self.renderer, &mut graph)?;
         }
 
-        self.timings = graph.execute(&self.renderer.gd, &self.renderer.gr)?;
+        let k = 1.0 - (-self.time.delta_time() / TIMINGS_SMOOTHING_SECS).exp();
+        let prev = std::mem::take(&mut self.timings);
+        self.timings = graph.execute(&self.renderer.gd, &self.renderer.gr)?.into_iter().enumerate()
+            .map(|(i, (name, ms))| match prev.get(i) {
+                Some(&(prev_name, prev_ms)) if prev_name == name => (name, prev_ms + (ms - prev_ms) * k),
+                _ => (name, ms),
+            })
+            .collect();
 
         self.renderer.gd.display_rt()
     }
@@ -279,6 +286,7 @@ const MOUSE_SENSITIVITY: f32 = 0.7;
 const MAX_PITCH: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
 const MOVE_SPEED: f32 = 2.0;
 const SHIFT_MUL: f32 = 2.0;
+const TIMINGS_SMOOTHING_SECS: f32 = 0.5;
 
 #[derive(Debug, Clone)]
 struct ControllerInfo {
@@ -297,8 +305,8 @@ impl Default for ControllerInfo {
 
 #[derive(Debug, Clone, Default, EguiProbe)]
 pub enum CullingMode {
-    #[default]
     Off,
+    #[default]
     Frustum,
     Octree,
 }
