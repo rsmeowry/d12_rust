@@ -239,7 +239,7 @@ impl Scene for SponzaWithLights {
             rate: 1024.,
             spread: 0.6,
             lifetime: 1.6,
-            velocity_base: Vec3::Y * 2.,
+            velocity_base: Quat::from_rotation_x(time.game_time()) * (Vec3::Y * 4.),
             ..Default::default()
         }, time.delta_time(), renderer, &self.gbuffer, graph)?;
 
