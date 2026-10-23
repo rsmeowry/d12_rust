@@ -75,10 +75,14 @@ pub struct ParticleSimulation {
     args: ID3D12Resource,
     table: D3D12_GPU_DESCRIPTOR_HANDLE, // u0 pool, u1 deadlist, u2 sortlist
     counters_uav: u32,
+
     cs_init: PipelineId,
     cs_prepare: PipelineId,
     cs_emit: PipelineId,
     cs_simulate: PipelineId,
+    cs_sort_pad: PipelineId,
+    cs_sort: PipelineId,
+
     initialized: Cell<bool>,
     emit_accum: Cell<f32>,
     last_counts: Cell<[u32; 2]>,
@@ -97,6 +101,8 @@ impl ParticleSimulation {
         let cs_prepare = cs("Prepare")?;
         let cs_emit = cs("Emit")?;
         let cs_simulate = cs("Simulate")?;
+        let cs_sort_pad = cs("BitonicSortPad")?;
+        let cs_sort = cs("BitonicSort")?;
 
         let gd = &rd.gd;
         let dev = gd.device();
@@ -163,6 +169,8 @@ impl ParticleSimulation {
             cs_prepare,
             cs_emit,
             cs_simulate,
+            cs_sort_pad,
+            cs_sort,
             initialized: Cell::new(false),
             emit_accum: Cell::new(0.0),
             last_counts: Cell::new([0; 2]),
@@ -231,11 +239,28 @@ impl ParticleSimulation {
             self.last_counts.set(counts); // free/alive
         }
 
+        // preparing sort data
+        let mut sort_passes = Vec::new();
+        let mut k = 2;
+        while k <= self.max {
+            let mut j = k / 2;
+            while j > 0 {
+                sort_passes.push(rd.upload_cbuffer(&SortPass {
+                    j,
+                    k,
+                    _pad: [0; 2]
+                })?);
+                j /= 2;
+            }
+            k *= 2;
+        }
+
         let sim_data = SimData {
             pass_va,
             emit_amt,
             should_init,
-            off
+            off,
+            sort_passes
         };
 
         // adding a sim pass
@@ -245,9 +270,27 @@ impl ParticleSimulation {
             .has_side_effects()
             .exec(move |ctx| {
                 self.perform_sim(ctx.cmd, rd, &sim_data)
-            })
-        ;
+            });
 
+        Ok(())
+    }
+
+    fn perform_sort(&self, cmd: &ID3D12GraphicsCommandList, rd: &Renderer, sim_data: &SimData) -> anyhow::Result<()> {
+        unsafe {
+            cmd.ResourceBarrier(&[uav_barrier(&self.sort_list), uav_barrier(&self.counters)]);
+        }
+        rd.pipelines().get(self.cs_sort_pad).bind(cmd);
+        unsafe {
+            cmd.Dispatch(self.max / 256, 1, 1);
+        }
+        rd.pipelines().get(self.cs_sort).bind(cmd);
+        for va in &sim_data.sort_passes {
+            unsafe {
+                cmd.ResourceBarrier(&[uav_barrier(&self.sort_list)]);
+                rd.rs().set_compute_pass(cmd, *va);
+                cmd.Dispatch(self.max / 256, 1, 1);
+            }
+        }
         Ok(())
     }
 
@@ -289,6 +332,9 @@ impl ParticleSimulation {
             cmd.Dispatch(self.max.div_ceil(256), 1, 1);
         }
 
+        // sorting
+        self.perform_sort(cmd, rd, sim)?;
+
         // copying data for readback dbg and draw pass
         unsafe {
             cmd.ResourceBarrier(&[
@@ -313,5 +359,14 @@ struct SimData {
     pass_va: u64,
     emit_amt: u32,
     should_init: bool,
-    off: usize
+    off: usize,
+    sort_passes: Vec<u64>
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct SortPass {
+    j: u32,
+    k: u32,
+    _pad: [u32; 2]
 }
