@@ -7,6 +7,7 @@ pub mod batching;
 
 use glam::Vec4;
 use std::cell::{Cell, RefCell};
+use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::ops::BitOr;
 use anyhow::{anyhow, bail};
@@ -292,6 +293,24 @@ impl GraphicsDevice {
         }
 
         Ok(buf)
+    }
+
+    pub fn begin_event(cmd: &ID3D12GraphicsCommandList, name: &str) {
+        // pix and nsight are stupiddd
+        const WINPIX_EVENT_PIX3BLOB_VERSION: u32 = 2;
+        const BEGIN_EVENT_NO_ARGS: u64 = 0x002 << 10;
+        const ANSI_STRING_CHUNK8: u64 = (8 << 55) | (1 << 54);
+
+        let mut bytes = name.as_bytes().to_vec();
+        bytes.resize((bytes.len() / 8 + 1) * 8, 0);
+        let blob: Vec<u64> = [BEGIN_EVENT_NO_ARGS, 0, ANSI_STRING_CHUNK8].into_iter()
+            .chain(bytes.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())))
+            .collect();
+        unsafe { cmd.BeginEvent(WINPIX_EVENT_PIX3BLOB_VERSION, Some(blob.as_ptr() as *const c_void), (blob.len() * 8) as u32) };
+    }
+
+    pub fn end_event(cmd: &ID3D12GraphicsCommandList) {
+        unsafe { cmd.EndEvent() };
     }
 
     pub fn display_rt(&self) -> anyhow::Result<()> {

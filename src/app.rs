@@ -203,9 +203,9 @@ impl<S: Scene> App<S> {
                     self.scene.ui(header_ui).unwrap();
                 });
 
-                egui::CollapsingHeader::new("Timings").show(ui, |header_ui| {
+                egui::CollapsingHeader::new("CPU Timings").show(ui, |header_ui| {
                     for timing in std::mem::take(&mut self.timings) {
-                        header_ui.label(format!("*{}*: {:.2}ms", timing.0, timing.1));
+                        header_ui.label(format!("{}: {:.2}ms", timing.0, timing.1));
                     }
                 })
             });

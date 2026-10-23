@@ -27,6 +27,7 @@ impl<'a> FrameGraph<'a> {
         let mut timings: Vec<(&'static str, f32)> = self.passes.iter().map(|it| (it.name, 0.)).collect();
         for (pass_idx, pass) in self.cull_passes(res) {
             let pass_begin = Instant::now();
+            GraphicsDevice::begin_event(cmd, pass.name);
             // transition all into readable state
             for r in &pass.reads {
                 res.get(*r)?.transition(cmd, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
@@ -59,6 +60,8 @@ impl<'a> FrameGraph<'a> {
             }
 
             (pass.exec)(&PassCtx::new(&cmd, gd, res))?;
+            GraphicsDevice::end_event(cmd);
+            
             let elapsed_millis = pass_begin.elapsed().as_secs_f32() * 1000.0;
             timings[pass_idx] = (pass.name, elapsed_millis);
         }

@@ -284,12 +284,16 @@ impl ParticleSimulation {
             cmd.Dispatch(self.max / 256, 1, 1);
         }
         rd.pipelines().get(self.cs_sort).bind(cmd);
+        let mut i = 0;
         for va in &sim_data.sort_passes {
+            GraphicsDevice::begin_event(cmd, &format!("Bitonic Sort {i}"));
             unsafe {
                 cmd.ResourceBarrier(&[uav_barrier(&self.sort_list)]);
                 rd.rs().set_compute_pass(cmd, *va);
                 cmd.Dispatch(self.max / 256, 1, 1);
             }
+            GraphicsDevice::end_event(cmd);
+            i += 1;
         }
         Ok(())
     }
@@ -303,40 +307,51 @@ impl ParticleSimulation {
 
         if sim.should_init {
             // init
+            GraphicsDevice::begin_event(cmd, "SimInit");
             pipelines.get(self.cs_init).bind(cmd);
             unsafe {
                 cmd.Dispatch(self.max.div_ceil(256), 1, 1);
                 cmd.ResourceBarrier(&[uav_barrier(&self.particles_buf), uav_barrier(&self.dead_list), uav_barrier(&self.counters)]);
             }
+            GraphicsDevice::end_event(cmd);
         }
 
         // prepare
+        GraphicsDevice::begin_event(cmd, "SimPrepare");
         pipelines.get(self.cs_prepare).bind(cmd);
         unsafe {
             cmd.Dispatch(1, 1, 1);
             cmd.ResourceBarrier(&[uav_barrier(&self.counters)]);
         }
+        GraphicsDevice::end_event(cmd);
 
         // emit
         if sim.emit_amt > 0 {
+            GraphicsDevice::begin_event(cmd, "SimEmit");
             pipelines.get(self.cs_emit).bind(cmd);
             unsafe {
                 cmd.Dispatch(sim.emit_amt.div_ceil(64), 1, 1);
                 cmd.ResourceBarrier(&[uav_barrier(&self.particles_buf), uav_barrier(&self.dead_list), uav_barrier(&self.counters)]);
             }
+            GraphicsDevice::end_event(cmd);
         }
 
         // simulate
+        GraphicsDevice::begin_event(cmd, "Sim");
         pipelines.get(self.cs_simulate).bind(cmd);
         unsafe {
             cmd.Dispatch(self.max.div_ceil(256), 1, 1);
         }
+        GraphicsDevice::end_event(cmd);
 
         // sorting
+        GraphicsDevice::begin_event(cmd, "Sort");
         self.perform_sort(cmd, rd, sim)?;
+        GraphicsDevice::end_event(cmd);
 
         // copying data for readback dbg and draw pass
         unsafe {
+            GraphicsDevice::begin_event(cmd, "SimReadback");
             cmd.ResourceBarrier(&[
                 transition_barrier(&self.counters, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
                 transition_barrier(&self.particles_buf, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
@@ -348,6 +363,7 @@ impl ParticleSimulation {
 
             cmd.CopyBufferRegion(&self.args, 0, &self.counters, 4096, 4);
             cmd.ResourceBarrier(&[transition_barrier(&self.args, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT)]);
+            GraphicsDevice::end_event(cmd);
         }
 
         Ok(())
