@@ -22,7 +22,7 @@ use crate::time::Time;
 use egui::Ui;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::render::particles::draw::{ParticleKind, ParticleRendering};
+use crate::render::particles::draw::{ParticleKind, ParticleRendering, ParticleShape};
 use crate::render::texture::{MipCount, Texture};
 
 const MAX_PARTICLES: usize = 4096;
@@ -123,7 +123,9 @@ impl Scene for SponzaWithLights {
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
         let particles_sim = ParticleSimulation::new(renderer, MAX_PARTICLES as u32)?;
-        let particles_draw = ParticleRendering::new(renderer, ParticleKind::Opaque, particle_texture)?;
+        let particles_draw = ParticleRendering::new(renderer, ParticleKind::Opaque, ParticleShape::Billboard {
+            tex: particle_texture
+        })?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);

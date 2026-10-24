@@ -1,3 +1,4 @@
+use glam::Vec3;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::GraphicsDevice;
 use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY, D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST};
@@ -59,8 +60,23 @@ impl Mesh {
         self.is_static
     }
 
+    pub fn index_count(&self) -> u32 { self.indices }
+
     pub fn aabb(&self) -> &AABB {
         &self.aabb
+    }
+
+    pub fn bind(&self, cmd: &ID3D12GraphicsCommandList) {
+        unsafe {
+            cmd.IASetPrimitiveTopology(self.topology.to_d3d());
+            cmd.IASetVertexBuffers(0, Some(&[self.vbv]));
+            cmd.IASetIndexBuffer(Some(&self.ibv));
+        }
+    }
+
+    pub fn bounding_sphere(&self) -> (Vec3, f32) {
+        let center = (self.aabb.min + self.aabb.max) * 0.5;
+        (center, (self.aabb.max - self.aabb.min).length() * 0.5)
     }
 
     pub fn draw(&self, cmd: &ID3D12GraphicsCommandList) {

@@ -72,7 +72,6 @@ pub struct ParticleSimulation {
     sort_list: ID3D12Resource,
     counters: ID3D12Resource,
     readback: ID3D12Resource,
-    args: ID3D12Resource,
     table: D3D12_GPU_DESCRIPTOR_HANDLE, // u0 pool, u1 deadlist, u2 sortlist
     counters_uav: u32,
 
@@ -89,6 +88,8 @@ pub struct ParticleSimulation {
 }
 
 impl ParticleSimulation {
+    pub const ALIVE_COUNTER_OFFSET: u64 = 4096;
+
     pub fn new(rd: &mut Renderer, max: u32) -> anyhow::Result<Self> {
         anyhow::ensure!(max.is_power_of_two() && max >= 256, "max number must be a power of two!");
 
@@ -146,21 +147,18 @@ impl ParticleSimulation {
                 Format: DXGI_FORMAT_R32_TYPELESS,
                 ViewDimension: D3D12_UAV_DIMENSION_BUFFER,
                 Anonymous: D3D12_UNORDERED_ACCESS_VIEW_DESC_0 { Buffer: D3D12_BUFFER_UAV {
-                    NumElements: ((8192 + 4) / 4) as u32, Flags: D3D12_BUFFER_UAV_FLAG_RAW, ..Default::default()
+                    NumElements: ((8192 + 4) / 4) as u32,
+                    Flags: D3D12_BUFFER_UAV_FLAG_RAW,
+                    ..Default::default()
                 }},
             }), heap.cpu(counters_uav));
         }
-
-        let mut batch = rd.gd.begin_upload()?;
-        let args = rd.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&[0u32, 1, 0, 0]), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, "ParticleDrawArgs")?;
-        batch.finish()?;
 
         Ok(Self {
             max,
             particles_buf,
             dead_list,
             sort_list,
-            args,
             counters,
             readback,
             table,
@@ -194,8 +192,8 @@ impl ParticleSimulation {
         unsafe { self.sort_list.GetGPUVirtualAddress() }
     }
 
-    pub fn indirect_args(&self) -> &ID3D12Resource {
-        &self.args
+    pub fn counters(&self) -> &ID3D12Resource {
+        &self.counters
     }
 
     pub fn add_pass<'a>(&'a self, props: SimulateParticleProps, dt: f32, rd: &'a Renderer, gbuf: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
@@ -356,13 +354,10 @@ impl ParticleSimulation {
                 transition_barrier(&self.counters, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
                 transition_barrier(&self.particles_buf, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
                 transition_barrier(&self.sort_list, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-                transition_barrier(&self.args, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST)
             ]);
             cmd.CopyBufferRegion(&self.readback, sim.off as u64, &self.counters, 0, 4);
             cmd.CopyBufferRegion(&self.readback, sim.off as u64 + 4, &self.counters, 4096, 4);
 
-            cmd.CopyBufferRegion(&self.args, 0, &self.counters, 4096, 4);
-            cmd.ResourceBarrier(&[transition_barrier(&self.args, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT)]);
             GraphicsDevice::end_event(cmd);
         }
 

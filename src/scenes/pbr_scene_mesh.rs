@@ -47,7 +47,7 @@ impl Scene for PbrSampleMesh {
 
         let mut materials = Vec::new();
         let scene = load_assimp_scene::<VertexPbr, _>(
-            &renderer, &mut batch, "assets/models/bull_head/bull_head_1k.gltf",
+            &renderer, &mut batch, "assets/models/bananas/bananas_1k.gltf",
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
             true, LodCount::NoLods,

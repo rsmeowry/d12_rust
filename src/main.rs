@@ -1,3 +1,5 @@
+use crate::scenes::pbr_scene::PbrSample;
+use crate::scenes::pbr_scene_mesh::PbrSampleMesh;
 use crate::scenes::sponza_lights::SponzaWithLights;
 use crate::scenes::testing_culling::CullingScene;
 
@@ -11,5 +13,5 @@ mod scenes;
 pub mod ui;
 
 fn main() -> anyhow::Result<()> {
-    app::App::<CullingScene>::new()?.run()
+    app::App::<SponzaWithLights>::new()?.run()
 }
