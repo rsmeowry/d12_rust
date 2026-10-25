@@ -1,4 +1,4 @@
-﻿#include <../../lib/Core.hlsl>
+﻿#include "../../lib/Core.hlsl"
 
 cbuffer FogComposite : register(b2) {
     uint fogTex;

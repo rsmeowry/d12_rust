@@ -21,6 +21,7 @@ font8x8 = "0.3.1"
 bitflags = "2.13.2"
 egui = { version = "0.36", features = ["bytemuck", "default_fonts"] }
 egui-probe = { version = "0.13.0", features = ["derive"] }
+windows-core = "0.62.2" # must match the windows-core that windows 0.62 uses
 
 [dependencies.windows]
 version = "0.62.2"
@@ -38,7 +39,8 @@ features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Performance",
     "Win32_Security",
-    "Win32_Graphics_Direct3D_Fxc"
+    "Win32_Graphics_Direct3D_Fxc",
+    "Win32_Graphics_Direct3D_Dxc"
 ]
 
 [profile.dev.package.image]

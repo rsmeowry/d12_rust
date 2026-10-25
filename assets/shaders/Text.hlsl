@@ -1,4 +1,4 @@
-﻿#include <./lib/Core.hlsl>
+﻿#include "./lib/Core.hlsl"
 
 cbuffer DrawConstants : register(b0) { uint drawIndex; } // font texture idx
 SamplerState PointClamp : register(s2);

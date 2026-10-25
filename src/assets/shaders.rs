@@ -9,12 +9,10 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use windows::core::{s, PCSTR};
+use windows::core::{implement, w, Interface, PCWSTR};
 use windows::Win32::Foundation::E_FAIL;
-use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
-use windows::Win32::Graphics::Direct3D::{ID3DBlob, ID3DInclude, ID3DInclude_Impl, D3D_INCLUDE_TYPE};
-#[cfg(debug_assertions)]
-use windows::Win32::Graphics::Direct3D::Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION};
+use windows::Win32::Graphics::Direct3D::Dxc::{CLSID_DxcCompiler, CLSID_DxcUtils, DxcBuffer, DxcCreateInstance, IDxcBlob, IDxcCompiler3, IDxcIncludeHandler, IDxcIncludeHandler_Impl, IDxcResult, IDxcUtils, DXC_CP_UTF8};
+use windows::Win32::Graphics::Direct3D::ID3DBlob;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ShaderMetadata {
@@ -82,18 +80,24 @@ pub struct ShaderStorage {
     shaders: HashMap<PathBuf, ShaderPair>,
     staging_shaders: HashMap<PathBuf, ShaderPair>,
     dirty_files: Vec<PathBuf>,
+    compiler: IDxcCompiler3,
+    utils: IDxcUtils
 }
 
 impl ShaderStorage {
-    pub fn new<P: AsRef<Path>>(root_dir: P) -> Self {
-        Self {
+    pub fn new<P: AsRef<Path>>(root_dir: P) -> anyhow::Result<Self> {
+        let compiler: IDxcCompiler3 = unsafe { DxcCreateInstance(&CLSID_DxcCompiler)? };
+        let utils: IDxcUtils = unsafe { DxcCreateInstance(&CLSID_DxcUtils)? };
+        Ok(Self {
             root_dir: root_dir.as_ref().to_path_buf(),
             lib_shaders: HashMap::new(),
             lib_hashes: HashMap::new(),
             shaders: HashMap::new(),
             staging_shaders: HashMap::new(),
             dirty_files: vec![],
-        }
+            compiler,
+            utils
+        })
     }
 
     pub fn recompile(&mut self) -> anyhow::Result<()> {
@@ -210,45 +214,49 @@ impl ShaderStorage {
         let meta = File::open(path.parent().unwrap().join(format!("{file_name}.json"))).map_err(|e| anyhow!("Failed to read metadata for {file_name}: {e}"))?;
         let meta: ShaderMetadata = serde_json::from_reader(SkipEncodingBom::new(BomType::all(), &meta))?;
         let mut blob_map = HashMap::with_capacity(meta.targets.len());
+        let include: IDxcIncludeHandler = LibIncludes {
+            root_dir: self.root_dir.clone(),
+            lib_shaders: self.lib_shaders.clone(),
+            utils: self.utils.clone(),
+        }.into();
         for target in &meta.targets {
             // compile for each target
-            let (mut code, mut err) = (None, None);
-            let include = ID3DInclude::new(self);
-            let hstr = path.file_name().unwrap().to_str().unwrap().bytes().chain(std::iter::once(0)).collect::<Vec<u8>>();
+            let hstr = path.file_name().unwrap().to_str().unwrap().encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
             let (entry, target_name) = match &target {
-                ShaderTarget::Fragment { entry } => (entry, s!("ps_5_1")),
-                ShaderTarget::Vertex { entry } => (entry, s!("vs_5_1")),
-                ShaderTarget::Domain { entry } => (entry, s!("ds_5_1")),
-                ShaderTarget::Hull { entry } => (entry, s!("hs_5_1")),
-                ShaderTarget::Compute { entry } => (entry, s!("cs_5_1")),
-                ShaderTarget::Geometry { entry } => (entry, s!("gs_5_1"))
+                ShaderTarget::Fragment { entry } => (entry, w!("ps_6_6")),
+                ShaderTarget::Vertex { entry } => (entry, w!("vs_6_6")),
+                ShaderTarget::Domain { entry } => (entry, w!("ds_6_6")),
+                ShaderTarget::Hull { entry } => (entry, w!("hs_6_6")),
+                ShaderTarget::Compute { entry } => (entry, w!("cs_6_6")),
+                ShaderTarget::Geometry { entry } => (entry, w!("gs_6_6"))
             };
-            let entry = entry.bytes().chain(std::iter::once(0)).collect::<Vec<u8>>();
-            let r = unsafe {
-                D3DCompile(
-                    bytes.as_ptr() as *const c_void,
-                    bytes.len(),
-                    PCSTR::from_raw(hstr.as_ptr()),
-                    None,
-                    &*include,
-                    PCSTR::from_raw(entry.as_ptr()),
-                    target_name,
-                    #[cfg(debug_assertions)]
-                    (D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION),
-                    #[cfg(not(debug_assertions))]
-                    0,
-                    0,
-                    &mut code,
-                    Some(&mut err),
-                )
+            let entry = entry.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+
+            let r: IDxcResult = unsafe {
+                let src = DxcBuffer { Ptr: bytes.as_ptr().cast(), Size: bytes.len(), Encoding: DXC_CP_UTF8.0 };
+                self.compiler.Compile(
+                    &src as *const DxcBuffer,
+                    Some(&[
+                        PCWSTR(hstr.as_ptr()),
+                        w!("-E"),
+                        PCWSTR(entry.as_ptr()),
+                        w!("-T"),
+                        target_name,
+                        #[cfg(debug_assertions)]
+                        w!("-Zi"),
+                        #[cfg(debug_assertions)]
+                        w!("-Od")
+                    ]),
+                    &include,
+                )?
             };
-            if r.is_err() {
-                let msg = err
-                    .map(|e| String::from_utf8_lossy(blob_bytes(&e)).into_owned())
-                    .unwrap_or_default();
+            if unsafe { r.GetStatus()? }.is_err() {
+                let e = unsafe { r.GetErrorBuffer()? };
+                let cast: ID3DBlob = e.cast()?;
+                let msg = String::from_utf8_lossy(blob_bytes(&cast));
                 anyhow::bail!("Failed to compile shader at {}: {msg}", path.display());
             }
-            let blob = code.unwrap();
+            let blob: ID3DBlob = unsafe { r.GetResult()? }.cast()?;
             blob_map.insert(target.get_type(), blob);
         }
 
@@ -260,16 +268,16 @@ impl ShaderStorage {
     }
 }
 
+#[implement(IDxcIncludeHandler)]
+struct LibIncludes {
+    root_dir: PathBuf,
+    lib_shaders: HashMap<PathBuf, String>,
+    utils: IDxcUtils,
+}
+
 #[allow(non_snake_case)]
-impl ID3DInclude_Impl for ShaderStorage {
-    fn Open(
-        &self,
-        _include_type: D3D_INCLUDE_TYPE,
-        pfilename: &PCSTR,
-        _pparentdata: *const c_void,
-        ppdata: *mut *mut c_void,
-        pbytes: *mut u32,
-    ) -> windows::core::Result<()> {
+impl IDxcIncludeHandler_Impl for LibIncludes_Impl {
+    fn LoadSource(&self, pfilename: &PCWSTR) -> windows::core::Result<IDxcBlob> {
         let name =
             unsafe { pfilename.to_string() }.map_err(|_| windows::core::Error::from(E_FAIL))?;
         let name = name.replace('\\', "/");
@@ -280,14 +288,11 @@ impl ID3DInclude_Impl for ShaderStorage {
             .lib_shaders
             .get(&path)
             .ok_or_else(|| windows::core::Error::from(E_FAIL))?;
-        unsafe {
-            *ppdata = src.as_str().as_ptr() as *mut c_void;
-            *pbytes = src.len() as u32;
-        }
-        Ok(())
-    }
-
-    fn Close(&self, _pdata: *const c_void) -> windows::core::Result<()> {
-        Ok(())
+        let blob = unsafe {
+            let ppdata = src.as_str().as_ptr() as *mut c_void;
+            let pbytes = src.len() as u32;
+            self.utils.CreateBlob(ppdata, pbytes, DXC_CP_UTF8)?
+        };
+        blob.cast::<IDxcBlob>()
     }
 }

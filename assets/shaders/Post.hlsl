@@ -1,4 +1,4 @@
-﻿#include <lib/Core.hlsl>
+﻿#include "lib/Core.hlsl"
 
 SamplerState PointClamp : register(s2);
 SamplerState LinearClamp : register(s1);

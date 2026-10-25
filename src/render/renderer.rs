@@ -1,7 +1,7 @@
-use std::cell::Cell;
 use crate::assets::shaders::ShaderStorage;
 use crate::assets::LoadedScene;
-use crate::render::graph::res::{GraphResources, ResId, ResSize};
+use crate::render::camera::Camera;
+use crate::render::graph::res::GraphResources;
 use crate::render::graph::FrameGraph;
 use crate::render::mesh::Mesh;
 use crate::render::pipeline::desc::PipelineDesc;
@@ -9,10 +9,10 @@ use crate::render::pipeline::signature::RootSignature;
 use crate::render::pipeline::{Globals, PipelineId, PipelineManager};
 use crate::render::texture::{MipCount, Texture};
 use crate::wrappers::graphics::GraphicsDevice;
-use glam::{Mat4, Vec4};
+use glam::Mat4;
+use std::cell::Cell;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
-use crate::render::camera::Camera;
 
 pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16G16B16A16_FLOAT;
 pub const GB_NORMALS: DXGI_FORMAT = DXGI_FORMAT_R10G10B10A2_UNORM;
@@ -44,7 +44,7 @@ impl Renderer {
         let mut gd = GraphicsDevice::new()?;
         gd.setup_resources(hwnd, width, height)?;
 
-        let mut shaders = ShaderStorage::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/shaders"));
+        let mut shaders = ShaderStorage::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/shaders"))?;
         shaders.compile()?;
 
         let mut batch = gd.begin_upload()?;

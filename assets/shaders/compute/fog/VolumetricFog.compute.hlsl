@@ -1,7 +1,7 @@
 ﻿#define COMPUTE
 
-#include <../../lib/Core.hlsl>
-#include <../../lib/Lighting.hlsl>
+#include "../../lib/Core.hlsl"
+#include "../../lib/Lighting.hlsl"
 
 cbuffer FogPass : register(b2) {
     Cascades csm;
@@ -18,7 +18,7 @@ cbuffer FogPass : register(b2) {
     uint _padL[3];
 }
 
-#include <../../lib/Shadows.hlsl>
+#include "../../lib/Shadows.hlsl"
 
 #define LIGHT_SCATTERING 0.1
 #define LIGHT_CONTRIBUTION float3(2.5, 2.5, 2.5)

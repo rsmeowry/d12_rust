@@ -348,6 +348,7 @@ dependencies = [
  "skip_bom",
  "walkdir",
  "windows",
+ "windows-core",
 ]
 
 [[package]]

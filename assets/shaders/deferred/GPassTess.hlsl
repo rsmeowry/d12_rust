@@ -1,4 +1,4 @@
-﻿#include <../lib/Core.hlsl>
+﻿#include "../lib/Core.hlsl"
 #define MAX_TF 16.
 #define FAR 15.0
 #define NEAR 0.1
