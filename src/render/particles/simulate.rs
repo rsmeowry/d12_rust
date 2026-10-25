@@ -219,10 +219,10 @@ impl ParticleSimulation {
             color_b: Vec3::ZERO,
             sort_order: 1.0,
             life_range: Vec2::new(props.lifetime, props.lifetime),
-            size_range: Vec2::new(0.1, 0.1),
+            size_range: Vec2::new(0.3, 0.4),
             velocity_base: props.velocity_base,
             spread: props.spread,
-            restitution: 0.5,
+            restitution: 0.4,
             thickness: 0.5,
             _pad: [0; 2],
         })?;

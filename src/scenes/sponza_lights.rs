@@ -10,6 +10,7 @@ use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::{unit_sphere, GpuLight};
 use crate::render::mesh::{DrawTopology, Mesh};
+use crate::render::particles::draw::{MeshParticleMaterial, ParticleKind, ParticleRendering, ParticleShape};
 use crate::render::particles::simulate::{ParticleSimulation, SimulateParticleProps};
 use crate::render::perf::frustum::AABB;
 use crate::render::perf::{Culler, NO_LOD};
@@ -22,8 +23,6 @@ use crate::time::Time;
 use egui::Ui;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::render::particles::draw::{ParticleKind, ParticleRendering, ParticleShape};
-use crate::render::texture::{MipCount, Texture};
 
 const MAX_PARTICLES: usize = 4096;
 
@@ -103,7 +102,36 @@ impl Scene for SponzaWithLights {
 
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "Sponza/MaterialBuffer")?;
 
-        let particle_texture = Texture::load(&mut batch, &std::fs::read("assets/textures/particles/opaque_square.png")?, true, MipCount::All, "OpaqueSquare")?;
+        // let particle_texture = Texture::load(&mut batch, &std::fs::read("assets/textures/particles/opaque_square.png")?, true, MipCount::All, "OpaqueSquare")?;
+        let (verts, inds) = unit_sphere(8, 6, |pos, norm, tan, binorm, uv| VertexPbr::new(pos, norm, tan, binorm, uv));
+        let aabb = AABB::from_points(&verts.iter().map(|v| Vec3::from(v.pos)).collect::<Vec<_>>());
+        // let particle_mesh = Mesh::new(batch.gd(), &mut batch, &verts, &inds, DrawTopology::TriangleList, aabb, false)?;
+        // let particle_material = MeshParticleMaterial {
+        //     albedo_tex: renderer.white_tex().srv_ptr(),
+        //     normal_tex: renderer.flat_normal_tex().srv_ptr(),
+        //     metal_roughness_tex: renderer.white_tex().srv_ptr(),
+        //     occlusion_tex: renderer.white_tex().srv_ptr(),
+        //     base_color: Vec3::new(0.9, 0.9, 0.9),
+        //     metallic: 0.6,
+        //     roughness: 0.1,
+        // };
+        let mut particle_mats = Vec::new();
+        let model = load_assimp_scene::<VertexPbr, _>(
+            &renderer, &mut batch, "assets/models/pusheen_holding_cookie/scene.gltf", &mut particle_mats,
+            LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP,
+            DrawTopology::TriangleList, false, LodCount::NoLods,
+            |mat, tex| MaterialParams::Pbr {
+                albedo_tex: tex.albedo,
+                normal_tex: tex.normal,
+                metal_roughness_tex: tex.roughness,
+                occlusion_tex: tex.lightmap,
+                base_color: mat.base_color().map(|it| Vec3::new(it.x, it.y, it.z)).unwrap_or(Vec3::ONE),
+                metallic: mat.metallic_factor().unwrap_or(0.2),
+                roughness: mat.roughness_factor().unwrap_or(0.2),
+            }.to_gpu_material(),
+        )?;
+        let material = MeshParticleMaterial::from_gpu(&particle_mats[model.meshes[0].1 as usize]);
+        let (mesh, _transform, textures) = model.into_single_mesh();
 
         batch.finish()?;
 
@@ -123,13 +151,18 @@ impl Scene for SponzaWithLights {
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
         let particles_sim = ParticleSimulation::new(renderer, MAX_PARTICLES as u32)?;
-        let particles_draw = ParticleRendering::new(renderer, ParticleKind::Opaque, ParticleShape::Billboard {
-            tex: particle_texture
+        // let particles_draw = ParticleRendering::new(renderer, ParticleKind::Opaque, ParticleShape::Billboard {
+        //     tex: particle_texture
+        // })?;
+        let particles_draw = ParticleRendering::new(renderer, ParticleKind::Opaque, ParticleShape::Mesh {
+            mesh,
+            material,
+            textures,
         })?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
-        
+
         Ok(Self {
             gbuffer,
             blit,
@@ -237,10 +270,9 @@ impl Scene for SponzaWithLights {
         // particles: simulate
         self.particles_sim.add_pass(SimulateParticleProps {
             emitter: Vec3::new(0., 3., -1.),
-            gravity: Default::default(),
-            rate: 1024.,
+            rate: 4.,
             spread: 0.6,
-            lifetime: 1.6,
+            lifetime: 16.,
             velocity_base: Quat::from_rotation_x(time.game_time()) * (Vec3::Y * 4.),
             ..Default::default()
         }, time.delta_time(), renderer, &self.gbuffer, graph)?;
