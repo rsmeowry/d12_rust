@@ -47,7 +47,7 @@ pub enum MaterialParams {
         albedo_tex: u32,
         normal_tex: u32,
         material_tex: u32,
-    }
+    },
 }
 
 impl MaterialParams {

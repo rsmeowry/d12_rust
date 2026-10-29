@@ -26,6 +26,27 @@ pub struct GBuffer {
 }
 
 impl Renderer {
+    pub fn build_gpass<V: Vertex>(&mut self, pass_shader: &'static str, topology: DrawTopology) -> anyhow::Result<(PipelineId, PipelineId)> {
+        let gpass = self.create_pipeline(PipelineDesc {
+            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT],
+            name: pass_shader.split("/").last().unwrap(),
+            shader: pass_shader.into(),
+            input: V::LAYOUT,
+            topology: topology.to_d3d12_type(),
+            ..Default::default()
+        })?;
+        let gpass_wireframe = self.create_pipeline(PipelineDesc {
+            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT],
+            name: pass_shader.split("/").last().unwrap(),
+            shader: pass_shader.into(),
+            input: V::LAYOUT,
+            wireframe: true,
+            topology: topology.to_d3d12_type(),
+            ..Default::default()
+        })?;
+        Ok((gpass, gpass_wireframe))
+    }
+
     pub fn build_gbuffer<V: Vertex>(&mut self, pass_shader: &'static str, topology: DrawTopology) -> anyhow::Result<GBuffer> {
         let scene_color = self.gr.color(&self.gd, "SceneColor", SCENE_FORMAT, Vec4::ZERO, ResSize::FitScreen)?; // zero: lighting/sky are blended additively on top
         let scene_depth = self.gr.depth(&self.gd, "SceneDepth", ResSize::FitScreen)?;

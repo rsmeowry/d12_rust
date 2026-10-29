@@ -108,7 +108,7 @@ impl Quadtree {
 
     fn lod_aabb(&self, lod: usize, x: u32, z: u32) -> AABB {
         let size = ((self.leaf_size_texels << lod) as f32) * self.texel_size_ws;
-        let node = self.lods[lod][(z * (self.leaf_count) + x) as usize];
+        let node = self.lods[lod][(z * (self.leaf_count >> lod) + x) as usize];
         AABB {
             min: Vec3::new(x as f32 * size, node.min_y, z as f32 * size),
             max: Vec3::new((x + 1) as f32 * size, node.max_y, (z + 1) as f32 * size),
