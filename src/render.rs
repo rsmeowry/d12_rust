@@ -12,3 +12,4 @@ pub mod deferred;
 pub mod perf;
 pub mod shadows;
 pub mod particles;
+pub mod terrain;
