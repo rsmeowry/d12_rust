@@ -48,7 +48,7 @@ impl<S: Scene> App<S> {
             WIDTH,
             HEIGHT,
             70.,
-            Vec3::new(0., 2., -3.),
+            Vec3::new(0., 2., 0.),
             Quat::from_rotation_x(30f32.to_radians()),
         );
 

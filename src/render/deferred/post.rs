@@ -40,7 +40,13 @@ impl PostProcessPass {
         self.post_intermediate
     }
 
-    pub fn add_pass<'a>(&'a self, mut props: PostProperties, bloom: Option<ResId>, renderer: &'a Renderer, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    pub fn add_generic_pass<'a>(&'a self, mut props: PostProperties, bloom: Option<ResId>, renderer: &'a Renderer,
+                                albedo: ResId,
+                                normals: ResId,
+                                materials: ResId,
+                                scene_color: ResId,
+                                scene_depth: ResId,
+                                graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
         let pipelines = renderer.pipelines();
         let rs = renderer.rs();
         if let Some(bloom) = bloom {
@@ -51,11 +57,11 @@ impl PostProcessPass {
         let post_va = renderer.upload_cbuffer(&props)?;
 
         let mut pass = graph.add_pass("Post")
-            .reads(gbuffer.albedo)
-            .reads(gbuffer.normals)
-            .reads(gbuffer.materials)
-            .reads(gbuffer.scene_color)
-            .reads(gbuffer.scene_depth);
+            .reads(albedo)
+            .reads(normals)
+            .reads(materials)
+            .reads(scene_color)
+            .reads(scene_depth);
         if let Some(bloom) = bloom {
             pass = pass.reads(bloom);
         }
@@ -72,6 +78,11 @@ impl PostProcessPass {
             });
 
         Ok(())
+    }
+
+
+    pub fn add_pass<'a>(&'a self, mut props: PostProperties, bloom: Option<ResId>, renderer: &'a Renderer, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+        self.add_generic_pass(props, bloom, renderer, gbuffer.albedo, gbuffer.normals, gbuffer.materials, gbuffer.scene_color, gbuffer.scene_depth, graph)
     }
 }
 
