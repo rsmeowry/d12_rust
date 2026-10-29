@@ -1,4 +1,14 @@
-﻿use image::{ImageBuffer, Luma};
+﻿use glam::{Vec2, Vec3};
+use image::{ImageBuffer, Luma};
+use crate::render::perf::frustum::{Frustum, AABB};
+use crate::render::perf::octree::BoxStatus;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct NodePatch {
+    pub origin: Vec2,
+    pub lod: u32
+}
 
 #[derive(Debug, Clone)]
 pub struct Quadtree {
@@ -60,6 +70,48 @@ impl Quadtree {
             leaf_count,
             texel_size_ws,
             lods: levels,
+        }
+    }
+
+    pub fn root_lod(&self) -> usize {
+        self.lods.len() - 1
+    }
+
+    pub fn select(&self, lod: usize, x: u32, z: u32, cam_pos: Vec3, ranges: &[f32], frustum: &Frustum, out: &mut Vec<NodePatch>) -> bool {
+        let b = self.lod_aabb(lod, x, z);
+        let in_range = |r: f32| cam_pos.clamp(b.min, b.max).distance_squared(cam_pos) <= r * r;
+
+        // need less detailed lod
+        if !in_range(ranges[lod]) {
+            return false;
+        }
+
+        // invisible, skip rendering
+        if frustum.classify(&b) == BoxStatus::Outside {
+            return true;
+        }
+
+        // fully detailed or parent is out of range
+        let is_whole = lod == 0 || !in_range(ranges[lod - 1]);
+        let half = (self.leaf_size_texels << lod) / 2;
+        for i in 0..4 {
+            let (center_x, center_z) = (x * 2 + i % 2, z * 2 + i / 2);
+            if is_whole || !self.select(lod - 1, center_x, center_z, cam_pos, ranges, frustum, out) {
+                out.push(NodePatch {
+                    origin: Vec2::new((center_x * half) as f32, (center_z * half) as f32),
+                    lod: lod as u32
+                })
+            }
+        }
+        true
+    }
+
+    fn lod_aabb(&self, lod: usize, x: u32, z: u32) -> AABB {
+        let size = ((self.leaf_size_texels << lod) as f32) * self.texel_size_ws;
+        let node = self.lods[lod][(z * (self.leaf_count) + x) as usize];
+        AABB {
+            min: Vec3::new(x as f32 * size, node.min_y, z as f32 * size),
+            max: Vec3::new((x + 1) as f32 * size, node.max_y, (z + 1) as f32 * size),
         }
     }
 }
