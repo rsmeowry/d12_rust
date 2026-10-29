@@ -59,7 +59,7 @@ impl Scene for TerrainScene {
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
-        let terrain = Terrain::new(renderer, "assets/textures/terrain/terrain", 8, 0.2, 40.)?;
+        let terrain = Terrain::new(renderer, "assets/textures/terrain/terrain", 16, 0.8, 120.)?;
 
         Ok(Self {
             gbuffer,
@@ -107,7 +107,7 @@ impl Scene for TerrainScene {
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
         self.terrain.add_shadow_passes(renderer, self.shadows.dynamic_cascades(), graph)?;
 
-        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), 0.19, &self.gbuffer, graph, opts)?;
+        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), 0.19, true, Vec3::new(5.8, 13.5, 33.1) * 1e-3, &self.gbuffer, graph, opts)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

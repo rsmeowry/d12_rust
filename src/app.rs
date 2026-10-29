@@ -273,7 +273,7 @@ impl<S: Scene> App<S> {
         ];
 
         let mut pos = self.renderer.cam.pos();
-        let move_speed = MOVE_SPEED * (if input.is_held(KeyCode::LeftShift) { SHIFT_MUL } else { 1.0 }) * self.time.delta_time();
+        let move_speed = MOVE_SPEED * (if input.is_held(KeyCode::LeftShift) { SHIFT_MUL } else { 2.5 }) * self.time.delta_time();
         for (btn, axis) in btn_axis {
             if input.is_held(btn) {
                 pos += axis * move_speed;
@@ -286,7 +286,7 @@ impl<S: Scene> App<S> {
 const MOUSE_SENSITIVITY: f32 = 0.7;
 const MAX_PITCH: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
 const MOVE_SPEED: f32 = 2.0;
-const SHIFT_MUL: f32 = 2.0;
+const SHIFT_MUL: f32 = 20.0;
 const TIMINGS_SMOOTHING_SECS: f32 = 0.5;
 
 #[derive(Debug, Clone)]

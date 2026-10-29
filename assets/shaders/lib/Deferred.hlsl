@@ -14,6 +14,8 @@
     uint specularTex;
     uint brdfLutTex;
     float specularMips;
+    uint useAtmosphere;
+    float3 betaRayleigh;
 };
 
 struct Surface {
