@@ -1,0 +1,160 @@
+﻿use crate::app::RenderOpts;
+use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
+use crate::render::builtin::VertexPbr;
+use crate::render::deferred::bloom::{BloomPass, BloomProperties};
+use crate::render::deferred::fog::FogPass;
+use crate::render::deferred::pbr_lighting::PbrLightingPass;
+use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::GBuffer;
+use crate::render::graph::pass::ResLoad;
+use crate::render::graph::FrameGraph;
+use crate::render::lights::{unit_sphere, GpuLight};
+use crate::render::mesh::{DrawTopology, Mesh};
+use crate::render::particles::draw::{MeshParticleMaterial, ParticleKind, ParticleRendering, ParticleShape};
+use crate::render::particles::simulate::{ParticleSimulation, SimulateParticleProps};
+use crate::render::perf::frustum::AABB;
+use crate::render::perf::{Culler, NO_LOD};
+use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
+use crate::render::pipeline::PipelineId;
+use crate::render::renderer::{ObjectData, Renderer};
+use crate::render::shadows::{ShadowMap, CASCADE_COUNT};
+use crate::scenes::Scene;
+use crate::time::Time;
+use egui::Ui;
+use glam::{Mat4, Quat, Vec3};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+
+#[derive(Debug)]
+pub struct TerrainScene {
+    gbuffer: GBuffer,
+    
+    materials_buf: ID3D12Resource,
+    
+    shadows: ShadowMap,
+    bloom: BloomPass,
+    lighting: PbrLightingPass,
+    post: PostProcessPass,
+    blit: BlitPass
+}
+
+impl Scene for TerrainScene {
+    const NAME: &'static str = "Terrain";
+
+    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
+        let mut batch = renderer.gd.begin_upload()?;
+
+        let mut materials: Vec<GpuMaterial> = Vec::new();
+
+        let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
+
+        batch.finish()?;
+
+        let gbuffer = renderer.build_gbuffer::<VertexPbr>("deferred/GPassPBR.hlsl", DrawTopology::TriangleList)?;
+
+        let mut lighting = PbrLightingPass::new(renderer,
+                                                "assets/textures/sky/sponza/garden_sky.hdr",
+                                                "assets/textures/sky/sponza/garden_sky_irradiance.dds",
+                                                "assets/textures/sky/sponza/garden_sky_specular.dds",
+                                                "assets/textures/pbr/ibl_brdf_lut.dds"
+        )?;
+        let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512)?;
+        lighting.save_local_shadows(&shadows);
+        let bloom = BloomPass::new(renderer)?;
+        let post = PostProcessPass::new(renderer)?;
+        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        
+        Ok(Self {
+            gbuffer,
+            blit,
+            
+            shadows,
+            bloom,
+            materials_buf,
+            lighting,
+            post,
+        })
+    }
+
+    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
+        let mut objects: Vec<ObjectData> = Vec::new();
+        let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
+        let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
+
+
+        let objects_va = renderer.upload_objects(&objects)?;
+        let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
+
+        let _t = time.game_time();
+        let mut lights = vec![
+            GpuLight::directional(Vec3::new(-0.3, -0.7, -0.15), Vec3::new(1., 0.95, 0.9), 12.0),
+        ];
+
+        let gr = &renderer.gr;
+
+        let rs = renderer.rs();
+        let pipelines = renderer.pipelines();
+
+        let post_props = PostProperties {
+            albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
+            normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
+            materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
+            depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
+            scene_color: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
+            enable_sobel: 0,
+            enable_fly_eye: 0,
+            enable_vignette: 1,
+            ..Default::default()
+        };
+
+        // scene draw pass
+        graph
+            .add_pass("GPass")
+            .writes_depth(self.gbuffer.scene_depth, ResLoad::Clear)
+            .writes(self.gbuffer.albedo, ResLoad::Clear)
+            .writes(self.gbuffer.normals, ResLoad::Clear)
+            .writes(self.gbuffer.materials, ResLoad::Clear)
+            .writes(self.gbuffer.scene_color, ResLoad::Clear)
+            .exec(move |ctx| {
+                rs.set_objects(ctx.cmd, objects_va);
+                rs.set_materials(ctx.cmd, materials_va);
+                let mut bound = None;
+                for (i, (mesh, pso)) in draws.iter().enumerate() {
+                    if bound != Some(*pso) {
+                        pipelines.get(*pso).bind(ctx.cmd);
+                        bound = Some(*pso);
+                    }
+                    rs.set_draw_index(ctx.cmd, i as u32);
+                    mesh.draw(ctx.cmd);
+                }
+                Ok(())
+            });
+        
+        // shadowws (global and local)
+        let mut all_objects: Vec<ObjectData> = Vec::new();
+        let mut all_draws: Vec<&Mesh> = Vec::new();
+        let all_objects_va = renderer.upload_objects(&objects)?;
+        let lambda = 0.6;
+        self.shadows.update(lights[0], lambda, renderer);
+        let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
+        self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_draws, graph)?;
+
+        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), 0.19, &self.gbuffer, graph, opts)?;
+        
+        // bloom
+        let bloom = self.bloom.add_pass(BloomProperties {
+            threshold: 0.5,
+            knee: 0.25,
+            radius: 1.0,
+            intensity: 1.0,
+            ..Default::default()
+        }, self.gbuffer.scene_color, renderer, graph)?;
+        self.post.add_pass(post_props, Some(bloom), renderer, &self.gbuffer, graph)?;
+        self.blit.add_pass(renderer, graph)?;
+        
+        Ok(())
+    }
+}
