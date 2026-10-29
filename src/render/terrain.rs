@@ -1,5 +1,6 @@
-﻿use glam::{Vec2, Vec3};
+﻿use glam::{Mat4, Vec2, Vec3};
 use image::GenericImageView;
+use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_NONE};
 use crate::app::RenderOpts;
 use crate::render::builtin::{Vertex3, VertexPbr};
 use crate::render::deferred::GBuffer;
@@ -7,13 +8,16 @@ use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::ResId;
 use crate::render::mesh::{DrawTopology, Mesh};
-use crate::render::perf::frustum::AABB;
+use crate::render::perf::frustum::{Frustum, AABB};
+use crate::render::pipeline::desc::{Depth, PipelineDesc};
 use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
 use crate::render::terrain::quadtree::Quadtree;
 use crate::render::texture::{MipCount, Texture};
+use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::batching::UploadBatch;
+use crate::wrappers::graphics::GraphicsDevice;
 
 pub mod quadtree;
 
@@ -22,6 +26,7 @@ pub struct Terrain {
     tree: Quadtree,
     gpass: PipelineId,
     gpass_wireframe: PipelineId,
+    shadow_pass: PipelineId,
     albedo_map: Texture,
     height_map: Texture,
     normal_map: Texture,
@@ -55,10 +60,24 @@ impl Terrain {
 
         let (gpass, gpass_wireframe) = rd.build_gpass::<Vertex3>("deferred/terrain/GPassTerrain.hlsl", DrawTopology::TriangleList)?;
 
+        let shadow_pass = rd.create_pipeline(PipelineDesc {
+            name: "TerrainShadows",
+            shader: "deferred/terrain/TerrainShadows.hlsl".into(),
+            input: Vertex3::LAYOUT,
+            rts: vec![],
+            depth: Some(Depth { format: GraphicsDevice::DS_FORMAT, func: D3D12_COMPARISON_FUNC_GREATER_EQUAL, write: true }),
+            cull: D3D12_CULL_MODE_NONE,
+            depth_bias: -20,
+            slope_bias: -1.0,
+            depth_clip: false,
+            ..Default::default()
+        })?;
+
         Ok(Self {
             tree,
             gpass,
             gpass_wireframe,
+            shadow_pass,
             albedo_map,
             height_map,
             normal_map,
@@ -92,6 +111,7 @@ impl Terrain {
             texel_size_ws: self.texel_size_ws,
             height_scale: self.height_scale,
             morphs,
+            light_view_proj: Mat4::IDENTITY
         })?;
         let patches_va = rd.upload_slice(bytemuck::cast_slice(&patches), 16)?;
         let patch_count = patches.len() as u32;
@@ -113,6 +133,45 @@ impl Terrain {
                 Ok(())
             });
 
+        Ok(())
+    }
+
+    pub fn add_shadow_passes<'a>(&'a self, rd: &'a Renderer, cascades: impl Iterator<Item = (ResId, Mat4)>, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+        let (pipelines, rs) = (rd.pipelines(), rd.rs());
+        let mut morphs = [[0.; 4]; MAX_TERRAIN_LODS];
+        for (lod, &end) in self.ranges.iter().enumerate() {
+            let prev = if lod == 0 { 0. } else { self.ranges[lod - 1] };
+            morphs[lod] = [prev + (end - prev) * 0.66, end, 0., 0.]; // morphing the last 3rd
+        }
+
+        for (target, vp) in cascades {
+            let mut patches = Vec::new();
+            self.tree.select(self.tree.root_lod(), 0, 0, rd.cam.pos(), &self.ranges, &Frustum::from_view_proj(vp), &mut patches);
+
+            let pass_va = rd.upload_cbuffer(&TerrainPass {
+                height_map: self.height_map.srv_ptr(),
+                albedo_map: self.albedo_map.srv_ptr(),
+                roughness_map: self.roughness_map.srv_ptr(),
+                normal_map: self.normal_map.srv_ptr(),
+                ao_map: self.ao_map.srv_ptr(),
+                world_texels: self.world_texels,
+                texel_size_ws: self.texel_size_ws,
+                height_scale: self.height_scale,
+                morphs,
+                light_view_proj: vp
+            })?;
+            let patches_va = rd.gd.frame_context()?.frame_alloc.push_slice(&patches, 16)?;
+            let count = patches.len() as u32;
+            graph.add_pass("TerrainShadows")
+                .writes_depth(target, ResLoad::Preserve)
+                .exec(move |ctx| {
+                    pipelines.get(self.shadow_pass).bind(ctx.cmd);
+                    rs.set_pass(ctx.cmd, pass_va);
+                    rs.set_objects(ctx.cmd, patches_va);
+                    self.patch_mesh.draw_instanced(ctx.cmd, count);
+                    Ok(())
+                });
+        }
         Ok(())
     }
 
@@ -167,5 +226,6 @@ struct TerrainPass {
     world_texels: u32,
     texel_size_ws: f32,
     height_scale: f32,
-    morphs: [[f32; 4]; MAX_TERRAIN_LODS]
+    morphs: [[f32; 4]; MAX_TERRAIN_LODS],
+    light_view_proj: Mat4
 }

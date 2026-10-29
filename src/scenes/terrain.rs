@@ -48,9 +48,9 @@ impl Scene for TerrainScene {
         let gbuffer = renderer.build_gbuffer::<VertexPbr>("deferred/GPassPBR.hlsl", DrawTopology::TriangleList)?;
 
         let mut lighting = PbrLightingPass::new(renderer,
-                                                "assets/textures/sky/sponza/garden_sky.hdr",
-                                                "assets/textures/sky/sponza/garden_sky_irradiance.dds",
-                                                "assets/textures/sky/sponza/garden_sky_specular.dds",
+                                                "assets/textures/sky/sky.hdr",
+                                                "assets/textures/sky/sky_irradiance.dds",
+                                                "assets/textures/sky/sky_specular.dds",
                                                 "assets/textures/pbr/ibl_brdf_lut.dds"
         )?;
         let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512)?;
@@ -59,7 +59,7 @@ impl Scene for TerrainScene {
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
-        let terrain = Terrain::new(renderer, "assets/textures/terrain/terrain", 8, 0.1, 25.)?;
+        let terrain = Terrain::new(renderer, "assets/textures/terrain/terrain", 8, 0.2, 40.)?;
 
         Ok(Self {
             gbuffer,
@@ -76,7 +76,7 @@ impl Scene for TerrainScene {
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
         let _t = time.game_time();
         let mut lights = vec![
-            GpuLight::directional(Vec3::new(-0.3, -0.7, -0.15), Vec3::new(1., 0.95, 0.9), 12.0),
+            GpuLight::directional(Vec3::new(-0.95, -0.4, 0.), Vec3::new(1., 0.95, 0.9), 12.0),
         ];
 
         let gr = &renderer.gr;
@@ -102,13 +102,12 @@ impl Scene for TerrainScene {
         // shadowws (global and local)
         let mut all_objects: Vec<ObjectData> = Vec::new();
         let mut all_draws: Vec<&Mesh> = Vec::new();
-        // let all_objects_va = renderer.upload_objects(&objects)?;
-        // let lambda = 0.6;
-        // self.shadows.update(lights[0], lambda, renderer);
-        // let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
-        // self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_draws, graph)?;
+        let lambda = 0.6;
+        self.shadows.update(lights[0], lambda, renderer);
+        let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
+        self.terrain.add_shadow_passes(renderer, self.shadows.dynamic_cascades(), graph)?;
 
-        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, None, 0.19, &self.gbuffer, graph, opts)?;
+        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), 0.19, &self.gbuffer, graph, opts)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

@@ -12,6 +12,7 @@ cbuffer Pass : register(b2) {
     float texelSize;
     float heightScale;
     float4 morphs[MAX_LODS];
+    float4x4 lightViewProj;
 };
 
 struct Patch {

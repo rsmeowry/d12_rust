@@ -19,7 +19,7 @@ use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, 
 pub const CASCADE_COUNT: usize = 4;
 pub const CAM_NEAR: f32 = 0.1;
 pub const SHADOW_DISTANCE: f32 = 35.;
-pub const SHADOW_EXTEND: f32 = 25.;
+pub const SHADOW_EXTEND: f32 = 60.;
 pub const STATIC_MARGIN: f32 = 1.5;
 pub const LOCAL_NEAR: f32 = CAM_NEAR / 2.;
 pub const CUBE_FACES: [(Vec3, Vec3); 6] = [
@@ -317,6 +317,14 @@ impl ShadowMap {
 
     pub fn add_local_shadows_pass<'f>(&mut self, lights: &mut Vec<GpuLight>, renderer: &'f Renderer, objects_va: u64, objects: &[ObjectData], meshes: &[&'f Mesh], graph: &mut FrameGraph<'f>) -> anyhow::Result<()> {
         self.local_shadows.add_pass(lights, renderer, objects_va, objects, meshes, graph)
+    }
+
+    pub fn dirty_static_cascades(&self) -> impl Iterator<Item = (ResId, Mat4)> + '_ {
+        (0..CASCADE_COUNT).filter(|&i| self.statics[i].dirty).map(|i| (self.cascades_static[i], self.statics[i].vp))
+    }
+
+    pub fn dynamic_cascades(&self) -> impl Iterator<Item = (ResId, Mat4)> + '_ {
+        (0..CASCADE_COUNT).map(|i| (self.cascades[i], self.dynamic_vp[i].0))
     }
 }
 
