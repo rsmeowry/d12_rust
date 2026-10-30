@@ -5,6 +5,17 @@
 #define SUN_INTENSITY 19.5
 #define ATMOSPHERE_EXIT 6420
 #define WORLD_TO_KM 0.001
+#define GROUND_ALBEDO float3(0.2, 0.3, 0.6)
+
+// ground dist or -1 if miss
+float RayGroundHit(float3 ro, float3 rd) {
+    float b = dot(ro, rd);
+    float c = dot(ro, ro) - R_EARTH * R_EARTH;
+    float disc = b * b - c;
+    if (b > 0 || disc < 0)
+        return -1;
+    return -b - sqrt(disc);
+}
 
 float MiePhase(float mu, float g) {
     float g2 = g * g;
@@ -43,24 +54,29 @@ float3 AtmosphereOrigin() {
     return float3(0, R_EARTH + max(cameraPos.y * WORLD_TO_KM, 0.001), 0);
 }
 
-float3 Atmosphere(float3 roAtmS, float3 rd, float tMax, float3 betaR, float3 sunDir, out float3 T) {
+float3 Atmosphere(float3 ro, float3 rd, float tMax, float3 betaR, float3 sunDir, out float3 T) {
+    float3 toSun = -sunDir;
+    float mu = dot(rd, toSun);
+    float phaseR = RayleighPhase(mu);
+    float phaseM = MiePhase(mu, mieG);
+
     float dt = tMax / VIEW_STEPS;
-    float2 opticalDepth = 0;
-    float3 sumR = 0;
-    float3 sumM = 0;
+    float3 inscatter = 0;
+    T = 1;
 
-    for(int i = 0; i < VIEW_STEPS; i++) {
-        float3 pos = roAtmS + rd * (i + 0.5) * dt;
+    for (int i = 0; i < VIEW_STEPS; i++) {
+        float3 pos = ro + rd * (i + 0.5) * dt;
+        float2 dens = Density(pos);
+        float3 sigmaR = betaR * dens.x;
+        float3 sigmaM = betaMie * dens.y;
+        float3 sigmaT = sigmaR + sigmaM * 1.1;
 
-        // optical depth
-        float2 d = Density(pos) * dt;
-        opticalDepth += d;
-        float3 att = exp(-Extinction(opticalDepth + OpticalDepthToSun(pos, -sunDir)));
-        sumR += d.x * att;
-        sumM += d.y * att;
+        float3 sunT = exp(-Extinction(OpticalDepthToSun(pos, toSun)));
+        float3 S = sunT * (sigmaR * phaseR + sigmaM * phaseM);
+
+        float3 stepT = exp(-sigmaT * dt);
+        inscatter += T * S * (1 - stepT) / max(sigmaT, 1e-7);
+        T *= stepT;
     }
-
-    T = exp(-Extinction(opticalDepth));
-    float mu = dot(rd, -sunDir);
-    return SUN_INTENSITY * (sumR * betaR * RayleighPhase(mu) + sumM * betaMie * MiePhase(mu, mieG));
+    return SUN_INTENSITY * inscatter;
 }

@@ -218,7 +218,7 @@ impl ShowUi for AtmosphereProps {
         CollapsingHeader::new("Atmosphere").show(ui, |header_ui| {
             header_ui.horizontal(|h| {
                 h.label("Beta Mie");
-                h.add(DragValue::new(&mut self.beta_mie).range(0.0f32..=0.1f32).speed(0.01));
+                h.add(DragValue::new(&mut self.beta_mie).range(0.0f32..=6.5f32).speed(0.01));
             });
             header_ui.horizontal(|h| {
                 h.label("H Mie");
@@ -230,4 +230,28 @@ impl ShowUi for AtmosphereProps {
             });
         });
     }
+}
+
+pub fn sun_transmittance(atmo: &AtmosphereProps, cam_y: f32, to_sun: Vec3) -> Vec3 {
+    const R_EARTH: f32 = 6360.0;
+    const R_ATMO: f32 = 6420.0;
+    const H_R: f32 = 8.0;
+    const STEPS: usize = 8;
+
+    let ro = Vec3::new(0.0, R_EARTH + (cam_y * 0.001).max(0.001), 0.0);
+    let b = ro.dot(to_sun);
+    if b < 0.0 && b * b - (ro.length_squared() - R_EARTH * R_EARTH) > 0.0 {
+        return Vec3::ZERO;
+    }
+    let c = ro.length_squared() - R_ATMO * R_ATMO;
+    let dt = (-b + (b * b - c).max(0.0).sqrt()) / STEPS as f32;
+
+    let (mut od_r, mut od_m) = (0.0, 0.0);
+    for i in 0..STEPS {
+        let h = ((ro + to_sun * (i as f32 + 0.5) * dt).length() - R_EARTH).max(0.0);
+        od_r += (-h / H_R).exp() * dt;
+        od_m += (-h / atmo.h_mie).exp() * dt;
+    }
+    let tau = atmo.beta_rayleigh * od_r + Vec3::splat(atmo.beta_mie * 1.1 * od_m);
+    (-tau).exp()
 }

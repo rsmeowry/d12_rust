@@ -15,5 +15,5 @@ mod scenes;
 pub mod ui;
 
 fn main() -> anyhow::Result<()> {
-    app::App::<TerrainScene>::new()?.run()
+    app::App::<SponzaWithLights>::new()?.run()
 }

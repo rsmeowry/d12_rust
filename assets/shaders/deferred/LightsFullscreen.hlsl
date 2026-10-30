@@ -28,8 +28,18 @@ float3 SampleSky(float2 pixel) {
     if(useAtmosphere == 1) {
         float3 ro = AtmosphereOrigin();
         float3 rd = normalize(WorldPosFromDepth(pixel / resolution, 1.0) - cameraPos);
+        float tGround = RayGroundHit(ro, rd);
+        float tMax = tGround > 0 ? tGround : RaySphereExit(ro, rd, ATMOSPHERE_EXIT);
         float3 t;
-        float3 att = Atmosphere(ro, rd, RaySphereExit(ro, rd, ATMOSPHERE_EXIT), betaRayleigh, g_Lights[0].direction, t);
+        float3 att = Atmosphere(ro, rd, tMax, betaRayleigh, g_Lights[0].direction, t);
+
+        if(tGround > 0) {
+            float3 pos = ro + rd * tGround;
+            float3 sunT = exp(-Extinction(OpticalDepthToSun(pos, -g_Lights[0].direction))); // how much sun reaches ground
+            float3 ground = GROUND_ALBEDO / PI * saturate(dot(normalize(pos), -g_Lights[0].direction)) * sunT * SUN_INTENSITY;
+            return att + ground * t;
+        }
+
         return att + SunDisc(rd, -g_Lights[0].direction, t);
     }
 #if SKY_CUBEMAP
