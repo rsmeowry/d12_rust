@@ -3,7 +3,7 @@ use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::deferred::fog::FogPass;
-use crate::render::deferred::pbr_lighting::PbrLightingPass;
+use crate::render::deferred::pbr_lighting::{AtmosphereProps, PbrLightingPass};
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
@@ -24,12 +24,14 @@ use egui::Ui;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::terrain::Terrain;
+use crate::ui::ShowUi;
 
 #[derive(Debug)]
 pub struct TerrainScene {
     gbuffer: GBuffer,
     terrain: Terrain,
 
+    atmosphere: AtmosphereProps,
     shadows: ShadowMap,
     bloom: BloomPass,
     lighting: PbrLightingPass,
@@ -41,6 +43,7 @@ impl Scene for TerrainScene {
     const NAME: &'static str = "Terrain";
 
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        self.atmosphere.show_ui(ui);
         Ok(())
     }
 
@@ -65,6 +68,7 @@ impl Scene for TerrainScene {
             gbuffer,
             terrain,
             blit,
+            atmosphere: AtmosphereProps::default(),
 
             shadows,
             bloom,
@@ -107,7 +111,7 @@ impl Scene for TerrainScene {
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
         self.terrain.add_shadow_passes(renderer, self.shadows.dynamic_cascades(), graph)?;
 
-        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), 0.19, true, Vec3::new(5.8, 13.5, 33.1) * 1e-3, &self.gbuffer, graph, opts)?;
+        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), Some(self.atmosphere), 0.19, &self.gbuffer, graph, opts)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

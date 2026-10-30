@@ -116,6 +116,10 @@ impl PhongLightingPass {
             specular_mips: 0.,
             use_atmosphere: 0,
             beta_rayleigh: Default::default(),
+            h_mie: 0.0,
+            beta_mie: Default::default(),
+            mie_g: 0.0,
+            _padL: [0; 3]
         }), 256)?;
 
         let rs = renderer.rs();
@@ -198,5 +202,9 @@ pub struct LightingPass {
     pub specular_mips: f32,
     pub use_atmosphere: u32,
     pub beta_rayleigh: Vec3,
+    pub h_mie: f32,
+    pub beta_mie: Vec3,
+    pub mie_g: f32,
+    pub _padL: [u32; 3]
 }
 const _: () = assert!(std::mem::offset_of!(LightingPass, csm) == 48);

@@ -6,9 +6,11 @@ use crate::render::texture::{MipCount, Texture};
 use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
 use egui::epaint::{ImageDelta, Primitive};
-use egui::{ColorImage, ImageData, TextureId, TexturesDelta};
+use egui::{ColorImage, DragValue, ImageData, TextEdit, TextureId, TexturesDelta, Ui};
 use std::collections::HashMap;
 use std::sync::Arc;
+use egui_probe::{EguiProbeFn, Probe};
+use glam::Vec3;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_INDEX_BUFFER_VIEW};
@@ -184,5 +186,26 @@ fn patch(dst: &mut ColorImage, src: &Arc<ColorImage>, [x, y]: [usize; 2]) {
     for row in 0..src.size[1] {
         let d = (y + row) * dst.size[0] + x;
         dst.pixels[d..d + w].copy_from_slice(&src.pixels[row * w..(row + 1) * w]);
+    }
+}
+
+pub trait ShowUi {
+    fn show_ui(&mut self, ui: &mut Ui);
+}
+
+impl ShowUi for Vec3 {
+    fn show_ui(&mut self, ui: &mut Ui) {
+        ui.horizontal(|h| {
+            h.label("X");
+            h.add(DragValue::new(&mut self.x));
+        });
+        ui.horizontal(|h| {
+            h.label("Y");
+            h.add(DragValue::new(&mut self.y));
+        });
+        ui.horizontal(|h| {
+            h.label("Z");
+            h.add(DragValue::new(&mut self.z));
+        });
     }
 }

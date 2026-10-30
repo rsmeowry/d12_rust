@@ -151,7 +151,7 @@ impl Scene for PbrSample {
                 Ok(())
             });
 
-        self.lighting.add_pass(lights, renderer, None, 1.0, false, Default::default(), &self.gbuffer, graph, opts)?;
+        self.lighting.add_pass(lights, renderer, None, None, 1.0, &self.gbuffer, graph, opts)?;
         self.post.add_pass(post_props, None, renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 

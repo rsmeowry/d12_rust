@@ -290,7 +290,7 @@ impl Scene for SponzaWithLights {
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
         self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
 
-        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), 0.19, false, Default::default(), &self.gbuffer, graph, opts)?;
+        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
 
         // self.fog.add_pass(FogProperties {
         //     density: 0.12,

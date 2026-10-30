@@ -1,4 +1,6 @@
 ﻿use std::path::Path;
+use egui::{CollapsingHeader, DragValue, Ui};
+use egui_probe::{EguiProbe, Probe};
 use glam::Vec3;
 use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -17,6 +19,7 @@ use crate::render::renderer::{Renderer, SCENE_FORMAT};
 use crate::render::shadows::{GpuCascades, ShadowCascades, ShadowMap};
 use crate::render::texture::{MipCount, Texture};
 use crate::render::vertex::Vertex;
+use crate::ui::ShowUi;
 use crate::wrappers::graphics::GraphicsDevice;
 
 #[derive(Debug)]
@@ -96,7 +99,7 @@ impl PbrLightingPass {
         self.local_shadows.extend(map.fetch_all_local_shadows());
     }
 
-    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, ambient_strength: f32, use_atmosphere: bool, beta_rayleigh: Vec3, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>, opts: &RenderOpts) -> anyhow::Result<(u64, u32)> {
+    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, atmosphere: Option<AtmosphereProps>, ambient_strength: f32, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>, opts: &RenderOpts) -> anyhow::Result<(u64, u32)> {
         lights.sort_by_key(|l| l.kind);
         let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
         let first_spot = lights.partition_point(|l| l.kind < LIGHT_SPOT) as u32;
@@ -121,8 +124,12 @@ impl PbrLightingPass {
             specular_tex: self.ibl_specular_tex.srv_ptr(),
             brdf_lut_tex: self.brdf_lut_tex.srv_ptr(),
             specular_mips: self.ibl_specular_tex.desc().mips as f32,
-            use_atmosphere: use_atmosphere as u32,
-            beta_rayleigh,
+            use_atmosphere: atmosphere.is_some() as u32,
+            beta_rayleigh: atmosphere.map(|it| it.beta_rayleigh).unwrap_or_default(),
+            h_mie: atmosphere.map(|it| it.h_mie).unwrap_or_default(),
+            beta_mie: atmosphere.map(|it| Vec3::splat(it.beta_mie)).unwrap_or_default(),
+            mie_g: atmosphere.map(|it| it.mie_g).unwrap_or_default(),
+            _padL: [0; 3],
         }), 256)?;
 
         let rs = renderer.rs();
@@ -184,5 +191,43 @@ impl PbrLightingPass {
             });
 
         Ok((lights_va, lights.len() as u32))
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct AtmosphereProps {
+    pub beta_rayleigh: Vec3,
+    pub beta_mie: f32,
+    pub mie_g: f32,
+    pub h_mie: f32
+}
+
+impl Default for AtmosphereProps {
+    fn default() -> Self {
+        Self {
+            beta_rayleigh: Vec3::new(5.8, 13.5, 33.1) * 1e-3,
+            beta_mie: 0.01,
+            h_mie: 1.2,
+            mie_g: 0.7,
+        }
+    }
+}
+
+impl ShowUi for AtmosphereProps {
+    fn show_ui(&mut self, ui: &mut Ui) {
+        CollapsingHeader::new("Atmosphere").show(ui, |header_ui| {
+            header_ui.horizontal(|h| {
+                h.label("Beta Mie");
+                h.add(DragValue::new(&mut self.beta_mie).range(0.0f32..=0.1f32).speed(0.01));
+            });
+            header_ui.horizontal(|h| {
+                h.label("H Mie");
+                h.add(DragValue::new(&mut self.h_mie).range(0.1f32..=5f32).speed(0.1));
+            });
+            header_ui.horizontal(|h| {
+                h.label("Mie G");
+                h.add(DragValue::new(&mut self.mie_g).range(0f32..=0.98f32).speed(0.1));
+            });
+        });
     }
 }

@@ -16,6 +16,10 @@
     float specularMips;
     uint useAtmosphere;
     float3 betaRayleigh;
+    float hMie;
+    float3 betaMie;
+    float mieG;
+    uint3 _lPad;
 };
 
 struct Surface {
