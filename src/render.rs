@@ -13,3 +13,4 @@ pub mod perf;
 pub mod shadows;
 pub mod particles;
 pub mod terrain;
+pub mod voxels;
