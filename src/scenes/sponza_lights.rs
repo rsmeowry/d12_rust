@@ -2,7 +2,7 @@
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
-use crate::render::deferred::fog::FogPass;
+use crate::render::deferred::fog::{FogPass, FogProperties};
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
@@ -268,16 +268,16 @@ impl Scene for SponzaWithLights {
             });
 
         // particles: simulate
-        self.particles_sim.add_pass(SimulateParticleProps {
-            emitter: Vec3::new(0., 3., -1.),
-            rate: 4.,
-            spread: 0.6,
-            lifetime: 16.,
-            velocity_base: Quat::from_rotation_x(time.game_time()) * (Vec3::Y * 4.),
-            ..Default::default()
-        }, time.delta_time(), renderer, &self.gbuffer, graph)?;
-
-        self.particles_draw.add_pass(renderer, &self.gbuffer, &self.particles_sim, graph)?;
+        // self.particles_sim.add_pass(SimulateParticleProps {
+        //     emitter: Vec3::new(0., 3., -1.),
+        //     rate: 4.,
+        //     spread: 0.6,
+        //     lifetime: 16.,
+        //     velocity_base: Quat::from_rotation_x(time.game_time()) * (Vec3::Y * 4.),
+        //     ..Default::default()
+        // }, time.delta_time(), renderer, &self.gbuffer, graph)?;
+        //
+        // self.particles_draw.add_pass(renderer, &self.gbuffer, &self.particles_sim, graph)?;
 
         let (mut all_objects, mut all_meshes) = self.sponza.to_objects_and_draws();
         all_objects.push(sphere_obj);
@@ -290,12 +290,12 @@ impl Scene for SponzaWithLights {
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
         self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
 
-        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
+        let (lights_va, light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
 
-        // self.fog.add_pass(FogProperties {
-        //     density: 0.12,
-        //     ..Default::default()
-        // }, renderer, Some(shadow), lights_va, light_count, &self.gbuffer, graph)?;
+        self.fog.add_pass(FogProperties {
+            density: 0.12,
+            ..Default::default()
+        }, renderer, Some(shadow), lights_va, light_count, &self.gbuffer, graph)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

@@ -15,7 +15,7 @@ cbuffer MeshParticlePass : register(b2) {
 };
 
 StructuredBuffer<Particle> g_Pool : register(t1);
-StructuredBuffer<uint2>    g_Sort : register(t2);
+StructuredBuffer<uint2> g_Sort : register(t2);
 SamplerState AnisoWrap : register(s3);
 
 struct Attributes {

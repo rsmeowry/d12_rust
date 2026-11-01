@@ -73,7 +73,6 @@ GBufferOut frag(Varyings i) {
     float ao = g_Tex2D[aoTex].Sample(AnisoWrap, i.uv).r;
     norm = normalize(norm);
 
-
     GBufferOut o;
     o.albedo = float4(albedo, 1);
     o.normal = float4(norm * 0.5 + 0.5, 0);
