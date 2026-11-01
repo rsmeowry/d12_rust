@@ -32,7 +32,7 @@ impl VoxelTree {
     }
 
     pub fn alive_node_count(&self) -> usize {
-        self.nodes.len()
+        self.nodes.len() - self.free_nodes.len() * 8
     }
 
     pub fn get(&self, pos: UVec3) -> Option<u8> {
@@ -79,34 +79,44 @@ impl VoxelTree {
         if
             (matches!(first, VoxelNode::Empty)
                 && (children_first..children_first + 8).all(|it| matches!(self.nodes[it], VoxelNode::Empty)))
-            || (matches!(first, VoxelNode::Leaf(l))
-            && (children_first..children_first + 8).all(|it| matches!(self.nodes[it], VoxelNode::Leaf(l))))
+            || (matches!(first, VoxelNode::Leaf(_))
+            && (children_first..children_first + 8).all(|it| self.nodes[it] == first))
             {
-                self.free_nodes.extend(children_first as u32..children_first as u32 + 8);
+                self.free_nodes.push(children_first as u32);
                 self.nodes[idx] = first;
         }
     }
 
     fn require_branch(&mut self, idx: usize) -> usize {
         match self.nodes[idx] {
-            VoxelNode::Empty => {
-                // make an array of empty voxels
-                let new_idx = self.nodes.len();
-                let arr: [VoxelNode; 8] = std::array::from_fn(|_| VoxelNode::Empty);
-                self.nodes.extend(arr);
-                self.nodes[idx] = VoxelNode::Branch(new_idx as u32);
-                new_idx
-            }
-            VoxelNode::Leaf(v) => {
-                // copy voxel 8 times
-                let new_idx = self.nodes.len();
-                let arr: [VoxelNode; 8] = std::array::from_fn(|_| VoxelNode::Leaf(v));
-                self.nodes.extend(arr);
+            leaf => {
+                // copy leaf 8 times
+                let new_idx = self.alloc_block(leaf);
                 self.nodes[idx] = VoxelNode::Branch(new_idx as u32);
                 new_idx
             }
             // already a branch, return as-is
             VoxelNode::Branch(idx) => idx as usize
+        }
+    }
+
+    fn alloc_block(&mut self, node: VoxelNode) -> usize {
+        if let Some(first_empty) = self.free_nodes.pop() {
+            self.nodes[first_empty as usize..first_empty as usize + 8].fill(node);
+            first_empty as usize
+        } else {
+            let base = self.nodes.len();
+            self.nodes.extend([node; 8]);
+            base
+        }
+    }
+
+    fn free_subtree(&mut self, idx: usize) {
+        if let VoxelNode::Branch(first) = self.nodes[idx] {
+            for idx in first as usize..first as usize + 8 {
+                self.free_subtree(idx);
+                self.free_nodes.push(idx as u32);
+            }
         }
     }
 
