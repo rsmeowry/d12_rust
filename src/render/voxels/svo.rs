@@ -61,6 +61,51 @@ impl VoxelTree {
         }
     }
 
+    pub fn flatten_tree(&self) -> Vec<u8> {
+        let d = self.size();
+        let mut out = vec![0; d * d * d];
+        self.fill_dense(0, [0; 3], self.size() as i64, [0; 3], &mut out);
+        out
+    }
+
+    fn fill_dense(&self, idx: usize, origin: [i64; 3], size: i64, min: [i64; 3], dst: &mut Vec<u8>) {
+        // overlapping chunk with node's box
+        let d = self.size();
+
+        let lo: [i64; 3] = std::array::from_fn(|a| origin[a].max(min[a]));
+        let hi: [i64; 3] = std::array::from_fn(|a| (origin[a] + size).min(min[a] + d as i64));
+
+        if (0..3).any(|a| lo[a] >= hi[a]) {
+            return; // doesn't touch the chunk
+        }
+
+
+        match self.nodes[idx] {
+            VoxelNode::Empty => {},
+            VoxelNode::Leaf(v) => {
+                // just a cube, fill it
+                for z in lo[2]..hi[2] {
+                    for y in lo[1]..hi[1] {
+                        let row = d * ((y - min[1]) as usize + d * (z - min[2]) as usize);
+                        let (x0, x1) = ((lo[0] - min[0]) as usize, (hi[0] - min[0]) as usize);
+                        dst[row + x0..row + x1].fill(v + 1);
+                    }
+                }
+            },
+            VoxelNode::Branch(first_idx) => {
+                let half_size = size >> 1;
+                for child in 0..8 {
+                    let origin = [
+                        origin[0] + if child & 1 != 0 { half_size } else { 0 },
+                        origin[1] + if child & 2 != 0 { half_size } else { 0 },
+                        origin[2] + if child & 4 != 0 { half_size } else { 0 },
+                    ];
+                    self.fill_dense(first_idx as usize + child, origin, half_size, min, dst)
+                }
+            }
+        }
+    }
+
     fn set_rec(&mut self, idx: usize, pos: UVec3, size: u32, value: Option<u8>) {
         // already at the lowest level of the tree
         if size == 1 {
@@ -146,15 +191,17 @@ pub enum VoxelNode {
 mod tests {
     use std::assert_matches;
     use glam::UVec3;
-    use crate::render::voxels::svo::VoxelTree;
+    use crate::render::voxels::svo::{VoxelNode, VoxelTree};
 
     #[test]
     fn test_svo() {
-        let mut tree = VoxelTree::new(8, [0; 8]);
-        println!("{:#?}", tree);
+        let mut tree = VoxelTree::new(5, [0; 8]);
         assert_matches!(tree.get(UVec3::new(2, 4, 6)), None);
         tree.set(UVec3::new(2, 4, 6), Some(3));
-        println!("{:#?}", tree);
         assert_matches!(tree.get(UVec3::new(2, 4, 6)), Some(3));
+        let flattened = tree.flatten_tree();
+        let d = 1 << 5;
+        assert_eq!(flattened.len(), d * d * d);
+        assert_eq!(flattened[6 * (d * d) + 4 * d + 2], 4);
     }
 }
