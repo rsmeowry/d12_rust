@@ -1,10 +1,12 @@
 ﻿use glam::Vec3;
+use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_BACK, D3D12_CULL_MODE_NONE};
 use crate::render::builtin::{Vertex3, VertexCube};
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::perf::frustum::AABB;
-use crate::render::pipeline::desc::PipelineDesc;
+use crate::render::pipeline::desc::{Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
+use crate::render::vertex::Vertex;
 use crate::render::voxels::{index_to_uvec3, VoxelMesher};
 use crate::render::voxels::svo::VoxelTree;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -44,8 +46,22 @@ impl VoxelMesher for NaiveBoxes {
         Ok(mesh)
     }
 
-    fn make_pipelines(&self, rd: &mut Renderer) -> anyhow::Result<(PipelineId, PipelineId)> {
-        rd.build_gpass::<VertexCube>("deferred/voxel/GPassNaiveBoxes.hlsl", DrawTopology::TriangleList)
+    fn make_pipelines(&self, rd: &mut Renderer) -> anyhow::Result<(PipelineId, PipelineId, PipelineId)> {
+        let (pso, pso_wireframe) = rd.build_gpass::<VertexCube>("deferred/voxel/GPassNaiveBoxes.hlsl", DrawTopology::TriangleList)?;
+        let pso_shadows = rd.create_pipeline(PipelineDesc {
+            name: "NaiveBoxesShadow",
+            shader: "deferred/voxel/NaiveBoxesShadow.hlsl".into(),
+            input: VertexCube::LAYOUT,
+            rts: vec![],
+            depth: Some(Depth { format: GraphicsDevice::DS_FORMAT, func: D3D12_COMPARISON_FUNC_GREATER_EQUAL, write: true }),
+            cull: D3D12_CULL_MODE_BACK,
+            depth_bias: -20,
+            slope_bias: -1.0,
+            depth_clip: false,
+            ..Default::default()
+        })?;
+
+        Ok((pso, pso_wireframe, pso_shadows))
     }
 }
 

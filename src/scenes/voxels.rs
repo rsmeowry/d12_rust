@@ -6,9 +6,9 @@ use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
-use crate::render::mesh::DrawTopology;
+use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
-use crate::render::renderer::Renderer;
+use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::shadows::ShadowMap;
 use crate::render::voxels::naive::NaiveBoxes;
 use crate::render::voxels::VoxelWorld;
@@ -66,7 +66,7 @@ impl Scene for VoxelsScene {
         let mut batch = renderer.gd.begin_upload()?;
         let mut materials: Vec<GpuMaterial> = vec![];
         let mut voxel_textures: Vec<Texture> = vec![];
-        for (tex, metal, rough) in [("dirt", 0.2, 0.7), ("diamond_block", 0.7, 0.6)] {
+        for (tex, metal, rough) in [("dirt", 0.2, 0.7), ("diamond_block", 0.1, 0.6)] {
             // todo: move to atlases
             let diffuse = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_diffuse.png"))?, true, MipCount::All, &format!("{tex}_diffuse"))?;
             let normal = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_normal.png"))?, true, MipCount::All, &format!("{tex}_normal"))?;
@@ -133,17 +133,17 @@ impl Scene for VoxelsScene {
         };
 
         // scene draw pass
-        self.world.select_and_add_pass(&renderer.cam.frustum(), renderer.cam.pos(), renderer, &self.gbuffer, opts, graph)?;
+        self.world.add_pass(renderer, &self.gbuffer, opts, graph)?;
 
         // shadowws (global and local)
-        // let mut all_objects: Vec<ObjectData> = Vec::new();
-        // let mut all_draws: Vec<&Mesh> = Vec::new();
-        // let lambda = 0.6;
-        // self.shadows.update(lights[0], lambda, renderer);
-        // let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
-        // self.terrain.add_shadow_passes(renderer, self.shadows.dynamic_cascades(), graph)?;
+        let all_objects: Vec<ObjectData> = Vec::new();
+        let all_draws: Vec<&Mesh> = Vec::new();
+        let lambda = 0.6;
+        self.shadows.update(lights[0], lambda, renderer);
+        let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
+        self.world.add_shadow_passes(renderer, self.shadows.dynamic_cascades(), graph)?;
 
-        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, None, Some(self.atmosphere), 0.19, &self.gbuffer, graph, opts)?;
+        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), Some(self.atmosphere), 0.19, &self.gbuffer, graph, opts)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

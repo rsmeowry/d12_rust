@@ -7,6 +7,7 @@ use crate::app::RenderOpts;
 use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
+use crate::render::graph::res::ResId;
 use crate::render::mesh::Mesh;
 use crate::render::perf::frustum::Frustum;
 use crate::render::pipeline::desc::PipelineDesc;
@@ -31,6 +32,7 @@ pub struct VoxelWorld {
     mesher: Box<dyn VoxelMesher>,
     pso: PipelineId,
     pso_wireframe: PipelineId,
+    pso_shadows: PipelineId,
     material_data: [u64; 8],
     materials_va: u64,
     perlin: Perlin,
@@ -38,13 +40,14 @@ pub struct VoxelWorld {
 
 impl VoxelWorld {
     pub fn new(mesher: Box<dyn VoxelMesher>, rd: &mut Renderer, mut material_data: Vec<u64>, materials_va: u64) -> anyhow::Result<Self> {
-        let (pso, pso_wireframe) = mesher.make_pipelines(rd)?;
+        let (pso, pso_wireframe, pso_shadows) = mesher.make_pipelines(rd)?;
         material_data.resize(8, 0);
         Ok(Self {
             chunks: FxHashMap::with_capacity_and_hasher(16, FxBuildHasher::default()),
             mesher,
             pso,
             pso_wireframe,
+            pso_shadows,
             material_data: std::array::from_fn(|i| material_data[i]),
             perlin: Perlin::new(0xB717E),
             materials_va
@@ -53,7 +56,7 @@ impl VoxelWorld {
 
     pub fn swap_mesher(&mut self, new_mesher: Box<dyn VoxelMesher>, rd: &mut Renderer) -> anyhow::Result<()> {
         self.mesher = new_mesher;
-        let (pso, pso_wireframe) = self.mesher.make_pipelines(rd)?;
+        let (pso, pso_wireframe, pso_shadows) = self.mesher.make_pipelines(rd)?;
         self.pso = pso;
         self.pso_wireframe = pso_wireframe;
         for chunk in &mut self.chunks {
@@ -81,7 +84,7 @@ impl VoxelWorld {
             let noise_pos: IVec3 = offset + IVec3::new(pos.x as i32, pos.y as i32, pos.z as i32);
             let value = self.perlin.get([(noise_pos.x as f64) / NOISE_SCALE, (noise_pos.y as f64) / NOISE_SCALE, (noise_pos.z as f64) / NOISE_SCALE]);
             if value > 0.5 {
-                raw_list[i] = 1;
+                raw_list[i] = 2;
             }
         }
 
@@ -90,8 +93,8 @@ impl VoxelWorld {
         Ok(())
     }
 
-    pub fn select_and_add_pass<'a>(&'a self, frustum: &Frustum, camera_pos: Vec3, rd: &'a Renderer, gbuf: &'a GBuffer, opts: &RenderOpts, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
-        let (meshes, objects) = self.chunks.iter().enumerate().filter_map(|(idx, (chunk_pos, chunk))| {
+    pub fn select(&self, frustum: &Frustum, camera_pos: Vec3) -> (Vec<(u32, Ref<Mesh>)>, Vec<ObjectData>) {
+        let meshes_objects = self.chunks.iter().enumerate().filter_map(|(idx, (chunk_pos, chunk))| {
             let chunk_pos_ws = Vec3::new(chunk_pos.x as f32, chunk_pos.y as f32, chunk_pos.z as f32);
             let mat = Mat4::from_translation(chunk_pos_ws);
             if chunk_pos_ws.distance_squared(camera_pos) <= VIEW_DISTANCE_SQ && frustum.contains(chunk.mesh.borrow().aabb(), mat) {
@@ -104,6 +107,12 @@ impl VoxelWorld {
                 None
             }
         }).collect::<(Vec<(u32, Ref<Mesh>)>, Vec<ObjectData>)>();
+        meshes_objects
+    }
+
+    pub fn add_pass<'a>(&'a self, rd: &'a Renderer, gbuf: &'a GBuffer, opts: &RenderOpts, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+        let (meshes, objects) = self.select(&rd.cam.frustum(), rd.cam.pos());
+
         let objects_va = rd.upload_objects(&objects)?;
 
         let pso = if opts.use_wireframe { self.pso_wireframe } else { self.pso };
@@ -127,6 +136,36 @@ impl VoxelWorld {
                 Ok(())
             });
 
+        Ok(())
+    }
+
+    pub fn add_shadow_passes<'a>(&'a self, rd: &'a Renderer, cascades: impl Iterator<Item = (ResId, Mat4)>, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+        let pso = self.pso_shadows;
+        let rs = rd.rs();
+        let materials = self.materials_va;
+        let pipelines = rd.pipelines();
+
+        for (target, vp) in cascades {
+            let (meshes, objects) = self.select(&Frustum::from_view_proj(vp), rd.cam.pos());
+            let pass_va = rd.upload_cbuffer(&VoxelShadowPass {
+                light_vp: vp,
+            })?;
+
+            let objects_va = rd.upload_objects(&objects)?;
+            graph.add_pass("VoxelWorldShadows")
+                .writes_depth(target, ResLoad::Preserve)
+                .exec(move |ctx| {
+                    pipelines.get(pso).bind(ctx.cmd);
+                    rs.set_objects(ctx.cmd, objects_va);
+                    rs.set_materials(ctx.cmd, materials);
+                    rs.set_pass(ctx.cmd, pass_va);
+                    for (draw_idx, mesh) in meshes {
+                        rs.set_draw_index(ctx.cmd, draw_idx);
+                        mesh.draw(ctx.cmd);
+                    }
+                    Ok(())
+                });
+        }
         Ok(())
     }
 }
@@ -168,7 +207,7 @@ impl Chunk {
 
 pub trait VoxelMesher: Debug + Send + Sync {
     fn make_mesh(&self, tree: &VoxelTree, gd: &GraphicsDevice) -> anyhow::Result<Mesh>;
-    fn make_pipelines(&self, rd: &mut Renderer) -> anyhow::Result<(PipelineId, PipelineId)>;
+    fn make_pipelines(&self, rd: &mut Renderer) -> anyhow::Result<(PipelineId, PipelineId, PipelineId)>;
 }
 
 pub fn index_to_uvec3(idx: usize, depth: usize) -> UVec3 {
@@ -179,4 +218,10 @@ pub fn index_to_uvec3(idx: usize, depth: usize) -> UVec3 {
     let y = x_y / depth;
     let x = x_y % depth;
     UVec3::new(x as u32, y as u32, z as u32)
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct VoxelShadowPass {
+    light_vp: Mat4
 }

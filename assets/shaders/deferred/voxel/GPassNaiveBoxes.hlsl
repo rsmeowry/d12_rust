@@ -77,7 +77,7 @@ GBufferOut frag(Varyings i) {
     GBufferOut o;
     o.albedo = float4(albedo.rgb, 1);
     o.normal = float4(normal * 0.5 + 0.5, 0);
-    o.material = float4(mat.roughness, roughnessMetallic.r * mat.metallic, occlusion.r, 0);
+    o.material = float4(mat.roughness, roughnessMetallic.r * mat.metallic, 1., 0);
     o.emissive = 0;
     return o;
 }
