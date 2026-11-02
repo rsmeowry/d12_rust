@@ -11,13 +11,14 @@ use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::shadows::ShadowMap;
 use crate::render::voxels::naive::NaiveBoxes;
-use crate::render::voxels::VoxelWorld;
+use crate::render::voxels::{index_to_ivec3, index_to_uvec3, VoxelWorld, CHUNK_DEPTH};
 use crate::scenes::Scene;
 use crate::time::Time;
 use crate::ui::ShowUi;
 use egui::{Slider, Ui};
 use glam::{IVec3, Vec3};
 use std::f32::consts::PI;
+use std::ops::Div;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::texture::{MipCount, Texture};
 
@@ -155,6 +156,22 @@ impl Scene for VoxelsScene {
         }, self.gbuffer.scene_color, renderer, graph)?;
         self.post.add_pass(post_props, Some(bloom), renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
+
+        Ok(())
+    }
+
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+        let chunk_size = (1 << CHUNK_DEPTH) as f32;
+        let cam_pos_chunkwise = renderer.cam.pos().div(chunk_size).ceil();
+        let cam_pos_chunkwise = IVec3::new(cam_pos_chunkwise.x as i32, cam_pos_chunkwise.y as i32, cam_pos_chunkwise.z as i32);
+        for chunk_x in -4..4 {
+            for chunk_y in -4..4 {
+                for chunk_z in -4..4 {
+                    let chunk_abs_pos = cam_pos_chunkwise + IVec3::new(chunk_x, chunk_y, chunk_z);
+                    self.world.build_chunk(chunk_abs_pos, &renderer.gd)?;
+                }
+            }
+        }
 
         Ok(())
     }

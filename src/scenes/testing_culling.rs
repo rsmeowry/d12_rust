@@ -207,6 +207,10 @@ impl Scene for CullingScene {
 
         Ok(())
     }
+
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 // TODO: maybe switch from linear to logarithmic here

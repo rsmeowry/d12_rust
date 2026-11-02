@@ -18,5 +18,6 @@ pub trait Scene: Sized {
     fn ui(&mut self, ui: &mut egui::Ui) -> anyhow::Result<()>;
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self>;
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()>;
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()>;
 }
 

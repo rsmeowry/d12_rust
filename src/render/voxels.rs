@@ -59,6 +59,7 @@ impl VoxelWorld {
         let (pso, pso_wireframe, pso_shadows) = self.mesher.make_pipelines(rd)?;
         self.pso = pso;
         self.pso_wireframe = pso_wireframe;
+        self.pso_shadows = pso_shadows;
         for chunk in &mut self.chunks {
             chunk.1.mark_dirty()
         }
@@ -77,14 +78,20 @@ impl VoxelWorld {
             return Ok(());
         }
 
-        let offset = chunk_pos * CHUNK_DEPTH as i32;
+        let offset = chunk_pos * (1 << CHUNK_DEPTH);
         let mut raw_list = [0u8; CHUNK_FLAT_ARR_DEPTH];
         for i in 0..raw_list.len() {
             let pos = index_to_uvec3(i, 1 << CHUNK_DEPTH);
             let noise_pos: IVec3 = offset + IVec3::new(pos.x as i32, pos.y as i32, pos.z as i32);
-            let value = self.perlin.get([(noise_pos.x as f64) / NOISE_SCALE, (noise_pos.y as f64) / NOISE_SCALE, (noise_pos.z as f64) / NOISE_SCALE]);
-            if value > 0.5 {
-                raw_list[i] = 2;
+            let value_a = self.perlin.get([(noise_pos.x as f64) / NOISE_SCALE, (noise_pos.y as f64) / NOISE_SCALE, (noise_pos.z as f64) / NOISE_SCALE]);
+            let value_b = self.perlin.get([(noise_pos.x as f64) / NOISE_SCALE * 0.8, (noise_pos.y as f64) / NOISE_SCALE * 0.9, (noise_pos.z as f64) / NOISE_SCALE * 2.1]);
+            let value_material = self.perlin.get([(noise_pos.x as f64) / NOISE_SCALE * 3., (noise_pos.y as f64) / NOISE_SCALE, (noise_pos.z as f64) / NOISE_SCALE * 3.]);
+            if value_a * (1. - value_b) > 0.5 {
+                if value_material > 0.5 {
+                    raw_list[i] = 2;
+                } else {
+                    raw_list[i] = 1;
+                }
             }
         }
 
@@ -94,11 +101,11 @@ impl VoxelWorld {
     }
 
     pub fn select(&self, frustum: &Frustum, camera_pos: Vec3) -> (Vec<(u32, Ref<Mesh>)>, Vec<ObjectData>) {
-        let meshes_objects = self.chunks.iter().enumerate().filter_map(|(idx, (chunk_pos, chunk))| {
-            let chunk_pos_ws = Vec3::new(chunk_pos.x as f32, chunk_pos.y as f32, chunk_pos.z as f32);
+        let meshes_objects = self.chunks.iter().filter_map(|(chunk_pos, chunk)| {
+            let chunk_pos_ws = Vec3::new(chunk_pos.x as f32, chunk_pos.y as f32, chunk_pos.z as f32) * chunk.tree.size() as f32;
             let mat = Mat4::from_translation(chunk_pos_ws);
             if chunk_pos_ws.distance_squared(camera_pos) <= VIEW_DISTANCE_SQ && frustum.contains(chunk.mesh.borrow().aabb(), mat) {
-                Some(((idx as u32, chunk.mesh.borrow()), ObjectData {
+                Some((chunk.mesh.borrow(), ObjectData {
                     model: mat,
                     material_id: 0,
                     _pad: [0; 3],
@@ -106,7 +113,7 @@ impl VoxelWorld {
             } else {
                 None
             }
-        }).collect::<(Vec<(u32, Ref<Mesh>)>, Vec<ObjectData>)>();
+        }).enumerate().map(|(idx, (mesh, obj))| { ((idx as u32, mesh), obj) }).collect::<(Vec<(u32, Ref<Mesh>)>, Vec<ObjectData>)>();
         meshes_objects
     }
 
@@ -218,6 +225,16 @@ pub fn index_to_uvec3(idx: usize, depth: usize) -> UVec3 {
     let y = x_y / depth;
     let x = x_y % depth;
     UVec3::new(x as u32, y as u32, z as u32)
+}
+
+pub fn index_to_ivec3(idx: isize, depth: isize) -> IVec3 {
+    // index = z * (depth ^ 2) + y * (depth) + x
+    // so reverse is
+    let z = idx / (depth * depth);
+    let x_y = idx % (depth * depth);
+    let y = x_y / depth;
+    let x = x_y % depth;
+    IVec3::new(x as i32, y as i32, z as i32)
 }
 
 #[repr(C)]

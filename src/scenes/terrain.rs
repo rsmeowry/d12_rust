@@ -132,4 +132,8 @@ impl Scene for TerrainScene {
 
         Ok(())
     }
+
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
