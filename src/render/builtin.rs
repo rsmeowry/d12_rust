@@ -25,6 +25,15 @@ vertex_struct!(VertexPbr {
     uv: [f32; 2] as TEXCOORD;
 });
 
+vertex_struct!(VertexCube {
+    pos: [f32; 3] as POSITION;
+    norm: [f32; 3] as NORMAL;
+    tangent: [f32; 4] as TANGENT;
+    uv: [f32; 2] as TEXCOORD;
+    material: u32 as MATERIAL;
+});
+
+
 pub fn aabb_from_vertices3(vertices: &[Vertex3]) -> AABB {
     AABB::from_points(&vertices.iter().map(|it| Vec3::from(it.pos)).collect::<Vec<_>>())
 }

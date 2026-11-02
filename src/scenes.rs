@@ -5,6 +5,7 @@ pub mod pbr_scene;
 pub mod pbr_scene_mesh;
 pub mod experiment;
 pub mod terrain;
+pub mod voxels;
 
 use crate::app::RenderOpts;
 use crate::render::graph::FrameGraph;

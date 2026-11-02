@@ -2,10 +2,7 @@ use glam::{Vec2, Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D12::{
     D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, D3D12_INPUT_ELEMENT_DESC,
 };
-use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT, DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32_FLOAT,
-    DXGI_FORMAT_R32G32B32A32_FLOAT,
-};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32_UINT};
 use windows::core::PCSTR;
 
 pub trait Vertex: bytemuck::Pod + bytemuck::Zeroable + Copy {
@@ -19,7 +16,9 @@ pub trait LodVertex: Vertex {
 pub trait VertexAttr {
     const FORMAT: DXGI_FORMAT;
 }
-
+impl VertexAttr for u32 {
+    const FORMAT: DXGI_FORMAT = DXGI_FORMAT_R32_UINT;
+}
 impl VertexAttr for [f32; 2] {
     const FORMAT: DXGI_FORMAT = DXGI_FORMAT_R32G32_FLOAT;
 }

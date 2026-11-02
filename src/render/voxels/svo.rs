@@ -12,13 +12,28 @@ pub struct VoxelTree {
 
 impl VoxelTree {
     pub fn new(depth: u32, material_data: [u64; 8]) -> Self {
-        assert!(depth > 0 && depth < 32);
+        assert!(depth > 0 && depth <= 32);
         Self {
             depth,
             nodes: vec![VoxelNode::Empty],
             material_data,
             free_nodes: Vec::new(),
         }
+    }
+
+    pub fn build_from_flat_list(depth: u32, material_data: [u64; 8], list: &[u8]) -> Self {
+        assert!(depth > 0 && depth <= 32);
+
+        // now need to split existing flat list into nodes, bottom-up
+        let mut tree = Self {
+            depth,
+            nodes: vec![VoxelNode::Empty],
+            material_data,
+            free_nodes: Vec::new(),
+        };
+        let root = tree.build(list, UVec3::ZERO, tree.size());
+        tree.nodes[0] = root;
+        tree
     }
 
     // side length of the whole volume
@@ -66,6 +81,32 @@ impl VoxelTree {
         let mut out = vec![0; d * d * d];
         self.fill_dense(0, [0; 3], self.size() as i64, [0; 3], &mut out);
         out
+    }
+
+    fn build(&mut self, dense: &[u8], origin: UVec3, size: usize) -> VoxelNode {
+        if size == 1 {
+            let n = self.size();
+            return match dense[origin.x as usize + (origin.y as usize * n) + (origin.z as usize * n * n)] {
+                0 => VoxelNode::Empty,
+                other => VoxelNode::Leaf(other - 1)
+            }
+        }
+
+        let half_size = size / 2;
+        let children: [VoxelNode; 8] = std::array::from_fn(|i| {
+            let o = UVec3::new((origin.x as usize + (i & 1) * half_size) as u32,
+                               (origin.y as usize + ((i >> 1) & 1) * half_size) as u32,
+                               (origin.z as usize + ((i >> 2) & 1) * half_size) as u32);
+            self.build(dense, o, half_size)
+        });
+
+        // a solid 2x2 cube, we dont need branching here
+        if !matches!(children[0], VoxelNode::Branch(_)) && children.iter().all(|c| *c == children[0]) {
+            return children[0];
+        }
+        let base = self.nodes.len();
+        self.nodes.extend(children);
+        VoxelNode::Branch(base as u32)
     }
 
     fn fill_dense(&self, idx: usize, origin: [i64; 3], size: i64, min: [i64; 3], dst: &mut Vec<u8>) {
@@ -134,14 +175,14 @@ impl VoxelTree {
 
     fn require_branch(&mut self, idx: usize) -> usize {
         match self.nodes[idx] {
+            // already a branch, return as-is
+            VoxelNode::Branch(idx) => idx as usize,
             leaf => {
                 // copy leaf 8 times
                 let new_idx = self.alloc_block(leaf);
                 self.nodes[idx] = VoxelNode::Branch(new_idx as u32);
                 new_idx
             }
-            // already a branch, return as-is
-            VoxelNode::Branch(idx) => idx as usize
         }
     }
 

@@ -48,6 +48,14 @@ pub enum MaterialParams {
         normal_tex: u32,
         material_tex: u32,
     },
+    Voxel {
+        albedo_tex: u32,
+        normal_tex: u32,
+        metal_tex: u32,
+        occlusion_tex: u32,
+        metallic: f32,
+        roughness: f32,
+    }
 }
 
 impl MaterialParams {
@@ -101,6 +109,17 @@ impl MaterialParams {
                 GpuMaterial {
                     textures: [albedo_tex, normal_tex, material_tex, 0, 0, 0, 0, 0],
                     unique_params: [0.; 16],
+                }
+            }
+            MaterialParams::Voxel { albedo_tex, normal_tex, metal_tex, occlusion_tex, metallic, roughness } => {
+                GpuMaterial {
+                    textures: [albedo_tex, normal_tex, metal_tex, occlusion_tex, 0, 0, 0, 0],
+                    unique_params: [
+                        metallic, roughness, 0., 0.,
+                        0., 0., 0., 0.,            
+                        0., 0., 0., 0.,            
+                        0., 0., 0., 0.,            
+                    ],
                 }
             }
         }
