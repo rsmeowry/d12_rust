@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 
 #[derive(Debug, Clone)]
@@ -111,5 +112,44 @@ impl Time {
         self.prev_time = c_time;
 
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct Timings {
+    timings: Cell<[f32; 15]>,
+    timing_updates: Cell<u64>
+}
+
+impl Timings {
+    pub fn new() -> Self {
+        Self {
+            timings: Cell::new([0.; 15]),
+            timing_updates: Cell::new(0)
+        }
+    }
+
+    pub fn report(&self, timing: f32) {
+        self.timing_updates.update(|i| i + 1);
+        self.timings.update(|mut timings| {
+            timings[self.timing_updates.get() as usize % timings.len()] = timing;
+            timings
+        })
+    }
+
+    pub fn median(&self) -> f32 {
+        let mut timings = self.timings.get();
+        timings.sort_unstable_by(|a, b| b.partial_cmp(a).unwrap());
+        timings[timings.len() / 2]
+    }
+
+    pub fn mean(&self) -> f32 {
+        let timings = self.timings.get();
+        timings.iter().sum::<f32>() / timings.len() as f32
+    }
+
+    pub fn max(&self) -> f32 {
+        let timings = self.timings.get();
+        timings.into_iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.)
     }
 }

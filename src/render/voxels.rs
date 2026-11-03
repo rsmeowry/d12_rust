@@ -1,5 +1,6 @@
 ﻿use std::cell::{Cell, Ref, RefCell};
 use std::fmt::Debug;
+use std::time::Instant;
 use glam::{IVec3, Mat4, UVec3, Vec3};
 use noise::{NoiseFn, Perlin};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHasher};
@@ -16,6 +17,7 @@ use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::texture::Texture;
 use crate::render::voxels::generate::{ChunkGenerator, MAX_CHUNK_MESHES_PER_FRAME};
 use crate::render::voxels::svo::VoxelTree;
+use crate::time::Timings;
 use crate::wrappers::graphics::GraphicsDevice;
 
 pub mod svo;
@@ -40,6 +42,7 @@ pub struct VoxelWorld {
     material_data: [u64; 8],
     materials_va: u64,
     generator: ChunkGenerator,
+    mesh_timings: Timings
 }
 
 impl VoxelWorld {
@@ -54,7 +57,8 @@ impl VoxelWorld {
             pso_shadows,
             material_data: std::array::from_fn(|i| material_data[i]),
             materials_va,
-            generator: ChunkGenerator::new()
+            generator: ChunkGenerator::new(),
+            mesh_timings: Timings::new(),
         })
     }
 
@@ -64,6 +68,10 @@ impl VoxelWorld {
 
     pub fn generator_mut(&mut self) -> &mut ChunkGenerator {
         &mut self.generator
+    }
+
+    pub fn mesher_timings(&self) -> &Timings {
+        &self.mesh_timings
     }
 
     pub fn swap_mesher(&mut self, new_mesher: Box<dyn VoxelMesher>, rd: &mut Renderer) -> anyhow::Result<()> {
@@ -106,7 +114,9 @@ impl VoxelWorld {
             return Ok(());
         }
 
-        self.chunks.insert(chunk_pos, Chunk::new(tree, self, gd)?);
+        let (chunk, timing) = Chunk::new(tree, self, gd)?;
+        self.mesh_timings.report(timing);
+        self.chunks.insert(chunk_pos, chunk);
         Ok(())
     }
 
@@ -213,13 +223,15 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn new(tree: VoxelTree, world: &VoxelWorld, gd: &GraphicsDevice) -> anyhow::Result<Self> {
+    pub fn new(tree: VoxelTree, world: &VoxelWorld, gd: &GraphicsDevice) -> anyhow::Result<(Self, f32)> {
+        let begin = Instant::now();
         let initial_mesh = world.mesher.make_mesh(&tree, gd)?;
-        Ok(Self {
+        let elapsed = begin.elapsed().as_secs_f32() * 1000.;
+        Ok((Self {
             tree,
             mesh: RefCell::new(initial_mesh),
             is_dirty: Cell::new(false),
-        })
+        }, elapsed))
     }
 
     pub fn update(&self, world: &VoxelWorld, gd: &GraphicsDevice) -> anyhow::Result<()> {
