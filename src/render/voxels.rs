@@ -16,8 +16,8 @@ use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::texture::Texture;
-use crate::render::voxels::generate::{ChunkGenerator, MAX_CHUNK_MESHES_PER_FRAME};
-use crate::render::voxels::svo::VoxelTree;
+use crate::render::voxels::generate::{ChunkGenerator, MAX_CHUNK_MESHES_PER_FRAME, PADDED, PAD_LO};
+use crate::render::voxels::svo::{Voxel, VoxelTree};
 use crate::time::Timings;
 use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -129,7 +129,7 @@ impl VoxelWorld {
             return Ok(());
         }
 
-        let chunk = Chunk::new(tree, mesh_data, self, batch)?;
+        let chunk = Chunk::new(chunk_pos, tree, mesh_data, self, batch)?;
         self.chunks.insert(chunk_pos, chunk);
         Ok(())
     }
@@ -231,15 +231,17 @@ impl VoxelWorld {
 
 #[derive(Debug)]
 pub struct Chunk {
+    pos: IVec3,
     tree: VoxelTree,
     mesh: RefCell<Option<Mesh>>,
     is_dirty: Cell<bool>,
 }
 
 impl Chunk {
-    pub fn new(tree: VoxelTree, mesh_data: Option<VoxelMeshData>, world: &VoxelWorld, batch: &mut UploadBatch) -> anyhow::Result<Self> {
+    pub fn new(pos: IVec3, tree: VoxelTree, mesh_data: Option<VoxelMeshData>, world: &VoxelWorld, batch: &mut UploadBatch) -> anyhow::Result<Self> {
         let initial_mesh = mesh_data.map(|it| world.mesher.make_mesh(it, batch)).transpose()?;
         Ok(Self {
+            pos,
             tree,
             mesh: RefCell::new(initial_mesh),
             is_dirty: Cell::new(false),
@@ -248,7 +250,8 @@ impl Chunk {
 
     pub fn update(&self, world: &VoxelWorld, batch: Option<&mut UploadBatch>) -> anyhow::Result<()> {
         if self.is_dirty.get() {
-            let mesh_data = world.mesher.make_vertices_and_indices(&self.tree)?;
+            let vol = self.padded_volume(world);
+            let mesh_data = world.mesher.make_vertices_and_indices(&self.tree, &vol)?;
             *self.mesh.borrow_mut() = mesh_data.map(|it| world.mesher.make_mesh(it, batch.unwrap())).transpose()?;
             self.is_dirty.set(false);
         }
@@ -260,15 +263,39 @@ impl Chunk {
         self.is_dirty.set(true);
     }
 
-    pub fn mark_dirty(&mut self) {
+    pub fn mark_dirty(&self) {
         self.is_dirty.set(true);
+    }
+
+    fn padded_volume(&self, world: &VoxelWorld) -> PaddedVolume {
+        let n = self.tree.size() as i32;
+        let mut voxels = vec![Voxel::AIR; PADDED * PADDED * PADDED];
+
+        // todo: probably need to fallback here to a generator once its stabilized or smth
+
+        for dz in -1..=1 {
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let npos = self.pos + IVec3::new(dx, dy, dz);
+                    let Some(neighbor) = world.chunks.get(&npos) else { continue };
+                    let min = (self.pos - npos) * n - IVec3::splat(PAD_LO as i32);
+                    neighbor.tree.fill_window(min, PADDED, &mut voxels);
+                }
+            }
+        }
+
+        PaddedVolume { voxels }
     }
 }
 
 pub trait VoxelMesher: Debug + Send + Sync {
-    fn make_vertices_and_indices<'a>(&self, tree: &VoxelTree) -> anyhow::Result<Option<VoxelMeshData>>;
+    fn make_vertices_and_indices<'a>(&self, tree: &VoxelTree, volume: &PaddedVolume) -> anyhow::Result<Option<VoxelMeshData>>;
     fn make_mesh(&self, mesh_data: VoxelMeshData, batch: &mut UploadBatch) -> anyhow::Result<Mesh>;
     fn make_pipelines(&self, rd: &mut Renderer) -> anyhow::Result<(PipelineId, PipelineId, PipelineId)>;
+}
+
+pub struct PaddedVolume {
+    pub voxels: Vec<Voxel>
 }
 
 pub struct VoxelMeshData {

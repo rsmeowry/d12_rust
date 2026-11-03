@@ -78,8 +78,8 @@ impl VoxelTree {
 
     pub fn flatten_tree(&self) -> Vec<Voxel> {
         let d = self.size();
-        let mut out = vec![Voxel { density: 0, material: 0 }; d * d * d];
-        self.fill_dense(0, [0; 3], self.size() as i64, [0; 3], &mut out);
+        let mut out = vec![Voxel::AIR; d * d * d];
+        self.fill_window(IVec3::ZERO, d, &mut out);
         out
     }
 
@@ -109,12 +109,16 @@ impl VoxelTree {
         VoxelNode::Branch(base as u32)
     }
 
-    fn fill_dense(&self, idx: usize, origin: [i64; 3], size: i64, min: [i64; 3], dst: &mut Vec<Voxel>) {
+    pub fn fill_window(&self, min: IVec3, w: usize, dst: &mut [Voxel]) {
+        self.fill_dense(0, [0; 3], self.size() as i64, min.as_i64vec3().to_array(), w, dst);
+    }
+
+    fn fill_dense(&self, idx: usize, origin: [i64; 3], size: i64, min: [i64; 3], window: usize, dst: &mut [Voxel]) {
         // overlapping chunk with node's box
         let d = self.size();
 
         let lo: [i64; 3] = std::array::from_fn(|a| origin[a].max(min[a]));
-        let hi: [i64; 3] = std::array::from_fn(|a| (origin[a] + size).min(min[a] + d as i64));
+        let hi: [i64; 3] = std::array::from_fn(|a| (origin[a] + size).min(min[a] + window as i64));
 
         if (0..3).any(|a| lo[a] >= hi[a]) {
             return; // doesn't touch the chunk
@@ -141,7 +145,7 @@ impl VoxelTree {
                         origin[1] + if child & 2 != 0 { half_size } else { 0 },
                         origin[2] + if child & 4 != 0 { half_size } else { 0 },
                     ];
-                    self.fill_dense(first_idx as usize + child, origin, half_size, min, dst)
+                    self.fill_dense(first_idx as usize + child, origin, half_size, min, window, dst)
                 }
             }
         }
@@ -232,6 +236,14 @@ pub enum VoxelNode {
 pub struct Voxel {
     pub material: u8,
     pub density: i8,
+}
+
+impl Voxel {
+    pub const AIR: Voxel = Voxel { material: 0, density: 127 };
+
+    pub const fn solid(material: u8) -> Self {
+        Self { material, density: -128 }
+    }
 }
 
 #[cfg(test)]

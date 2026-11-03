@@ -7,7 +7,8 @@ use crate::render::pipeline::desc::{Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
 use crate::render::vertex::Vertex;
-use crate::render::voxels::{index_to_uvec3, uvec3_to_index, VoxelMeshData, VoxelMesher};
+use crate::render::voxels::{index_to_ivec3, index_to_uvec3, uvec3_to_index, PaddedVolume, VoxelMeshData, VoxelMesher, CHUNK_DEPTH};
+use crate::render::voxels::generate::{PADDED, PAD_LO};
 use crate::render::voxels::svo::{Voxel, VoxelTree};
 use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -16,22 +17,29 @@ use crate::wrappers::graphics::GraphicsDevice;
 pub struct NaiveBoxes;
 
 impl VoxelMesher for NaiveBoxes {
-    fn make_vertices_and_indices(&self, tree: &VoxelTree) -> anyhow::Result<Option<VoxelMeshData>> {
+    fn make_vertices_and_indices(&self, tree: &VoxelTree, volume: &PaddedVolume) -> anyhow::Result<Option<VoxelMeshData>> {
         let mut total_vertices = vec![];
         let mut total_indices = vec![];
 
-        let d = tree.size();
-        let flattened = tree.flatten_tree();
+        let flattened = &volume.voxels;
+        let d = PADDED;
+        let n = 1 << CHUNK_DEPTH;
+
         for i in 0..(d * d * d) {
-            let pos = index_to_uvec3(i, d);
+            let pos = index_to_ivec3(i as isize, d as isize);
             if flattened[i].material == 0 {
                 continue;
             }
-            // +Z -Z +Y -Y +X -X
-            let p = pos.as_ivec3();
-            let neighbors = [IVec3::Z, -IVec3::Z, IVec3::Y, -IVec3::Y, IVec3::X, -IVec3::X].map(|o| solid_at(&flattened, d, p + o).material);
 
-            cube(&mut total_vertices, &mut total_indices, pos.as_vec3(),(flattened[i].material - 1) as u32, neighbors);
+            // +Z -Z +Y -Y +X -X
+            let real_pos = pos - IVec3::splat(PAD_LO as i32);
+            if real_pos.cmplt(IVec3::ZERO).any() || real_pos.cmpge(IVec3::splat(n)).any() {
+                continue; // pad
+            }
+
+            let neighbors = [IVec3::Z, -IVec3::Z, IVec3::Y, -IVec3::Y, IVec3::X, -IVec3::X].map(|o| solid_at(&flattened, d, pos + o).material);
+
+            cube(&mut total_vertices, &mut total_indices, real_pos.as_vec3(),(flattened[i].material - 1) as u32, neighbors);
         }
 
         if total_vertices.is_empty() {

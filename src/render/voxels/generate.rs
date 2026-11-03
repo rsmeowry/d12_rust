@@ -6,7 +6,7 @@ use std::time::Instant;
 use glam::{FloatExt, IVec2, IVec3, UVec3, Vec3, Vec3Swizzles};
 use noise::{NoiseFn, Perlin};
 use rustc_hash::{FxBuildHasher, FxHashSet};
-use crate::render::voxels::{index_to_uvec3, Chunk, VoxelMeshData, VoxelMesher, VoxelWorld, CHUNK_DEPTH, CHUNK_FLAT_ARR_DEPTH, NOISE_SCALE};
+use crate::render::voxels::{index_to_uvec3, uvec3_to_index, Chunk, PaddedVolume, VoxelMeshData, VoxelMesher, VoxelWorld, CHUNK_DEPTH, CHUNK_FLAT_ARR_DEPTH, NOISE_SCALE};
 use crate::render::voxels::svo::{Voxel, VoxelTree};
 use crate::time::Timings;
 
@@ -80,8 +80,8 @@ impl ChunkGenerator {
                     let timings = self.timings.clone();
                     rayon::spawn(move || {
                         let begin = Instant::now();
-                        let tree = Self::build_chunk(chunk_abs_pos, perlin, material_data);
-                        let mesh = mesher.make_vertices_and_indices(&tree).expect("Failed to build vertices and indices for a chunk mesh");
+                        let (tree, padded) = Self::build_chunk(chunk_abs_pos, perlin, material_data);
+                        let mesh = mesher.make_vertices_and_indices(&tree, &PaddedVolume { voxels: padded }).expect("Failed to build vertices and indices for a chunk mesh");
                         timings.report(begin.elapsed().as_secs_f32() * 1000.);
                         tx.send((chunk_abs_pos, tree, mesh)).expect("Failed to send chunk generation result");
                     });
@@ -90,19 +90,51 @@ impl ChunkGenerator {
         }
     }
 
-    fn build_chunk(chunk_pos: IVec3, perlin: Perlin, material_data: [u64; 8]) -> VoxelTree {
-        let mut raw_list = [Voxel { material: 0, density: 0 }; CHUNK_FLAT_ARR_DEPTH];
+    fn build_chunk(chunk_pos: IVec3, perlin: Perlin, material_data: [u64; 8]) -> (VoxelTree, Vec<Voxel>) {
+        let n = 1 << CHUNK_DEPTH;
+        let origin = chunk_pos * n as i32 - IVec3::splat(PAD_LO as i32);
+        let mut padded = vec![Voxel::AIR; PADDED * PADDED * PADDED];
+        generate_ground(origin, PADDED, &mut padded, &perlin);
 
-        generate_ground_chunk(chunk_pos, &mut raw_list, &perlin);
+        let mut inner = vec![Voxel::AIR; n * n * n];
+        for z in 0..n {
+            for y in 0..n {
+                let src = uvec3_to_index(UVec3::new(PAD_LO as u32, (y + PAD_LO) as u32, (z + PAD_LO) as u32), PADDED);
+                let dst = uvec3_to_index(UVec3::new(0, y as u32, z as u32), n);
+                inner[dst..dst + n].copy_from_slice(&padded[src..src + n]);
+            }
+        }
 
-        let tree = VoxelTree::build_from_flat_list(CHUNK_DEPTH as u32, material_data, &raw_list);
-        tree
+        (VoxelTree::build_from_flat_list(CHUNK_DEPTH as u32, material_data, &inner), padded)
     }
 }
 
 impl Default for ChunkGenerator {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+pub const PAD_LO: usize = 1;
+pub const PADDED: usize = (1 << CHUNK_DEPTH) + 4;
+
+fn generate_ground(origin: IVec3, size: usize, out: &mut [Voxel], perlin: &Perlin) {
+    const MAX_HEIGHT: f32 = 32.;
+    for z in 0..size {
+        for x in 0..size {
+            let p = (origin.xz() + IVec2::new(x as i32, z as i32)).as_dvec2() / NOISE_SCALE;
+            let h = (perlin.get(p.into()) * 0.3
+                + perlin.get((p / 3.).into()) * 0.6
+                + perlin.get((p * 3.).into()) * 0.1).saturate() as f32 * MAX_HEIGHT;
+            for y in 0..size {
+                let abs_y = origin.y + y as i32;
+                let d = abs_y as f32 - h;
+                out[uvec3_to_index(UVec3::new(x as u32, y as u32, z as u32), size)] = Voxel {
+                    density: (d.clamp(-1., 1.) * i8::MAX as f32) as i8,
+                    material: if d >= 0. { 0 } else if abs_y < -6 * 32 { 1 } else { 2 },
+                };
+            }
+        }
     }
 }
 
@@ -121,46 +153,6 @@ fn generate_sky_chunk(chunk_pos: IVec3, raw_list: &mut [u8], perlin: &Perlin) {
             } else {
                 raw_list[i] = 1;
             }
-        }
-    }
-}
-
-fn generate_ground_chunk(chunk_pos: IVec3, raw_list: &mut [Voxel], perlin: &Perlin) {
-    let offset = chunk_pos * (1 << CHUNK_DEPTH);
-
-    if chunk_pos.y > 1 {
-        return;
-    }
-
-    if chunk_pos.y < -6 {
-        raw_list.fill(Voxel { material: 1, density: 0 });
-        return;
-    }
-
-    let max_height: f32 = 32.;
-    for i in 0..raw_list.len() {
-        let pos = index_to_uvec3(i, 1 << CHUNK_DEPTH);
-
-        let abs_pos = offset + IVec3::new(pos.x as i32, pos.y as i32, pos.z as i32);
-        let noise_2d_pos = abs_pos.xz();
-        let height_a = perlin.get([
-            (noise_2d_pos.x as f64) / NOISE_SCALE,
-            (noise_2d_pos.y as f64) / NOISE_SCALE,
-        ]);
-        let height_b = perlin.get([
-            (noise_2d_pos.x as f64) / NOISE_SCALE / 3.,
-            (noise_2d_pos.y as f64) / NOISE_SCALE / 3.,
-        ]);
-        let height_c = perlin.get([
-            (noise_2d_pos.x as f64) / NOISE_SCALE * 3.,
-            (noise_2d_pos.y as f64) / NOISE_SCALE * 3.,
-        ]);
-
-        let height_f = (height_a * 0.3 + height_b * 0.6 + height_c * 0.1).saturate() as f32;
-        let height = (height_f * max_height).ceil() as i32;
-        if abs_pos.y <= height {
-            let density = ((abs_pos.as_vec3().y - height_f).clamp(-1., 1.) * i8::MAX as f32).ceil() as i8;
-            raw_list[i] = Voxel { material: 2, density };
         }
     }
 }
