@@ -14,11 +14,13 @@ use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::texture::Texture;
+use crate::render::voxels::generate::{ChunkGenerator, MAX_CHUNK_MESHES_PER_FRAME};
 use crate::render::voxels::svo::VoxelTree;
 use crate::wrappers::graphics::GraphicsDevice;
 
 pub mod svo;
 pub mod naive;
+pub mod generate;
 
 pub const NOISE_SCALE: f64 = 12.5;
 pub const CHUNK_DEPTH: usize = 5;
@@ -35,7 +37,7 @@ pub struct VoxelWorld {
     pso_shadows: PipelineId,
     material_data: [u64; 8],
     materials_va: u64,
-    perlin: Perlin,
+    generator: ChunkGenerator,
 }
 
 impl VoxelWorld {
@@ -49,9 +51,17 @@ impl VoxelWorld {
             pso_wireframe,
             pso_shadows,
             material_data: std::array::from_fn(|i| material_data[i]),
-            perlin: Perlin::new(0xB717E),
-            materials_va
+            materials_va,
+            generator: ChunkGenerator::new()
         })
+    }
+
+    pub fn material_data(&self) -> [u64; 8] {
+        self.material_data
+    }
+
+    pub fn generator_mut(&mut self) -> &mut ChunkGenerator {
+        &mut self.generator
     }
 
     pub fn swap_mesher(&mut self, new_mesher: Box<dyn VoxelMesher>, rd: &mut Renderer) -> anyhow::Result<()> {
@@ -66,36 +76,25 @@ impl VoxelWorld {
         Ok(())
     }
 
-    pub fn update(&self, gd: &GraphicsDevice) -> anyhow::Result<()> {
+    pub fn update(&mut self, gd: &GraphicsDevice) -> anyhow::Result<()> {
+
+        let chunks = self.generator.rx().try_iter().take(MAX_CHUNK_MESHES_PER_FRAME).collect::<Vec<_>>();
+
+        for (chunk_pos, chunk_tree) in chunks {
+            self.build_chunk(chunk_pos, chunk_tree, gd)?;
+        }
+
         for chunk in &self.chunks {
             chunk.1.update(self, gd)?;
         }
         Ok(())
     }
 
-    pub fn build_chunk(&mut self, chunk_pos: IVec3, gd: &GraphicsDevice) -> anyhow::Result<()> {
+    pub fn build_chunk(&mut self, chunk_pos: IVec3, tree: VoxelTree, gd: &GraphicsDevice) -> anyhow::Result<()> {
         if self.chunks.contains_key(&chunk_pos) {
             return Ok(());
         }
 
-        let offset = chunk_pos * (1 << CHUNK_DEPTH);
-        let mut raw_list = [0u8; CHUNK_FLAT_ARR_DEPTH];
-        for i in 0..raw_list.len() {
-            let pos = index_to_uvec3(i, 1 << CHUNK_DEPTH);
-            let noise_pos: IVec3 = offset + IVec3::new(pos.x as i32, pos.y as i32, pos.z as i32);
-            let value_a = self.perlin.get([(noise_pos.x as f64) / NOISE_SCALE, (noise_pos.y as f64) / NOISE_SCALE, (noise_pos.z as f64) / NOISE_SCALE]);
-            let value_b = self.perlin.get([(noise_pos.x as f64) / NOISE_SCALE * 0.8, (noise_pos.y as f64) / NOISE_SCALE * 0.9, (noise_pos.z as f64) / NOISE_SCALE * 2.1]);
-            let value_material = self.perlin.get([(noise_pos.x as f64) / NOISE_SCALE * 3., (noise_pos.y as f64) / NOISE_SCALE, (noise_pos.z as f64) / NOISE_SCALE * 3.]);
-            if value_a * (1. - value_b) > 0.5 {
-                if value_material > 0.5 {
-                    raw_list[i] = 2;
-                } else {
-                    raw_list[i] = 1;
-                }
-            }
-        }
-
-        let tree = VoxelTree::build_from_flat_list(CHUNK_DEPTH as u32, self.material_data, &raw_list);
         self.chunks.insert(chunk_pos, Chunk::new(tree, self, gd)?);
         Ok(())
     }
@@ -118,6 +117,10 @@ impl VoxelWorld {
     }
 
     pub fn add_pass<'a>(&'a self, rd: &'a Renderer, gbuf: &'a GBuffer, opts: &RenderOpts, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+        if self.chunks.is_empty() {
+            return Ok(()); // in case we haven't generated any chunks here yet
+        }
+
         let (meshes, objects) = self.select(&rd.cam.frustum(), rd.cam.pos());
 
         let objects_va = rd.upload_objects(&objects)?;

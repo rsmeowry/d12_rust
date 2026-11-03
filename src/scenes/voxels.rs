@@ -70,9 +70,9 @@ impl Scene for VoxelsScene {
         for (tex, metal, rough) in [("dirt", 0.2, 0.7), ("diamond_block", 0.1, 0.6)] {
             // todo: move to atlases
             let diffuse = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_diffuse.png"))?, true, MipCount::All, &format!("{tex}_diffuse"))?;
-            let normal = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_normal.png"))?, true, MipCount::All, &format!("{tex}_normal"))?;
-            let metallic = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_metallic.png"))?, true, MipCount::All, &format!("{tex}_metal"))?;
-            let ao = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_ao.png"))?, true, MipCount::All, &format!("{tex}_ao"))?;
+            let normal = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_normal.png"))?, false, MipCount::All, &format!("{tex}_normal"))?;
+            let metallic = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_metallic.png"))?, false, MipCount::All, &format!("{tex}_metal"))?;
+            let ao = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_ao.png"))?, false, MipCount::All, &format!("{tex}_ao"))?;
             materials.push(MaterialParams::Voxel {
                 albedo_tex: diffuse.srv_ptr(),
                 normal_tex: normal.srv_ptr(),
@@ -89,8 +89,6 @@ impl Scene for VoxelsScene {
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
         let mut world = VoxelWorld::new(Box::new(NaiveBoxes), renderer, vec![0; 8], unsafe { materials_buf.GetGPUVirtualAddress() })?;
-
-        world.build_chunk(IVec3::ZERO, &renderer.gd)?;
 
         Ok(Self {
             gbuffer,
@@ -161,17 +159,10 @@ impl Scene for VoxelsScene {
     }
 
     fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
-        let chunk_size = (1 << CHUNK_DEPTH) as f32;
-        let cam_pos_chunkwise = renderer.cam.pos().div(chunk_size).ceil();
-        let cam_pos_chunkwise = IVec3::new(cam_pos_chunkwise.x as i32, cam_pos_chunkwise.y as i32, cam_pos_chunkwise.z as i32);
-        for chunk_x in -4..4 {
-            for chunk_y in -4..4 {
-                for chunk_z in -4..4 {
-                    let chunk_abs_pos = cam_pos_chunkwise + IVec3::new(chunk_x, chunk_y, chunk_z);
-                    self.world.build_chunk(chunk_abs_pos, &renderer.gd)?;
-                }
-            }
-        }
+        let material_data = self.world.material_data();
+        self.world.generator_mut().launch(renderer.cam.pos(), material_data);
+
+        self.world.update(&renderer.gd)?;
 
         Ok(())
     }
