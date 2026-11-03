@@ -1,5 +1,6 @@
 ﻿use std::cell::{Cell, Ref, RefCell};
 use std::fmt::Debug;
+use std::sync::Arc;
 use std::time::Instant;
 use glam::{IVec3, Mat4, UVec3, Vec3};
 use noise::{NoiseFn, Perlin};
@@ -10,7 +11,7 @@ use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::ResId;
 use crate::render::mesh::Mesh;
-use crate::render::perf::frustum::Frustum;
+use crate::render::perf::frustum::{Frustum, AABB};
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
@@ -18,6 +19,7 @@ use crate::render::texture::Texture;
 use crate::render::voxels::generate::{ChunkGenerator, MAX_CHUNK_MESHES_PER_FRAME};
 use crate::render::voxels::svo::VoxelTree;
 use crate::time::Timings;
+use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
 
 pub mod svo;
@@ -35,7 +37,7 @@ pub const DROP_DISTANCE_SQ: i32 = DROP_DISTANCE * DROP_DISTANCE;
 #[derive(Debug)]
 pub struct VoxelWorld {
     chunks: FxHashMap<IVec3, Chunk>,
-    mesher: Box<dyn VoxelMesher>,
+    mesher: Arc<dyn VoxelMesher>,
     pso: PipelineId,
     pso_wireframe: PipelineId,
     pso_shadows: PipelineId,
@@ -46,7 +48,7 @@ pub struct VoxelWorld {
 }
 
 impl VoxelWorld {
-    pub fn new(mesher: Box<dyn VoxelMesher>, rd: &mut Renderer, mut material_data: Vec<u64>, materials_va: u64) -> anyhow::Result<Self> {
+    pub fn new(mesher: Arc<dyn VoxelMesher>, rd: &mut Renderer, mut material_data: Vec<u64>, materials_va: u64) -> anyhow::Result<Self> {
         let (pso, pso_wireframe, pso_shadows) = mesher.make_pipelines(rd)?;
         material_data.resize(8, 0);
         Ok(Self {
@@ -74,7 +76,11 @@ impl VoxelWorld {
         &self.mesh_timings
     }
 
-    pub fn swap_mesher(&mut self, new_mesher: Box<dyn VoxelMesher>, rd: &mut Renderer) -> anyhow::Result<()> {
+    pub fn mesher(&self) -> Arc<dyn VoxelMesher> {
+        self.mesher.clone()
+    }
+
+    pub fn swap_mesher(&mut self, new_mesher: Arc<dyn VoxelMesher>, rd: &mut Renderer) -> anyhow::Result<()> {
         self.mesher = new_mesher;
         let (pso, pso_wireframe, pso_shadows) = self.mesher.make_pipelines(rd)?;
         self.pso = pso;
@@ -91,31 +97,41 @@ impl VoxelWorld {
 
         let d = (1 << CHUNK_DEPTH) as f32;
         let cam_pos_chunkwise = (cam_pos / d).floor().as_ivec3();
-        for (chunk_pos, chunk_tree) in chunks {
-            if chunk_pos.distance_squared(cam_pos_chunkwise) > DROP_DISTANCE_SQ {
-                self.generator.forget(chunk_pos);
-                continue;
-            }
+        let mut update_batch: Option<UploadBatch> = None;
+        if !chunks.is_empty() {
+            update_batch = Some(gd.begin_upload()?);
+            for (chunk_pos, chunk_tree, mesh) in chunks {
+                if chunk_pos.distance_squared(cam_pos_chunkwise) > DROP_DISTANCE_SQ {
+                    self.generator.forget(chunk_pos);
+                    continue;
+                }
 
-            self.build_chunk(chunk_pos, chunk_tree, gd)?;
+                self.build_chunk(chunk_pos, chunk_tree, mesh, update_batch.as_mut().unwrap())?;
+            }
         }
 
         self.drop_far_chunks(cam_pos);
 
         for chunk in &self.chunks {
-            chunk.1.update(self, gd)?;
+            if chunk.1.is_dirty.get() && update_batch.is_none() {
+                update_batch = Some(gd.begin_upload()?);
+            }
+            chunk.1.update(self, update_batch.as_mut())?;
+        }
+
+        if let Some(batch) = update_batch {
+            batch.finish()?;
         }
 
         Ok(())
     }
 
-    pub fn build_chunk(&mut self, chunk_pos: IVec3, tree: VoxelTree, gd: &GraphicsDevice) -> anyhow::Result<()> {
+    pub fn build_chunk(&mut self, chunk_pos: IVec3, tree: VoxelTree, mesh_data: Option<VoxelMeshData>, batch: &mut UploadBatch) -> anyhow::Result<()> {
         if self.chunks.contains_key(&chunk_pos) {
             return Ok(());
         }
 
-        let (chunk, timing) = Chunk::new(tree, self, gd)?;
-        self.mesh_timings.report(timing);
+        let chunk = Chunk::new(tree, mesh_data, self, batch)?;
         self.chunks.insert(chunk_pos, chunk);
         Ok(())
     }
@@ -223,20 +239,19 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn new(tree: VoxelTree, world: &VoxelWorld, gd: &GraphicsDevice) -> anyhow::Result<(Self, f32)> {
-        let begin = Instant::now();
-        let initial_mesh = world.mesher.make_mesh(&tree, gd)?;
-        let elapsed = begin.elapsed().as_secs_f32() * 1000.;
-        Ok((Self {
+    pub fn new(tree: VoxelTree, mesh_data: Option<VoxelMeshData>, world: &VoxelWorld, batch: &mut UploadBatch) -> anyhow::Result<Self> {
+        let initial_mesh = mesh_data.map(|it| world.mesher.make_mesh(it, batch)).transpose()?;
+        Ok(Self {
             tree,
             mesh: RefCell::new(initial_mesh),
             is_dirty: Cell::new(false),
-        }, elapsed))
+        })
     }
 
-    pub fn update(&self, world: &VoxelWorld, gd: &GraphicsDevice) -> anyhow::Result<()> {
+    pub fn update(&self, world: &VoxelWorld, batch: Option<&mut UploadBatch>) -> anyhow::Result<()> {
         if self.is_dirty.get() {
-            *self.mesh.borrow_mut() = world.mesher.make_mesh(&self.tree, gd)?;
+            let mesh_data = world.mesher.make_vertices_and_indices(&self.tree)?;
+            *self.mesh.borrow_mut() = mesh_data.map(|it| world.mesher.make_mesh(it, batch.unwrap())).transpose()?;
             self.is_dirty.set(false);
         }
         Ok(())
@@ -253,8 +268,15 @@ impl Chunk {
 }
 
 pub trait VoxelMesher: Debug + Send + Sync {
-    fn make_mesh(&self, tree: &VoxelTree, gd: &GraphicsDevice) -> anyhow::Result<Option<Mesh>>;
+    fn make_vertices_and_indices<'a>(&self, tree: &VoxelTree) -> anyhow::Result<Option<VoxelMeshData>>;
+    fn make_mesh(&self, mesh_data: VoxelMeshData, batch: &mut UploadBatch) -> anyhow::Result<Mesh>;
     fn make_pipelines(&self, rd: &mut Renderer) -> anyhow::Result<(PipelineId, PipelineId, PipelineId)>;
+}
+
+pub struct VoxelMeshData {
+    pub vertices: Vec<u8>,
+    pub indices: Vec<u32>,
+    pub aabb: AABB,
 }
 
 pub fn uvec3_to_index(uvec: UVec3, depth: usize) -> usize {

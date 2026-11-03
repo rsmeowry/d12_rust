@@ -7,15 +7,16 @@ use crate::render::pipeline::desc::{Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
 use crate::render::vertex::Vertex;
-use crate::render::voxels::{index_to_uvec3, uvec3_to_index, VoxelMesher};
+use crate::render::voxels::{index_to_uvec3, uvec3_to_index, VoxelMeshData, VoxelMesher};
 use crate::render::voxels::svo::VoxelTree;
+use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
 
 #[derive(Debug, Copy, Clone)]
 pub struct NaiveBoxes;
 
 impl VoxelMesher for NaiveBoxes {
-    fn make_mesh(&self, tree: &VoxelTree, gd: &GraphicsDevice) -> anyhow::Result<Option<Mesh>> {
+    fn make_vertices_and_indices(&self, tree: &VoxelTree) -> anyhow::Result<Option<VoxelMeshData>> {
         let mut total_vertices = vec![];
         let mut total_indices = vec![];
 
@@ -30,28 +31,26 @@ impl VoxelMesher for NaiveBoxes {
             let p = pos.as_ivec3();
             let neighbors = [IVec3::Z, -IVec3::Z, IVec3::Y, -IVec3::Y, IVec3::X, -IVec3::X].map(|o| solid_at(&flattened, d, p + o));
 
-            let (gen_vertices, gen_indices) = cube((flattened[i] - 1) as u32, neighbors);
-            let offset = total_vertices.len() as u32;
-            total_vertices.extend(gen_vertices.into_iter().map(|each| VertexCube::new(
-                [each.pos[0] + pos.x as f32, each.pos[1] + pos.y as f32, each.pos[2] + pos.z as f32],
-                each.norm,
-                each.tangent,
-                each.uv,
-                each.material,
-            )));
-            total_indices.extend(gen_indices.into_iter().map(|it| it + offset))
+            cube(&mut total_vertices, &mut total_indices, pos.as_vec3(),(flattened[i] - 1) as u32, neighbors);
         }
 
         if total_vertices.is_empty() {
-            return Ok(None);
+            return Ok(None)
         }
 
         let aabb = AABB::from_points(&total_vertices.iter().map(|it| it.pos.into()).collect::<Vec<Vec3>>());
 
-        let mut batch = gd.begin_upload()?;
-        let mesh = Mesh::new(gd, &mut batch, &total_vertices, &total_indices, DrawTopology::TriangleList, aabb, true)?;
-        batch.finish()?;
-        Ok(Some(mesh))
+        let vertices: Vec<u8> = bytemuck::cast_slice(&total_vertices).to_vec();
+
+        Ok(Some(VoxelMeshData {
+            vertices,
+            indices: total_indices,
+            aabb,
+        }))
+    }
+
+    fn make_mesh(&self, mesh_data: VoxelMeshData, batch: &mut UploadBatch) -> anyhow::Result<Mesh> {
+        Mesh::new_from_bytes::<VertexCube>(batch.gd(), batch, &mesh_data.vertices, bytemuck::cast_slice(&mesh_data.indices), DrawTopology::TriangleList, mesh_data.aabb, true)
     }
 
     fn make_pipelines(&self, rd: &mut Renderer) -> anyhow::Result<(PipelineId, PipelineId, PipelineId)> {
@@ -73,17 +72,15 @@ impl VoxelMesher for NaiveBoxes {
     }
 }
 
-fn cube(material: u32, neighbors: [u8; 6]) -> (Vec<VertexCube>, Vec<u32>) {
-    let mut vertices = vec![];
-    let mut indices = vec![];
+fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3, material: u32, neighbors: [u8; 6]) {
     if neighbors[0] == 0 {
         // front
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
-            VertexCube::new([-0.5, -0.5, 0.5], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], [0.0, 0.0], material),
-            VertexCube::new([0.5, -0.5, 0.5], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], [1.0, 0.0], material),
-            VertexCube::new([0.5, 0.5, 0.5], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], [1.0, 1.0], material),
-            VertexCube::new([-0.5, 0.5, 0.5], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], [0.0, 1.0], material),
+            VertexCube::new(Vec3::new(-0.5, -0.5, 0.5) + offset_pos, [0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], [0.0, 0.0], material),
+            VertexCube::new(Vec3::new(0.5, -0.5, 0.5) + offset_pos, [0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], [1.0, 0.0], material),
+            VertexCube::new(Vec3::new(0.5, 0.5, 0.5) + offset_pos, [0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], [1.0, 1.0], material),
+            VertexCube::new(Vec3::new(-0.5, 0.5, 0.5) + offset_pos, [0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], [0.0, 1.0], material),
         ]);
         indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 3, base]);
     }
@@ -91,10 +88,10 @@ fn cube(material: u32, neighbors: [u8; 6]) -> (Vec<VertexCube>, Vec<u32>) {
         // back
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
-            VertexCube::new([0.5, -0.5, -0.5], [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 1.0], [0.0, 0.0], material),
-            VertexCube::new([-0.5, -0.5, -0.5], [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 1.0], [1.0, 0.0], material),
-            VertexCube::new([-0.5, 0.5, -0.5], [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 1.0], [1.0, 1.0], material),
-            VertexCube::new([0.5, 0.5, -0.5], [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 1.0], [0.0, 1.0], material),
+            VertexCube::new(Vec3::new(0.5, -0.5, -0.5) + offset_pos, [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 1.0], [0.0, 0.0], material),
+            VertexCube::new(Vec3::new(-0.5, -0.5, -0.5) + offset_pos, [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 1.0], [1.0, 0.0], material),
+            VertexCube::new(Vec3::new(-0.5, 0.5, -0.5) + offset_pos, [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 1.0], [1.0, 1.0], material),
+            VertexCube::new(Vec3::new(0.5, 0.5, -0.5) + offset_pos, [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 1.0], [0.0, 1.0], material),
         ]);
         indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 3, base]);
     }
@@ -102,10 +99,10 @@ fn cube(material: u32, neighbors: [u8; 6]) -> (Vec<VertexCube>, Vec<u32>) {
         // top
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
-            VertexCube::new([-0.5, 0.5, -0.5], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [0.0, 0.0], material),
-            VertexCube::new([0.5, 0.5, -0.5], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [1.0, 0.0], material),
-            VertexCube::new([0.5, 0.5, 0.5], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [1.0, 1.0], material),
-            VertexCube::new([-0.5, 0.5, 0.5], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [0.0, 1.0], material),
+            VertexCube::new(Vec3::new(-0.5, 0.5, -0.5) + offset_pos, [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [0.0, 0.0], material),
+            VertexCube::new(Vec3::new(0.5, 0.5, -0.5) + offset_pos, [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [1.0, 0.0], material),
+            VertexCube::new(Vec3::new(0.5, 0.5, 0.5) + offset_pos, [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [1.0, 1.0], material),
+            VertexCube::new(Vec3::new(-0.5, 0.5, 0.5) + offset_pos, [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [0.0, 1.0], material),
         ]);
         indices.extend_from_slice(&[base, base + 2, base + 1, base + 2, base, base + 3]);
     }
@@ -113,10 +110,10 @@ fn cube(material: u32, neighbors: [u8; 6]) -> (Vec<VertexCube>, Vec<u32>) {
         // bottom
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
-            VertexCube::new([-0.5, -0.5, 0.5], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [0.0, 0.0], material),
-            VertexCube::new([0.5, -0.5, 0.5], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [1.0, 0.0], material),
-            VertexCube::new([0.5, -0.5, -0.5], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [1.0, 1.0], material),
-            VertexCube::new([-0.5, -0.5, -0.5], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [0.0, 1.0], material),
+            VertexCube::new(Vec3::new(-0.5, -0.5, 0.5) + offset_pos, [0.0, -1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [0.0, 0.0], material),
+            VertexCube::new(Vec3::new(0.5, -0.5, 0.5) + offset_pos, [0.0, -1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [1.0, 0.0], material),
+            VertexCube::new(Vec3::new(0.5, -0.5, -0.5) + offset_pos, [0.0, -1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [1.0, 1.0], material),
+            VertexCube::new(Vec3::new(-0.5, -0.5, -0.5) + offset_pos, [0.0, -1.0, 0.0], [1.0, 0.0, 0.0, -1.0], [0.0, 1.0], material),
         ]);
         indices.extend_from_slice(&[base, base + 2, base + 1, base + 2, base, base + 3]);
     }
@@ -124,10 +121,10 @@ fn cube(material: u32, neighbors: [u8; 6]) -> (Vec<VertexCube>, Vec<u32>) {
         // right
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
-            VertexCube::new([0.5, -0.5, -0.5], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0], material),
-            VertexCube::new([0.5, -0.5, 0.5], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0, -1.0], [1.0, 0.0], material),
-            VertexCube::new([0.5, 0.5, 0.5], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0, -1.0], [1.0, 1.0], material),
-            VertexCube::new([0.5, 0.5, -0.5], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0, -1.0], [0.0, 1.0], material),
+            VertexCube::new(Vec3::new(0.5, -0.5, -0.5) + offset_pos, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0], material),
+            VertexCube::new(Vec3::new(0.5, -0.5, 0.5) + offset_pos, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0, -1.0], [1.0, 0.0], material),
+            VertexCube::new(Vec3::new(0.5, 0.5, 0.5) + offset_pos, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0, -1.0], [1.0, 1.0], material),
+            VertexCube::new(Vec3::new(0.5, 0.5, -0.5) + offset_pos, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0, -1.0], [0.0, 1.0], material),
         ]);
         indices.extend_from_slice(&[base, base + 2, base + 1, base + 2, base, base + 3]);
     }
@@ -135,14 +132,13 @@ fn cube(material: u32, neighbors: [u8; 6]) -> (Vec<VertexCube>, Vec<u32>) {
         // left
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
-            VertexCube::new([-0.5, -0.5, 0.5], [-1.0, 0.0, 0.0], [0.0, 0.0, -1.0, -1.0], [0.0, 0.0], material),
-            VertexCube::new([-0.5, -0.5, -0.5], [-1.0, 0.0, 0.0], [0.0, 0.0, -1.0, -1.0], [1.0, 0.0], material),
-            VertexCube::new([-0.5, 0.5, -0.5], [-1.0, 0.0, 0.0], [0.0, 0.0, -1.0, -1.0], [1.0, 1.0], material),
-            VertexCube::new([-0.5, 0.5, 0.5], [-1.0, 0.0, 0.0], [0.0, 0.0, -1.0, -1.0], [0.0, 1.0], material),
+            VertexCube::new(Vec3::new(-0.5, -0.5, 0.5) + offset_pos, [-1.0, 0.0, 0.0], [0.0, 0.0, -1.0, -1.0], [0.0, 0.0], material),
+            VertexCube::new(Vec3::new(-0.5, -0.5, -0.5) + offset_pos, [-1.0, 0.0, 0.0], [0.0, 0.0, -1.0, -1.0], [1.0, 0.0], material),
+            VertexCube::new(Vec3::new(-0.5, 0.5, -0.5) + offset_pos, [-1.0, 0.0, 0.0], [0.0, 0.0, -1.0, -1.0], [1.0, 1.0], material),
+            VertexCube::new(Vec3::new(-0.5, 0.5, 0.5) + offset_pos, [-1.0, 0.0, 0.0], [0.0, 0.0, -1.0, -1.0], [0.0, 1.0], material),
         ]);
         indices.extend_from_slice(&[base, base + 2, base + 1, base + 2, base, base + 3]);
     }
-    (vertices, indices)
 }
 
 fn solid_at(flat: &[u8], d: usize, p: IVec3) -> u8 {

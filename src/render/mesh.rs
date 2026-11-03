@@ -29,10 +29,23 @@ impl Mesh {
         aabb: AABB,
         is_static: bool,
     ) -> anyhow::Result<Self> {
+        Self::new_from_bytes::<TVert>(gd, batch, bytemuck::cast_slice(vertices), bytemuck::cast_slice(indices), topology, aabb, is_static)
+    }
+    
+    pub fn new_from_bytes<TVert: Vertex>(
+        gd: &GraphicsDevice,
+        batch: &mut UploadBatch<'_>,
+        vertices: &[u8],
+        indices: &[u8],
+        topology: DrawTopology,
+        aabb: AABB,
+        is_static: bool,
+    ) -> anyhow::Result<Self> {
         let id: u16 = rand::random();
 
-        let vb = gd.create_default_buffer(batch, bytemuck::cast_slice(vertices), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, format!("Mesh_VB_{:04x}", id))?;
-        let ib = gd.create_default_buffer(batch, bytemuck::cast_slice(indices),  D3D12_RESOURCE_STATE_INDEX_BUFFER, format!("Mesh_IB_{:04x}", id))?;
+        let vb = gd.create_default_buffer(batch, vertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, format!("Mesh_VB_{:04x}", id))?;
+        let ib = gd.create_default_buffer(batch, indices,  D3D12_RESOURCE_STATE_INDEX_BUFFER, format!("Mesh_IB_{:04x}", id))?;
+
         let vbv = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation: unsafe { vb.GetGPUVirtualAddress() },
             SizeInBytes: size_of_val(vertices) as u32,

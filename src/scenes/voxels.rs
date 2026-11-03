@@ -9,7 +9,7 @@ use crate::render::lights::GpuLight;
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
 use crate::render::renderer::{ObjectData, Renderer};
-use crate::render::shadows::ShadowMap;
+use crate::render::shadows::{ShadowMap, SHADOW_DISTANCE, SHADOW_EXTEND};
 use crate::render::voxels::naive::NaiveBoxes;
 use crate::render::voxels::{index_to_ivec3, index_to_uvec3, VoxelWorld, CHUNK_DEPTH};
 use crate::scenes::Scene;
@@ -19,6 +19,7 @@ use egui::{Slider, Ui};
 use glam::{IVec3, Vec3};
 use std::f32::consts::PI;
 use std::ops::Div;
+use std::sync::Arc;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::texture::{MipCount, Texture};
 
@@ -62,7 +63,7 @@ impl Scene for VoxelsScene {
                                                 "assets/textures/sky/sky_specular.dds",
                                                 "assets/textures/pbr/ibl_brdf_lut.dds"
         )?;
-        let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512)?;
+        let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512, SHADOW_DISTANCE * 3., SHADOW_EXTEND * 2.)?;
         lighting.save_local_shadows(&shadows);
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
@@ -70,7 +71,7 @@ impl Scene for VoxelsScene {
         let mut batch = renderer.gd.begin_upload()?;
         let mut materials: Vec<GpuMaterial> = vec![];
         let mut voxel_textures: Vec<Texture> = vec![];
-        for (tex, metal, rough) in [("dirt", 0.2, 0.7), ("diamond_block", 0.1, 0.6)] {
+        for (tex, metal, rough) in [("dirt", 0.2, 1.0), ("diamond_block", 0.1, 0.2)] {
             // todo: move to atlases
             let diffuse = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_diffuse.png"))?, true, MipCount::All, &format!("{tex}_diffuse"))?;
             let normal = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_normal.png"))?, false, MipCount::All, &format!("{tex}_normal"))?;
@@ -91,7 +92,7 @@ impl Scene for VoxelsScene {
 
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
-        let mut world = VoxelWorld::new(Box::new(NaiveBoxes), renderer, vec![0; 8], unsafe { materials_buf.GetGPUVirtualAddress() })?;
+        let mut world = VoxelWorld::new(Arc::new(NaiveBoxes), renderer, vec![0; 8], unsafe { materials_buf.GetGPUVirtualAddress() })?;
 
         Ok(Self {
             gbuffer,
@@ -107,7 +108,7 @@ impl Scene for VoxelsScene {
                 ..Default::default()
             },
 
-            sun_t: -2.5416,
+            sun_t: -2.1416,
             shadows,
             bloom,
             lighting,
@@ -116,7 +117,7 @@ impl Scene for VoxelsScene {
     }
 
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
-        let sun_dir = Vec3::new(self.sun_t.cos(), self.sun_t.sin(), 0.);
+        let sun_dir = Vec3::new(self.sun_t.cos(), self.sun_t.sin(), self.sun_t.cos());
         let sun_color = sun_transmittance(&self.atmosphere, renderer.cam.pos().y, -sun_dir);
         let lights = vec![GpuLight::directional(sun_dir, sun_color, 12.0)];
 
@@ -143,7 +144,7 @@ impl Scene for VoxelsScene {
         let lambda = 0.6;
         self.shadows.update(lights[0], lambda, renderer);
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
-        self.world.add_shadow_passes(renderer, self.shadows.dynamic_cascades(), graph)?;
+        self.world.add_shadow_passes(renderer, self.shadows.dirty_static_cascades(), graph)?;
 
         let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), Some(self.atmosphere), 0.19, &self.gbuffer, graph, opts)?;
 
@@ -163,7 +164,8 @@ impl Scene for VoxelsScene {
 
     fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
         let material_data = self.world.material_data();
-        self.world.generator_mut().launch(renderer.cam.pos(), material_data);
+        let mesher = self.world.mesher();
+        self.world.generator_mut().launch(mesher, renderer.cam.pos(), material_data);
 
         self.world.update(&renderer.gd, renderer.cam.pos())?;
 

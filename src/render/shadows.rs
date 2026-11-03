@@ -45,7 +45,9 @@ pub struct ShadowMap {
     static_light_dir: Vec3,
     static_size: u32,
     dynamic_size: u32,
-    local_shadows: LocalShadows
+    local_shadows: LocalShadows,
+    shadow_distance: f32,
+    shadow_extend: f32,
 }
 
 #[derive(Debug)]
@@ -113,7 +115,7 @@ struct StaticCascade {
 }
 
 impl ShadowMap {
-    pub fn new(renderer: &mut Renderer, dynamic_size: u32, static_size: u32, spot_size: u32, point_size: u32) -> anyhow::Result<Self> {
+    pub fn new(renderer: &mut Renderer, dynamic_size: u32, static_size: u32, spot_size: u32, point_size: u32, shadow_distance: f32, shadow_extend: f32) -> anyhow::Result<Self> {
         let mut cascades = [ResId::default(); CASCADE_COUNT];
         let mut cascades_static = [ResId::default(); CASCADE_COUNT];
         for i in 0..CASCADE_COUNT {
@@ -163,6 +165,8 @@ impl ShadowMap {
             static_size,
             local_shadows: LocalShadows { pipeline, spots, spot_size, last_spot: 0, point_size, points, last_point: 0 },
             static_light_dir: Default::default(),
+            shadow_distance,
+            shadow_extend
         })
     }
 
@@ -241,7 +245,7 @@ impl ShadowMap {
             self.invalidate_static();
         }
 
-        let splits = Self::calc_splits(CAM_NEAR, SHADOW_DISTANCE, lambda);
+        let splits = Self::calc_splits(CAM_NEAR, self.shadow_distance, lambda);
         for i in 0..CASCADE_COUNT {
             // for dynamics
             let (center, rad) = Self::fit_sphere(&renderer.cam, splits[i], splits[i + 1]);
@@ -275,7 +279,7 @@ impl ShadowMap {
 
     pub fn add_global_shadows_pass<'f>(&self, lambda: f32, renderer: &'f Renderer, graph: &mut FrameGraph<'f>, objects: &[ObjectData], meshes: &[&'f Mesh]) -> anyhow::Result<ShadowCascades> {
         let objects_va = renderer.upload_objects(&objects)?;
-        let splits = Self::calc_splits(CAM_NEAR, SHADOW_DISTANCE, lambda);
+        let splits = Self::calc_splits(CAM_NEAR, self.shadow_distance, lambda);
 
         let mut shadows = ShadowCascades {
             cascades: self.cascades,

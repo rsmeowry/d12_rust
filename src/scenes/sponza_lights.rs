@@ -17,7 +17,7 @@ use crate::render::perf::{Culler, NO_LOD};
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
-use crate::render::shadows::{ShadowMap, CASCADE_COUNT};
+use crate::render::shadows::{ShadowMap, CASCADE_COUNT, SHADOW_DISTANCE, SHADOW_EXTEND};
 use crate::scenes::Scene;
 use crate::time::Time;
 use egui::Ui;
@@ -143,7 +143,7 @@ impl Scene for SponzaWithLights {
                                                 "assets/textures/sky/sponza/garden_sky_specular.dds",
                                                 "assets/textures/pbr/ibl_brdf_lut.dds"
         )?;
-        let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512)?;
+        let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512, SHADOW_DISTANCE, SHADOW_EXTEND)?;
         lighting.save_local_shadows(&shadows);
         let bloom = BloomPass::new(renderer)?;
         let fog = FogPass::new(Some(&shadows), renderer)?;
