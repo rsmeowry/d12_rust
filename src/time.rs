@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::sync::RwLock;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 
 #[derive(Debug, Clone)]
@@ -117,39 +118,40 @@ impl Time {
 
 #[derive(Debug)]
 pub struct Timings {
-    timings: Cell<[f32; 15]>,
-    timing_updates: Cell<u64>
+    timings: RwLock<[f32; 15]>,
+    timing_updates: RwLock<u64>
 }
 
 impl Timings {
     pub fn new() -> Self {
         Self {
-            timings: Cell::new([0.; 15]),
-            timing_updates: Cell::new(0)
+            timings: RwLock::new([0.; 15]),
+            timing_updates: RwLock::new(0)
         }
     }
 
     pub fn report(&self, timing: f32) {
-        self.timing_updates.update(|i| i + 1);
-        self.timings.update(|mut timings| {
-            timings[self.timing_updates.get() as usize % timings.len()] = timing;
-            timings
-        })
+        let mut u = self.timing_updates.write().unwrap();
+        *u = *u + 1;
+        let idx = *u;
+        let mut u = self.timings.write().unwrap();
+        let len = u.len();
+        u[idx as usize % len] = timing;
     }
 
     pub fn median(&self) -> f32 {
-        let mut timings = self.timings.get();
+        let mut timings = self.timings.read().unwrap().clone();
         timings.sort_unstable_by(|a, b| b.partial_cmp(a).unwrap());
         timings[timings.len() / 2]
     }
 
     pub fn mean(&self) -> f32 {
-        let timings = self.timings.get();
+        let timings = self.timings.read().unwrap();
         timings.iter().sum::<f32>() / timings.len() as f32
     }
 
     pub fn max(&self) -> f32 {
-        let timings = self.timings.get();
+        let timings = self.timings.read().unwrap();
         timings.into_iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.)
     }
 }

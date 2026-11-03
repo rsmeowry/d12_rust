@@ -2,11 +2,13 @@
 use std::ops::Div;
 use std::sync::Arc;
 use std::thread::JoinHandle;
+use std::time::Instant;
 use glam::{FloatExt, IVec2, IVec3, UVec3, Vec3, Vec3Swizzles};
 use noise::{NoiseFn, Perlin};
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use crate::render::voxels::{index_to_uvec3, Chunk, VoxelMeshData, VoxelMesher, VoxelWorld, CHUNK_DEPTH, CHUNK_FLAT_ARR_DEPTH, NOISE_SCALE};
 use crate::render::voxels::svo::VoxelTree;
+use crate::time::Timings;
 
 pub const MAX_CHUNK_MESHES_PER_FRAME: usize = 8;
 pub const D_CHUNK_GEN: i32 = 8;
@@ -19,6 +21,7 @@ pub struct ChunkGenerator {
     rx: flume::Receiver<(IVec3, VoxelTree, Option<VoxelMeshData>)>,
     is_occupied: Cell<bool>,
     perlin: Perlin,
+    timings: Arc<Timings>,
 }
 
 impl ChunkGenerator {
@@ -30,8 +33,13 @@ impl ChunkGenerator {
             tx,
             rx,
             is_occupied: Cell::new(false),
-            perlin: Perlin::new(0xB217E)
+            perlin: Perlin::new(0xB217E),
+            timings: Arc::new(Timings::new()),
         }
+    }
+    
+    pub fn timings(&self) -> &Arc<Timings> {
+        &self.timings
     }
 
     pub fn rx(&self) -> &flume::Receiver<(IVec3, VoxelTree, Option<VoxelMeshData>)> {
@@ -69,9 +77,12 @@ impl ChunkGenerator {
                     let tx = self.tx.clone();
                     let perlin = self.perlin.clone();
                     let mesher = mesher.clone();
+                    let timings = self.timings.clone();
                     rayon::spawn(move || {
+                        let begin = Instant::now();
                         let tree = Self::build_chunk(chunk_abs_pos, perlin, material_data);
                         let mesh = mesher.make_vertices_and_indices(&tree).expect("Failed to build vertices and indices for a chunk mesh");
+                        timings.report(begin.elapsed().as_secs_f32() * 1000.);
                         tx.send((chunk_abs_pos, tree, mesh)).expect("Failed to send chunk generation result");
                     });
                 }

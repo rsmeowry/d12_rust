@@ -29,14 +29,15 @@ impl Mesh {
         aabb: AABB,
         is_static: bool,
     ) -> anyhow::Result<Self> {
-        Self::new_from_bytes::<TVert>(gd, batch, bytemuck::cast_slice(vertices), bytemuck::cast_slice(indices), topology, aabb, is_static)
+        Self::new_from_bytes::<TVert>(gd, batch, bytemuck::cast_slice(vertices), bytemuck::cast_slice(indices), indices.len() as u32, topology, aabb, is_static)
     }
-    
+
     pub fn new_from_bytes<TVert: Vertex>(
         gd: &GraphicsDevice,
         batch: &mut UploadBatch<'_>,
         vertices: &[u8],
         indices: &[u8],
+        index_count: u32,
         topology: DrawTopology,
         aabb: AABB,
         is_static: bool,
@@ -62,7 +63,7 @@ impl Mesh {
             _ib: ib,
             vbv,
             ibv,
-            indices: indices.len() as u32,
+            indices: index_count,
             topology,
             aabb,
             is_static

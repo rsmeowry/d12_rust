@@ -43,8 +43,8 @@ impl Scene for VoxelsScene {
     const NAME: &'static str = "Voxel world";
 
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
-        let timings = self.world.mesher_timings();
-        ui.label(format!("Mesher mean: {:.2}ms / median: {:.2}ms / max: {:.2}ms", timings.mean(), timings.median(), timings.max()));
+        let timings = self.world.generator().timings();
+        ui.label(format!("Generator + Mesher mean: {:.2}ms / median: {:.2}ms / max: {:.2}ms", timings.mean(), timings.median(), timings.max()));
         ui.spacing();
         self.atmosphere.show_ui(ui);
         ui.horizontal(|ui| {

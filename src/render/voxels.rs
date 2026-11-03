@@ -44,7 +44,6 @@ pub struct VoxelWorld {
     material_data: [u64; 8],
     materials_va: u64,
     generator: ChunkGenerator,
-    mesh_timings: Timings
 }
 
 impl VoxelWorld {
@@ -60,7 +59,6 @@ impl VoxelWorld {
             material_data: std::array::from_fn(|i| material_data[i]),
             materials_va,
             generator: ChunkGenerator::new(),
-            mesh_timings: Timings::new(),
         })
     }
 
@@ -72,8 +70,8 @@ impl VoxelWorld {
         &mut self.generator
     }
 
-    pub fn mesher_timings(&self) -> &Timings {
-        &self.mesh_timings
+    pub fn generator(&self) -> &ChunkGenerator {
+        &self.generator
     }
 
     pub fn mesher(&self) -> Arc<dyn VoxelMesher> {

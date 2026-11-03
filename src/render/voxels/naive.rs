@@ -50,7 +50,7 @@ impl VoxelMesher for NaiveBoxes {
     }
 
     fn make_mesh(&self, mesh_data: VoxelMeshData, batch: &mut UploadBatch) -> anyhow::Result<Mesh> {
-        Mesh::new_from_bytes::<VertexCube>(batch.gd(), batch, &mesh_data.vertices, bytemuck::cast_slice(&mesh_data.indices), DrawTopology::TriangleList, mesh_data.aabb, true)
+        Mesh::new_from_bytes::<VertexCube>(batch.gd(), batch, &mesh_data.vertices, bytemuck::cast_slice(&mesh_data.indices), mesh_data.indices.len() as u32, DrawTopology::TriangleList, mesh_data.aabb, true)
     }
 
     fn make_pipelines(&self, rd: &mut Renderer) -> anyhow::Result<(PipelineId, PipelineId, PipelineId)> {
