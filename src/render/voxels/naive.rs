@@ -8,7 +8,7 @@ use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
 use crate::render::vertex::Vertex;
 use crate::render::voxels::{index_to_uvec3, uvec3_to_index, VoxelMeshData, VoxelMesher};
-use crate::render::voxels::svo::VoxelTree;
+use crate::render::voxels::svo::{Voxel, VoxelTree};
 use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
 
@@ -24,14 +24,14 @@ impl VoxelMesher for NaiveBoxes {
         let flattened = tree.flatten_tree();
         for i in 0..(d * d * d) {
             let pos = index_to_uvec3(i, d);
-            if flattened[i] == 0 {
+            if flattened[i].material == 0 {
                 continue;
             }
             // +Z -Z +Y -Y +X -X
             let p = pos.as_ivec3();
-            let neighbors = [IVec3::Z, -IVec3::Z, IVec3::Y, -IVec3::Y, IVec3::X, -IVec3::X].map(|o| solid_at(&flattened, d, p + o));
+            let neighbors = [IVec3::Z, -IVec3::Z, IVec3::Y, -IVec3::Y, IVec3::X, -IVec3::X].map(|o| solid_at(&flattened, d, p + o).material);
 
-            cube(&mut total_vertices, &mut total_indices, pos.as_vec3(),(flattened[i] - 1) as u32, neighbors);
+            cube(&mut total_vertices, &mut total_indices, pos.as_vec3(),(flattened[i].material - 1) as u32, neighbors);
         }
 
         if total_vertices.is_empty() {
@@ -141,10 +141,10 @@ fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3
     }
 }
 
-fn solid_at(flat: &[u8], d: usize, p: IVec3) -> u8 {
+fn solid_at(flat: &[Voxel], d: usize, p: IVec3) -> Voxel {
     let di = d as i32;
     if p.cmplt(IVec3::ZERO).any() || p.cmpge(IVec3::splat(di)).any() {
-        return 0;
+        return Voxel { material: 0, density: 0};
     }
     flat[uvec3_to_index(p.as_uvec3(), d)]
 }

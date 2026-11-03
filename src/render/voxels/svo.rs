@@ -21,7 +21,7 @@ impl VoxelTree {
         }
     }
 
-    pub fn build_from_flat_list(depth: u32, material_data: [u64; 8], list: &[u8]) -> Self {
+    pub fn build_from_flat_list(depth: u32, material_data: [u64; 8], list: &[Voxel]) -> Self {
         assert!(depth > 0 && depth <= 32);
 
         // now need to split existing flat list into nodes, bottom-up
@@ -50,7 +50,7 @@ impl VoxelTree {
         self.nodes.len() - self.free_nodes.len() * 8
     }
 
-    pub fn get(&self, pos: UVec3) -> Option<u8> {
+    pub fn get(&self, pos: UVec3) -> Option<Voxel> {
         if !self.is_in_bounds(pos) {
             return None;
         }
@@ -69,26 +69,26 @@ impl VoxelTree {
         }
     }
 
-    pub fn set(&mut self, pos: UVec3, value: Option<u8>) {
+    pub fn set(&mut self, pos: UVec3, value: Option<Voxel>) {
         let old = self.get(pos);
         if old != value {
             self.set_rec(0, pos, self.size() as u32, value);
         }
     }
 
-    pub fn flatten_tree(&self) -> Vec<u8> {
+    pub fn flatten_tree(&self) -> Vec<Voxel> {
         let d = self.size();
-        let mut out = vec![0; d * d * d];
+        let mut out = vec![Voxel { density: 0, material: 0 }; d * d * d];
         self.fill_dense(0, [0; 3], self.size() as i64, [0; 3], &mut out);
         out
     }
 
-    fn build(&mut self, dense: &[u8], origin: UVec3, size: usize) -> VoxelNode {
+    fn build(&mut self, dense: &[Voxel], origin: UVec3, size: usize) -> VoxelNode {
         if size == 1 {
             let n = self.size();
             return match dense[origin.x as usize + (origin.y as usize * n) + (origin.z as usize * n * n)] {
-                0 => VoxelNode::Empty,
-                other => VoxelNode::Leaf(other - 1)
+                Voxel { density: 0, .. } => VoxelNode::Empty,
+                other => VoxelNode::Leaf(other)
             }
         }
 
@@ -109,7 +109,7 @@ impl VoxelTree {
         VoxelNode::Branch(base as u32)
     }
 
-    fn fill_dense(&self, idx: usize, origin: [i64; 3], size: i64, min: [i64; 3], dst: &mut Vec<u8>) {
+    fn fill_dense(&self, idx: usize, origin: [i64; 3], size: i64, min: [i64; 3], dst: &mut Vec<Voxel>) {
         // overlapping chunk with node's box
         let d = self.size();
 
@@ -129,7 +129,7 @@ impl VoxelTree {
                     for y in lo[1]..hi[1] {
                         let row = d * ((y - min[1]) as usize + d * (z - min[2]) as usize);
                         let (x0, x1) = ((lo[0] - min[0]) as usize, (hi[0] - min[0]) as usize);
-                        dst[row + x0..row + x1].fill(v + 1);
+                        dst[row + x0..row + x1].fill(Voxel { material: v.material, density: v.density });
                     }
                 }
             },
@@ -147,7 +147,7 @@ impl VoxelTree {
         }
     }
 
-    fn set_rec(&mut self, idx: usize, pos: UVec3, size: u32, value: Option<u8>) {
+    fn set_rec(&mut self, idx: usize, pos: UVec3, size: u32, value: Option<Voxel>) {
         // already at the lowest level of the tree
         if size == 1 {
             self.nodes[idx] = if let Some(v) = value { VoxelNode::Leaf(v) } else { VoxelNode::Empty };
@@ -224,25 +224,31 @@ impl VoxelTree {
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum VoxelNode {
     Empty,
-    Leaf(u8), // material data
+    Leaf(Voxel), // density + material data
     Branch(u32), // index into a branches 8 children
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+pub struct Voxel {
+    pub material: u8,
+    pub density: i8,
 }
 
 #[cfg(test)]
 mod tests {
     use std::assert_matches;
     use glam::UVec3;
-    use crate::render::voxels::svo::{VoxelNode, VoxelTree};
+    use crate::render::voxels::svo::{Voxel, VoxelNode, VoxelTree};
 
     #[test]
     fn test_svo() {
         let mut tree = VoxelTree::new(5, [0; 8]);
         assert_matches!(tree.get(UVec3::new(2, 4, 6)), None);
-        tree.set(UVec3::new(2, 4, 6), Some(3));
-        assert_matches!(tree.get(UVec3::new(2, 4, 6)), Some(3));
+        tree.set(UVec3::new(2, 4, 6), Some(Voxel { material: 3, density: 1 }));
+        assert_matches!(tree.get(UVec3::new(2, 4, 6)), Some(Voxel { material: 3, density: 1 }));
         let flattened = tree.flatten_tree();
         let d = 1 << 5;
         assert_eq!(flattened.len(), d * d * d);
-        assert_eq!(flattened[6 * (d * d) + 4 * d + 2], 4);
+        assert_eq!(flattened[6 * (d * d) + 4 * d + 2], Voxel { material: 3, density: 1 });
     }
 }
