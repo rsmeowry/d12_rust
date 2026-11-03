@@ -162,7 +162,7 @@ impl Scene for VoxelsScene {
         let material_data = self.world.material_data();
         self.world.generator_mut().launch(renderer.cam.pos(), material_data);
 
-        self.world.update(&renderer.gd)?;
+        self.world.update(&renderer.gd, renderer.cam.pos())?;
 
         Ok(())
     }

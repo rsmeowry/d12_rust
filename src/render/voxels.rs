@@ -27,6 +27,8 @@ pub const CHUNK_DEPTH: usize = 5;
 pub const CHUNK_FLAT_ARR_DEPTH: usize = 32 * 32 * 32;
 pub const VIEW_DISTANCE: f32 = (1 << CHUNK_DEPTH) as f32 * 8.; // 8 chunks around
 pub const VIEW_DISTANCE_SQ: f32 = VIEW_DISTANCE * VIEW_DISTANCE;
+pub const DROP_DISTANCE: i32 = 12; // if chunk is N chunks away, drop it
+pub const DROP_DISTANCE_SQ: i32 = DROP_DISTANCE * DROP_DISTANCE;
 
 #[derive(Debug)]
 pub struct VoxelWorld {
@@ -76,17 +78,26 @@ impl VoxelWorld {
         Ok(())
     }
 
-    pub fn update(&mut self, gd: &GraphicsDevice) -> anyhow::Result<()> {
-
+    pub fn update(&mut self, gd: &GraphicsDevice, cam_pos: Vec3) -> anyhow::Result<()> {
         let chunks = self.generator.rx().try_iter().take(MAX_CHUNK_MESHES_PER_FRAME).collect::<Vec<_>>();
 
+        let d = (1 << CHUNK_DEPTH) as f32;
+        let cam_pos_chunkwise = (cam_pos / d).floor().as_ivec3();
         for (chunk_pos, chunk_tree) in chunks {
+            if chunk_pos.distance_squared(cam_pos_chunkwise) > DROP_DISTANCE_SQ {
+                self.generator.forget(chunk_pos);
+                continue;
+            }
+
             self.build_chunk(chunk_pos, chunk_tree, gd)?;
         }
+
+        self.drop_far_chunks(cam_pos);
 
         for chunk in &self.chunks {
             chunk.1.update(self, gd)?;
         }
+
         Ok(())
     }
 
@@ -99,12 +110,26 @@ impl VoxelWorld {
         Ok(())
     }
 
+    pub fn drop_far_chunks(&mut self, cam_pos: Vec3) {
+        let d = (1 << CHUNK_DEPTH) as f32;
+        let cam_pos_chunkwise = (cam_pos / d).floor().as_ivec3();
+
+        let generator = &mut self.generator;
+        self.chunks.retain(|key, _| {
+            let keep = key.distance_squared(cam_pos_chunkwise) <= DROP_DISTANCE_SQ;
+            if !keep { generator.forget(*key); }
+            keep
+        });
+    }
+
     pub fn select(&self, frustum: &Frustum, camera_pos: Vec3) -> (Vec<(u32, Ref<Mesh>)>, Vec<ObjectData>) {
         let meshes_objects = self.chunks.iter().filter_map(|(chunk_pos, chunk)| {
+            let mesh = if let Some(mesh) = transpose_ref_opt(chunk.mesh.borrow()) { mesh } else { return None };
             let chunk_pos_ws = Vec3::new(chunk_pos.x as f32, chunk_pos.y as f32, chunk_pos.z as f32) * chunk.tree.size() as f32;
             let mat = Mat4::from_translation(chunk_pos_ws);
-            if chunk_pos_ws.distance_squared(camera_pos) <= VIEW_DISTANCE_SQ && frustum.contains(chunk.mesh.borrow().aabb(), mat) {
-                Some((chunk.mesh.borrow(), ObjectData {
+
+            if chunk_pos_ws.distance_squared(camera_pos) <= VIEW_DISTANCE_SQ && frustum.contains(mesh.aabb(), mat) {
+                Some((mesh, ObjectData {
                     model: mat,
                     material_id: 0,
                     _pad: [0; 3],
@@ -183,7 +208,7 @@ impl VoxelWorld {
 #[derive(Debug)]
 pub struct Chunk {
     tree: VoxelTree,
-    mesh: RefCell<Mesh>,
+    mesh: RefCell<Option<Mesh>>,
     is_dirty: Cell<bool>,
 }
 
@@ -216,8 +241,13 @@ impl Chunk {
 }
 
 pub trait VoxelMesher: Debug + Send + Sync {
-    fn make_mesh(&self, tree: &VoxelTree, gd: &GraphicsDevice) -> anyhow::Result<Mesh>;
+    fn make_mesh(&self, tree: &VoxelTree, gd: &GraphicsDevice) -> anyhow::Result<Option<Mesh>>;
     fn make_pipelines(&self, rd: &mut Renderer) -> anyhow::Result<(PipelineId, PipelineId, PipelineId)>;
+}
+
+pub fn uvec3_to_index(uvec: UVec3, depth: usize) -> usize {
+    let d = depth as u32;
+    return (uvec.z * (d * d) + uvec.y * (d) + uvec.x) as usize;
 }
 
 pub fn index_to_uvec3(idx: usize, depth: usize) -> UVec3 {
@@ -244,4 +274,9 @@ pub fn index_to_ivec3(idx: isize, depth: isize) -> IVec3 {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct VoxelShadowPass {
     light_vp: Mat4
+}
+
+fn transpose_ref_opt<T>(x: Ref<'_, Option<T>>) -> Option<Ref<'_, T>> {
+    if x.is_none() { None }
+    else { Some(Ref::map(x, |x| x.as_ref().unwrap())) }
 }
