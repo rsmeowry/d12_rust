@@ -103,7 +103,7 @@ impl Scene for VoxelsScene {
 
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
-        let world = VoxelWorld::new(Arc::new(NaiveBoxes), GroundGenStrategy::new(0x63232), renderer, vec![0, 1, 2, 3, 4, 5, 6, 7], unsafe { materials_buf.GetGPUVirtualAddress() })?;
+        let world = VoxelWorld::new(Arc::new(DualContouring), GroundGenStrategy::new(0x63232), renderer, vec![0, 1, 2, 3, 4, 5, 6, 7], unsafe { materials_buf.GetGPUVirtualAddress() })?;
 
         Ok(Self {
             gbuffer,

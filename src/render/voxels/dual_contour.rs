@@ -102,7 +102,7 @@ impl VoxelMesher for DualContouring {
             let pos_quantized = (pos_chunkwise * 1024.).round().as_u16vec3();
             let vertex_index = vertices.len() as u32;
             vertices.push(VertexSmooth {
-                pos_material: [pos_quantized.x, pos_quantized.y, pos_quantized.z, (material - 1) as u16],
+                pos_material: [pos_quantized.x, pos_quantized.y, pos_quantized.z, material as u16],
                 normal: octahedral_encode_normal(normal).into(),
             });
             aabb_points.push(pos_chunkwise);
@@ -138,7 +138,7 @@ impl VoxelMesher for DualContouring {
             }
         }
 
-        if vertices.is_empty() {
+        if vertices.is_empty() || indices.is_empty() {
             return Ok(None)
         }
 

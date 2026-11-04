@@ -99,6 +99,9 @@ impl<S: GenerationStrategy + 'static> ChunkGenerator<S> {
                 let (tree, padded) = Self::build_chunk(strat, chunk_abs_pos, perlin, material_data);
                 let mesh = mesher.make_vertices_and_indices(&tree, &PaddedVolume { voxels: padded }).expect("Failed to build vertices and indices for a chunk mesh");
                 timings.report(begin.elapsed().as_secs_f32() * 1000.);
+                if tx.is_disconnected() {
+                    return;
+                }
                 tx.send((chunk_abs_pos, tree, mesh)).expect("Failed to send chunk generation result");
             });
         }
