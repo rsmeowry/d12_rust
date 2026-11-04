@@ -1,3 +1,5 @@
+#define PBR
+
 cbuffer Globals : register(b1) {
     float4x4 viewProj;
     float4x4 invViewProj;
@@ -34,8 +36,6 @@ struct Cascades {
     float3 camForward;
     uint enabled;
 };
-
-#define PBR
 
 Texture2D g_Tex2D[1024] : register(t0, space1);
 TextureCube g_TexCube[1024] : register(t0, space2);
@@ -74,3 +74,45 @@ float DitherInterleavedGradientNoise(float b, float2 fragcoord, const in float t
     return b + noise / 255.0;
 }
 
+float3 DecodeOctNormals(float2 v) {
+    float2 vf = float2(v.x, v.y);
+    float3 n = float3(vf.x, vf.y, 1.0 - abs(vf.x) - abs(vf.y));
+    float t = saturate(-n.z);
+    n.x += (n.x >= 0.0) ? -t : t;
+    n.y += (n.y >= 0.0) ? -t : t;
+    return normalize(n);
+}
+
+float4 TriplanarSample(Texture2D tex, SamplerState samplerState, float3 worldPos, float3 normal, float scale)
+{
+    float3 blendWeights = abs(normal);
+    blendWeights = normalize(max(blendWeights, 0.0001f)); // div by zero :(
+
+    blendWeights /= dot(blendWeights, float3(1, 1, 1));
+
+    float4 xPlane = tex.Sample(samplerState, worldPos.yz * scale);
+    float4 yPlane = tex.Sample(samplerState, worldPos.xz * scale);
+    float4 zPlane = tex.Sample(samplerState, worldPos.xy * scale);
+
+    // blending
+    float4 triplanarColor = xPlane * blendWeights.x + yPlane * blendWeights.y + zPlane * blendWeights.z;
+    return triplanarColor;
+}
+
+// https://bgolus.medium.com/normal-mapping-for-a-triplanar-shader-10bf39dca05a
+float3 TriplanarNormal(Texture2D tex, SamplerState s, float3 pos, float3 n, float scale) {
+    float3 w = pow(abs(n), 4);
+    w /= dot(w, 1);
+
+    float3 tnX = tex.Sample(s, pos.zy * scale).xyz * 2 - 1;
+    float3 tnY = tex.Sample(s, pos.xz * scale).xyz * 2 - 1;
+    float3 tnZ = tex.Sample(s, pos.xy * scale).xyz * 2 - 1;
+
+    // whiteout blend
+    tnX = float3(tnX.xy + n.zy, abs(tnX.z) * n.x);
+    tnY = float3(tnY.xy + n.xz, abs(tnY.z) * n.y);
+    tnZ = float3(tnZ.xy + n.xy, abs(tnZ.z) * n.z);
+
+    // swizzle each plane tangent space back to world
+    return normalize(tnX.zyx * w.x + tnY.xzy * w.y + tnZ.xyz * w.z);
+}

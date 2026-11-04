@@ -1,0 +1,74 @@
+﻿#include "../../lib/Core.hlsl"
+
+struct ObjectData {
+    float4x4 model;
+    int3 chunkPos;
+    uint _pad;
+};
+
+struct VoxelMaterial {
+    uint albedoTex;
+    uint normalTex;
+    uint metalTex;
+    uint aoTex;
+    uint _texPad[4];
+
+    float metallic;
+    float roughness;
+    uint _pad[14];
+};
+
+cbuffer DrawConstants : register(b0) { uint drawIndex; }
+StructuredBuffer<ObjectData> g_Objects : register(t1);
+StructuredBuffer<VoxelMaterial> g_Materials : register(t2);
+SamplerState PointWrap : register(s5);
+
+struct Attributes {
+    uint4 posMaterial : POSITION_MATERIAL;
+    float2 normalOct : NORMAL;
+};
+
+struct Varyings {
+    float4 pos : SV_Position;
+    float3 posW : POSITION;
+    float3 normalW : NORMAL;
+    nointerpolation uint material : MATERIAL;
+};
+
+struct GBufferOut {
+    float4 albedo : SV_Target0;
+    float4 normal : SV_Target1;
+    float4 material : SV_Target2;
+    float4 emissive : SV_Target3;
+};
+
+Varyings vert(Attributes i) {
+    ObjectData obj = g_Objects[drawIndex];
+    float3 posPm = float3(i.posMaterial.xyz) / 1024.;
+    float4 posW = mul(obj.model, float4(posPm, 1.0));
+    Varyings o;
+    o.pos = mul(viewProj, posW);
+    o.normalW = mul((float3x3) obj.model, DecodeOctNormals(i.normalOct));
+    o.posW = mul((float3x3) obj.model, posPm);
+    o.material = i.posMaterial.w;
+    return o;
+}
+
+GBufferOut frag(Varyings i) {
+    VoxelMaterial mat = g_Materials[i.material];
+    float4 albedo = TriplanarSample(g_Tex2D[mat.albedoTex], PointWrap, i.posW, i.normalW, 1.);
+
+//    float3x3 tbnMat = float3x3(normalize(i.tangentW), normalize(i.binormalW), normalize(i.normalW));
+    float3 texNormal = TriplanarNormal(g_Tex2D[mat.normalTex], PointWrap, i.posW, i.normalW, 1.);
+//    float3 normal = normalize(mul(texNormal.xyz, tbnMat));
+
+    float4 roughnessMetallic = TriplanarSample(g_Tex2D[mat.metalTex], PointWrap, i.posW, i.normalW, 1.);
+    float4 occlusion = TriplanarSample(g_Tex2D[mat.aoTex], PointWrap, i.posW, i.normalW, 1.);
+
+    GBufferOut o;
+    o.albedo = float4(albedo.rgb, 1);
+    o.normal = float4(texNormal * 0.5 + 0.5, 0);
+    o.material = float4(mat.roughness, roughnessMetallic.r * mat.metallic, 1., 0);
+    o.emissive = 0;
+    return o;
+}

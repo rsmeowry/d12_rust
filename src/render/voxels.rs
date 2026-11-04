@@ -25,6 +25,7 @@ use crate::wrappers::graphics::GraphicsDevice;
 pub mod svo;
 pub mod naive;
 pub mod generate;
+pub mod dual_contour;
 
 pub const NOISE_SCALE: f64 = 12.5;
 pub const CHUNK_DEPTH: usize = 5;
@@ -155,8 +156,8 @@ impl VoxelWorld {
             if chunk_pos_ws.distance_squared(camera_pos) <= VIEW_DISTANCE_SQ && frustum.contains(mesh.aabb(), mat) {
                 Some((mesh, ObjectData {
                     model: mat,
-                    material_id: 0,
-                    _pad: [0; 3],
+                    material_id: chunk_pos.x as u32,
+                    _pad: [chunk_pos.y as u32, chunk_pos.z as u32, 0],
                 }))
             } else {
                 None
@@ -304,11 +305,13 @@ pub struct VoxelMeshData {
     pub aabb: AABB,
 }
 
+#[inline]
 pub fn uvec3_to_index(uvec: UVec3, depth: usize) -> usize {
     let d = depth as u32;
     return (uvec.z * (d * d) + uvec.y * (d) + uvec.x) as usize;
 }
 
+#[inline]
 pub fn index_to_uvec3(idx: usize, depth: usize) -> UVec3 {
     // index = z * (depth ^ 2) + y * (depth) + x
     // so reverse is
@@ -319,6 +322,13 @@ pub fn index_to_uvec3(idx: usize, depth: usize) -> UVec3 {
     UVec3::new(x as u32, y as u32, z as u32)
 }
 
+#[inline]
+pub fn ivec3_to_index(ivec: IVec3, depth: isize) -> usize {
+    let d = depth as i32;
+    (ivec.z * (d * d) + ivec.y * (d) + ivec.x) as usize
+}
+
+#[inline]
 pub fn index_to_ivec3(idx: isize, depth: isize) -> IVec3 {
     // index = z * (depth ^ 2) + y * (depth) + x
     // so reverse is

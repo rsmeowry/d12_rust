@@ -10,7 +10,7 @@ use crate::render::voxels::{index_to_uvec3, uvec3_to_index, Chunk, PaddedVolume,
 use crate::render::voxels::svo::{Voxel, VoxelTree};
 use crate::time::Timings;
 
-pub const MAX_CHUNK_MESHES_PER_FRAME: usize = 8;
+pub const MAX_CHUNK_MESHES_PER_FRAME: usize = 16;
 pub const D_CHUNK_GEN: i32 = 8;
 const D_CHUNK_GEN_SQ: i32 = D_CHUNK_GEN * D_CHUNK_GEN;
 

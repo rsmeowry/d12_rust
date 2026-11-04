@@ -33,6 +33,10 @@ vertex_struct!(VertexCube {
     material: u32 as MATERIAL;
 });
 
+vertex_struct!(VertexSmooth {
+    pos_material: [u16; 4] as POSITION_MATERIAL;
+    normal: [i16; 2] as NORMAL; // octahedral encoding
+});
 
 pub fn aabb_from_vertices3(vertices: &[Vertex3]) -> AABB {
     AABB::from_points(&vertices.iter().map(|it| Vec3::from(it.pos)).collect::<Vec<_>>())

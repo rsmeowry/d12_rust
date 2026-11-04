@@ -1,8 +1,8 @@
-use glam::{Vec2, Vec3, Vec4};
+use glam::{I16Vec2, IVec2, UVec2, Vec2, Vec2Swizzles, Vec3, Vec3Swizzles, Vec4};
 use windows::Win32::Graphics::Direct3D12::{
     D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, D3D12_INPUT_ELEMENT_DESC,
 };
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32_UINT};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32_UINT, DXGI_FORMAT_R32G32B32_UINT, DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R16G16_SINT, DXGI_FORMAT_R16G16B16A16_UINT, DXGI_FORMAT_R16G16_SNORM};
 use windows::core::PCSTR;
 
 pub trait Vertex: bytemuck::Pod + bytemuck::Zeroable + Copy {
@@ -18,6 +18,15 @@ pub trait VertexAttr {
 }
 impl VertexAttr for u32 {
     const FORMAT: DXGI_FORMAT = DXGI_FORMAT_R32_UINT;
+}
+impl VertexAttr for [u16; 4] {
+    const FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16G16B16A16_UINT;
+}
+impl VertexAttr for u16 {
+    const FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16_UINT;
+}
+impl VertexAttr for [i16; 2] {
+    const FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16G16_SNORM;
 }
 impl VertexAttr for [f32; 2] {
     const FORMAT: DXGI_FORMAT = DXGI_FORMAT_R32G32_FLOAT;
@@ -100,4 +109,26 @@ mod tests {
             DXGI_FORMAT_R32G32B32A32_FLOAT
         );
     }
+}
+
+// https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
+pub fn octahedral_encode_normal(normal: Vec3) -> I16Vec2 {
+    let mut v = normal / (normal.x.abs() + normal.y.abs() + normal.z.abs());
+    if v.z < 0. {
+        let oct_wrap = oct_wrap(v.xy());
+        v.x = oct_wrap.x;
+        v.y = oct_wrap.y;
+    }
+
+    let v = v.xy();
+    let n = (v * i16::MAX as f32).round();
+    I16Vec2::new(n.x as i16, n.y as i16)
+}
+
+fn oct_wrap(v: Vec2) -> Vec2 {
+    let sign = Vec2::new(
+        if v.x >= 0.0 { 1.0 } else { -1.0 },
+        if v.y >= 0.0 { 1.0 } else { -1.0 },
+    );
+    (1.0 - v.yx().abs()) * sign
 }

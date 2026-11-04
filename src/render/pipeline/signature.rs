@@ -226,7 +226,8 @@ impl RootSignature {
                 ComparisonFunc: D3D12_COMPARISON_FUNC_GREATER_EQUAL,
                 BorderColor: D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK,
                 ..static_sampler(4, D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER)
-            }
+            },
+            static_sampler(5, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_WRAP),
         ];
         let rs_desc = D3D12_ROOT_SIGNATURE_DESC {
             NumParameters: params.len() as u32,

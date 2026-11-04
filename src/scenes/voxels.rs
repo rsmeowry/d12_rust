@@ -22,6 +22,7 @@ use std::ops::Div;
 use std::sync::Arc;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::texture::{MipCount, Texture};
+use crate::render::voxels::dual_contour::DualContouring;
 
 #[derive(Debug)]
 pub struct VoxelsScene {
@@ -71,7 +72,7 @@ impl Scene for VoxelsScene {
         let mut batch = renderer.gd.begin_upload()?;
         let mut materials: Vec<GpuMaterial> = vec![];
         let mut voxel_textures: Vec<Texture> = vec![];
-        for (tex, metal, rough) in [("dirt", 0.2, 1.0), ("diamond_block", 0.1, 0.2)] {
+        for (tex, metal, rough) in [("diamond_ore", 0.2, 0.1), ("stone", 0.2, 0.9), ("dirt", 0.2, 1.0), ("diamond_block", 0.1, 0.2)] {
             // todo: move to atlases
             let diffuse = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_diffuse.png"))?, true, MipCount::All, &format!("{tex}_diffuse"))?;
             let normal = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_normal.png"))?, false, MipCount::All, &format!("{tex}_normal"))?;
@@ -92,7 +93,7 @@ impl Scene for VoxelsScene {
 
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
-        let mut world = VoxelWorld::new(Arc::new(NaiveBoxes), renderer, vec![0; 8], unsafe { materials_buf.GetGPUVirtualAddress() })?;
+        let mut world = VoxelWorld::new(Arc::new(DualContouring), renderer, vec![0; 8], unsafe { materials_buf.GetGPUVirtualAddress() })?;
 
         Ok(Self {
             gbuffer,
