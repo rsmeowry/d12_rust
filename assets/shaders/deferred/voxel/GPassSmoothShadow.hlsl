@@ -6,6 +6,10 @@ struct ObjectData {
     uint _pad;
 };
 
+cbuffer ShadowPass : register(b2) {
+    float4x4 lightViewProj;
+}
+
 cbuffer DrawConstants : register(b0) { uint drawIndex; }
 StructuredBuffer<ObjectData> g_Objects : register(t1);
 
@@ -18,5 +22,5 @@ float4 vert(Attributes i): SV_Position {
     ObjectData obj = g_Objects[drawIndex];
     float3 posPm = float3(i.posMaterial.xyz) / 1024.;
     float4 posW = mul(obj.model, float4(posPm, 1.0));
-    return mul(viewProj, posW);
+    return mul(lightViewProj, posW);
 }
