@@ -60,35 +60,40 @@ impl ChunkGenerator {
         let cam_pos_chunkwise = cam_pos.div(chunk_size).round();
         let cam_pos_chunkwise = IVec3::new(cam_pos_chunkwise.x as i32, cam_pos_chunkwise.y as i32, cam_pos_chunkwise.z as i32);
 
-        for dx in -D_CHUNK_GEN..=D_CHUNK_GEN {
-            for dy in -D_CHUNK_GEN..=D_CHUNK_GEN {
-                for dz in -D_CHUNK_GEN..=D_CHUNK_GEN {
-                    let offset = IVec3::new(dx, dy, dz);
-                    let chunk_abs_pos = cam_pos_chunkwise + offset;
-                    if self.generated.contains(&chunk_abs_pos) {
-                        continue;
-                    }
+        let mut offsets = (-D_CHUNK_GEN..=D_CHUNK_GEN).flat_map(|dx|
+            (-D_CHUNK_GEN..=D_CHUNK_GEN).flat_map(move |dy|
+                (-D_CHUNK_GEN..=D_CHUNK_GEN).map(move |dz| {
+                    IVec3::new(dx, dy, dz)
+                })
+            )
+        ).collect::<Vec<IVec3>>();
+        offsets.sort_by(|a, b| a.distance_squared(cam_pos_chunkwise).partial_cmp(&b.distance_squared(cam_pos_chunkwise)).unwrap());
 
-                    if offset.length_squared() > D_CHUNK_GEN_SQ {
-                        continue;
-                    }
-
-                    self.generated.insert(chunk_abs_pos);
-
-                    let tx = self.tx.clone();
-                    let perlin = self.perlin.clone();
-                    let mesher = mesher.clone();
-                    let timings = self.timings.clone();
-                    rayon::spawn(move || {
-                        let begin = Instant::now();
-                        let (tree, padded) = Self::build_chunk(chunk_abs_pos, perlin, material_data);
-                        let mesh = mesher.make_vertices_and_indices(&tree, &PaddedVolume { voxels: padded }).expect("Failed to build vertices and indices for a chunk mesh");
-                        timings.report(begin.elapsed().as_secs_f32() * 1000.);
-                        tx.send((chunk_abs_pos, tree, mesh)).expect("Failed to send chunk generation result");
-                    });
-                }
+        for offset in offsets {
+            let chunk_abs_pos = cam_pos_chunkwise + offset;
+            if self.generated.contains(&chunk_abs_pos) {
+                continue;
             }
+
+            if offset.length_squared() > D_CHUNK_GEN_SQ {
+                continue;
+            }
+
+            self.generated.insert(chunk_abs_pos);
+
+            let tx = self.tx.clone();
+            let perlin = self.perlin.clone();
+            let mesher = mesher.clone();
+            let timings = self.timings.clone();
+            rayon::spawn(move || {
+                let begin = Instant::now();
+                let (tree, padded) = Self::build_chunk(chunk_abs_pos, perlin, material_data);
+                let mesh = mesher.make_vertices_and_indices(&tree, &PaddedVolume { voxels: padded }).expect("Failed to build vertices and indices for a chunk mesh");
+                timings.report(begin.elapsed().as_secs_f32() * 1000.);
+                tx.send((chunk_abs_pos, tree, mesh)).expect("Failed to send chunk generation result");
+            });
         }
+
     }
 
     fn build_chunk(chunk_pos: IVec3, perlin: Perlin, material_data: [u64; 8]) -> (VoxelTree, Vec<Voxel>) {

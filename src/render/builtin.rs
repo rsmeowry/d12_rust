@@ -30,7 +30,7 @@ vertex_struct!(VertexCube {
     norm: [f32; 3] as NORMAL;
     tangent: [f32; 4] as TANGENT;
     uv: [f32; 2] as TEXCOORD;
-    material: u32 as MATERIAL;
+    material_ao: [u16; 2] as MATERIAL_AO;
 });
 
 vertex_struct!(VertexSmooth {

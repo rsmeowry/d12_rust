@@ -17,7 +17,7 @@ struct Attributes {
     float3 normal : NORMAL;
     float4 tangent : TANGENT;
     float2 uv : TEXCOORD;
-    uint material : MATERIAL;
+    uint2 materialAo : MATERIAL_AO;
 };
 
 float4 vert(Attributes i) : SV_Position {

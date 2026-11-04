@@ -28,7 +28,7 @@ struct Attributes {
     float3 normal : NORMAL;
     float4 tangent : TANGENT;
     float2 uv : TEXCOORD;
-    uint material : MATERIAL;
+    uint2 materialAo : MATERIAL_AO;
 };
 
 struct Varyings {
@@ -38,6 +38,7 @@ struct Varyings {
     float3 tangentW : TANGENT;
     float3 binormalW : BINORMAL;
     float2 uv : TEXCOORD;
+    float ao : AO;
     nointerpolation uint material : MATERIAL;
 };
 
@@ -56,10 +57,12 @@ Varyings vert(Attributes i) {
     o.normalW = mul((float3x3) obj.model, i.normal);
     o.posW = mul((float3x3) obj.model, i.pos);
     o.tangentW = mul((float3x3) obj.model, i.tangent);
-    float3 binormal = cross(i.normal, i.tangent.xyz) * i.tangent.w;
+    // cube UVs have v=0 at the bottom, D3D samples v=0 from the top row: flip v, and the binormal with it
+    float3 binormal = -cross(i.normal, i.tangent.xyz) * i.tangent.w;
     o.binormalW = mul((float3x3) obj.model, binormal);
-    o.uv = i.uv;
-    o.material = i.material;
+    o.uv = float2(i.uv.x, 1.0 - i.uv.y);
+    o.material = i.materialAo.x;
+    o.ao = i.materialAo.y / 3.;
     return o;
 }
 
@@ -75,11 +78,12 @@ GBufferOut frag(Varyings i) {
     float metallic = g_Tex2D[mat.metalTex].Sample(PointClamp, i.uv).r;
     float roughness = g_Tex2D[mat.roughnessTex].Sample(PointClamp, i.uv).r;
     float occlusion = g_Tex2D[mat.aoTex].Sample(PointClamp, i.uv).r;
+    float aoVal = lerp(0.35, 1.0, i.ao);
 
     GBufferOut o;
-    o.albedo = float4(albedo.rgb, 1);
+    o.albedo = float4(albedo.rgb * aoVal, 1);
     o.normal = float4(normal * 0.5 + 0.5, 0);
-    o.material = float4(roughness * mat.roughness, metallic * mat.metallic, occlusion, 0);
+    o.material = float4(roughness * mat.roughness, metallic * mat.metallic, occlusion * aoVal, 0);
     o.emissive = 0;
     return o;
 }
