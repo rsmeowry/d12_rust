@@ -1,4 +1,7 @@
-﻿use std::cell::Cell;
+﻿pub mod ground;
+
+use std::cell::Cell;
+use std::fmt::Debug;
 use std::ops::Div;
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -15,18 +18,22 @@ pub const MAX_CHUNK_MESHES_PER_FRAME: usize = 16;
 pub const D_CHUNK_GEN: i32 = 8;
 const D_CHUNK_GEN_SQ: i32 = D_CHUNK_GEN * D_CHUNK_GEN;
 
+pub const PAD_LO: usize = 1;
+pub const PADDED: usize = (1 << CHUNK_DEPTH) + 4;
+
 #[derive(Debug)]
-pub struct ChunkGenerator {
+pub struct ChunkGenerator<S: GenerationStrategy> {
     generated: FxHashSet<IVec3>,
     tx: flume::Sender<(IVec3, VoxelTree, Option<VoxelMeshData>)>,
     rx: flume::Receiver<(IVec3, VoxelTree, Option<VoxelMeshData>)>,
     is_occupied: Cell<bool>,
     perlin: Perlin,
     timings: Arc<Timings>,
+    strategy: Arc<S>
 }
 
-impl ChunkGenerator {
-    pub fn new() -> Self {
+impl<S: GenerationStrategy + 'static> ChunkGenerator<S> {
+    pub fn new(strategy: S) -> Self {
         let (tx, rx) = flume::unbounded::<(IVec3, VoxelTree, Option<VoxelMeshData>)>();
 
         Self {
@@ -36,6 +43,7 @@ impl ChunkGenerator {
             is_occupied: Cell::new(false),
             perlin: Perlin::new(0xB217E),
             timings: Arc::new(Timings::new()),
+            strategy: Arc::new(strategy)
         }
     }
 
@@ -85,9 +93,10 @@ impl ChunkGenerator {
             let perlin = self.perlin.clone();
             let mesher = mesher.clone();
             let timings = self.timings.clone();
+            let strat = self.strategy.clone();
             rayon::spawn(move || {
                 let begin = Instant::now();
-                let (tree, padded) = Self::build_chunk(chunk_abs_pos, perlin, material_data);
+                let (tree, padded) = Self::build_chunk(strat, chunk_abs_pos, perlin, material_data);
                 let mesh = mesher.make_vertices_and_indices(&tree, &PaddedVolume { voxels: padded }).expect("Failed to build vertices and indices for a chunk mesh");
                 timings.report(begin.elapsed().as_secs_f32() * 1000.);
                 tx.send((chunk_abs_pos, tree, mesh)).expect("Failed to send chunk generation result");
@@ -96,11 +105,11 @@ impl ChunkGenerator {
 
     }
 
-    fn build_chunk(chunk_pos: IVec3, perlin: Perlin, material_data: [u64; 8]) -> (VoxelTree, Vec<Voxel>) {
+    fn build_chunk(strategy: Arc<S>, chunk_pos: IVec3, perlin: Perlin, material_data: [u64; 8]) -> (VoxelTree, Vec<Voxel>) {
         let n = 1 << CHUNK_DEPTH;
         let origin = chunk_pos * n as i32 - IVec3::splat(PAD_LO as i32);
         let mut padded = vec![Voxel::AIR; PADDED * PADDED * PADDED];
-        generate_ground(origin, PADDED, &mut padded, &perlin);
+        strategy.generate_chunk(origin, PADDED, &mut padded);
 
         let mut inner = vec![Voxel::AIR; n * n * n];
         for z in 0..n {
@@ -115,14 +124,9 @@ impl ChunkGenerator {
     }
 }
 
-impl Default for ChunkGenerator {
-    fn default() -> Self {
-        Self::new()
-    }
+pub trait GenerationStrategy: Debug + Send + Sync {
+    fn generate_chunk(&self, origin: IVec3, size: usize, out: &mut [Voxel]);
 }
-
-pub const PAD_LO: usize = 1;
-pub const PADDED: usize = (1 << CHUNK_DEPTH) + 4;
 
 fn generate_ground(origin: IVec3, size: usize, out: &mut [Voxel], perlin: &Perlin) {
     const MAX_HEIGHT: f32 = 32.;

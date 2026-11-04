@@ -1,5 +1,5 @@
 ﻿use glam::{IVec3, Mat3, Vec2, Vec3};
-use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_BACK};
+use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_BACK, D3D12_CULL_MODE_NONE};
 use crate::render::builtin::{VertexCube, VertexSmooth};
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::perf::frustum::AABB;
@@ -161,7 +161,7 @@ impl VoxelMesher for DualContouring {
             input: VertexSmooth::LAYOUT,
             rts: vec![],
             depth: Some(Depth { format: GraphicsDevice::DS_FORMAT, func: D3D12_COMPARISON_FUNC_GREATER_EQUAL, write: true }),
-            cull: D3D12_CULL_MODE_BACK,
+            cull: D3D12_CULL_MODE_NONE,
             depth_bias: -20,
             slope_bias: -1.0,
             depth_clip: false,

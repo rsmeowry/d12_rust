@@ -16,7 +16,7 @@ use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::texture::Texture;
-use crate::render::voxels::generate::{ChunkGenerator, MAX_CHUNK_MESHES_PER_FRAME, PADDED, PAD_LO};
+use crate::render::voxels::generate::{ChunkGenerator, GenerationStrategy, MAX_CHUNK_MESHES_PER_FRAME, PADDED, PAD_LO};
 use crate::render::voxels::svo::{Voxel, VoxelTree};
 use crate::time::Timings;
 use crate::wrappers::graphics::batching::UploadBatch;
@@ -36,7 +36,7 @@ pub const DROP_DISTANCE: i32 = 12; // if chunk is N chunks away, drop it
 pub const DROP_DISTANCE_SQ: i32 = DROP_DISTANCE * DROP_DISTANCE;
 
 #[derive(Debug)]
-pub struct VoxelWorld {
+pub struct VoxelWorld<S: GenerationStrategy> {
     chunks: FxHashMap<IVec3, Chunk>,
     mesher: Arc<dyn VoxelMesher>,
     pso: PipelineId,
@@ -44,11 +44,11 @@ pub struct VoxelWorld {
     pso_shadows: PipelineId,
     material_data: [u64; 8],
     materials_va: u64,
-    generator: ChunkGenerator,
+    generator: ChunkGenerator<S>,
 }
 
-impl VoxelWorld {
-    pub fn new(mesher: Arc<dyn VoxelMesher>, rd: &mut Renderer, mut material_data: Vec<u64>, materials_va: u64) -> anyhow::Result<Self> {
+impl<S: GenerationStrategy + 'static> VoxelWorld<S> {
+    pub fn new(mesher: Arc<dyn VoxelMesher>, strategy: S, rd: &mut Renderer, mut material_data: Vec<u64>, materials_va: u64) -> anyhow::Result<Self> {
         let (pso, pso_wireframe, pso_shadows) = mesher.make_pipelines(rd)?;
         material_data.resize(8, 0);
         Ok(Self {
@@ -59,7 +59,7 @@ impl VoxelWorld {
             pso_shadows,
             material_data: std::array::from_fn(|i| material_data[i]),
             materials_va,
-            generator: ChunkGenerator::new(),
+            generator: ChunkGenerator::new(strategy),
         })
     }
 
@@ -67,11 +67,11 @@ impl VoxelWorld {
         self.material_data
     }
 
-    pub fn generator_mut(&mut self) -> &mut ChunkGenerator {
+    pub fn generator_mut(&mut self) -> &mut ChunkGenerator<S> {
         &mut self.generator
     }
 
-    pub fn generator(&self) -> &ChunkGenerator {
+    pub fn generator(&self) -> &ChunkGenerator<S> {
         &self.generator
     }
 
@@ -239,7 +239,7 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn new(pos: IVec3, tree: VoxelTree, mesh_data: Option<VoxelMeshData>, world: &VoxelWorld, batch: &mut UploadBatch) -> anyhow::Result<Self> {
+    pub fn new<S: GenerationStrategy + 'static>(pos: IVec3, tree: VoxelTree, mesh_data: Option<VoxelMeshData>, world: &VoxelWorld<S>, batch: &mut UploadBatch) -> anyhow::Result<Self> {
         let initial_mesh = mesh_data.map(|it| world.mesher.make_mesh(it, batch)).transpose()?;
         Ok(Self {
             pos,
@@ -249,7 +249,7 @@ impl Chunk {
         })
     }
 
-    pub fn update(&self, world: &VoxelWorld, batch: Option<&mut UploadBatch>) -> anyhow::Result<()> {
+    pub fn update<S: GenerationStrategy + 'static>(&self, world: &VoxelWorld<S>, batch: Option<&mut UploadBatch>) -> anyhow::Result<()> {
         if self.is_dirty.get() {
             let vol = self.padded_volume(world);
             let mesh_data = world.mesher.make_vertices_and_indices(&self.tree, &vol)?;
@@ -268,7 +268,7 @@ impl Chunk {
         self.is_dirty.set(true);
     }
 
-    fn padded_volume(&self, world: &VoxelWorld) -> PaddedVolume {
+    fn padded_volume<S: GenerationStrategy + 'static>(&self, world: &VoxelWorld<S>) -> PaddedVolume {
         let n = self.tree.size() as i32;
         let mut voxels = vec![Voxel::AIR; PADDED * PADDED * PADDED];
 

@@ -23,6 +23,7 @@ use std::sync::Arc;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::texture::{MipCount, Texture};
 use crate::render::voxels::dual_contour::DualContouring;
+use crate::render::voxels::generate::ground::GroundGenStrategy;
 
 pub const VOXEL_SCENE_MAT_ORE: u8 = 0;
 pub const VOXEL_SCENE_MAT_STONE: u8 = 1;
@@ -34,7 +35,7 @@ pub const VOXEL_SCENE_MAT_SNOW: u8 = 5;
 #[derive(Debug)]
 pub struct VoxelsScene {
     gbuffer: GBuffer,
-    world: VoxelWorld,
+    world: VoxelWorld<GroundGenStrategy>,
     materials_buf: ID3D12Resource,
     voxel_textures: Vec<Texture>,
 
@@ -71,7 +72,7 @@ impl Scene for VoxelsScene {
                                                 "assets/textures/sky/sky_specular.dds",
                                                 "assets/textures/pbr/ibl_brdf_lut.dds"
         )?;
-        let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512, SHADOW_DISTANCE * 3., SHADOW_EXTEND * 2.)?;
+        let shadows = ShadowMap::new(renderer, 1024, 4096, 512, 512, SHADOW_DISTANCE * 3., SHADOW_EXTEND * 2.)?;
         lighting.save_local_shadows(&shadows);
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
@@ -102,7 +103,7 @@ impl Scene for VoxelsScene {
 
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
-        let world = VoxelWorld::new(Arc::new(NaiveBoxes), renderer, vec![0, 1, 2, 3, 4, 5, 6, 7], unsafe { materials_buf.GetGPUVirtualAddress() })?;
+        let world = VoxelWorld::new(Arc::new(NaiveBoxes), GroundGenStrategy::new(0x63232), renderer, vec![0, 1, 2, 3, 4, 5, 6, 7], unsafe { materials_buf.GetGPUVirtualAddress() })?;
 
         Ok(Self {
             gbuffer,

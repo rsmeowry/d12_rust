@@ -39,7 +39,7 @@ impl VoxelMesher for NaiveBoxes {
             }
 
             let neighbors = [IVec3::Z, -IVec3::Z, IVec3::Y, -IVec3::Y, IVec3::X, -IVec3::X].map(|o| solid_at(&flattened, d, pos + o).density);
-            cube(&mut total_vertices, &mut total_indices, pos, real_pos.as_vec3(),(flattened[i].material - 1) as u32, neighbors, &solid);
+            cube(&mut total_vertices, &mut total_indices, pos, real_pos.as_vec3(), (flattened[i].material) as u32, neighbors, &solid);
         }
 
         if total_vertices.is_empty() {
@@ -69,7 +69,7 @@ impl VoxelMesher for NaiveBoxes {
             input: VertexCube::LAYOUT,
             rts: vec![],
             depth: Some(Depth { format: GraphicsDevice::DS_FORMAT, func: D3D12_COMPARISON_FUNC_GREATER_EQUAL, write: true }),
-            cull: D3D12_CULL_MODE_BACK,
+            cull: D3D12_CULL_MODE_NONE,
             depth_bias: -20,
             slope_bias: -1.0,
             depth_clip: false,
