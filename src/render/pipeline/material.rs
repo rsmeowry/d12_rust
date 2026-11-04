@@ -53,6 +53,7 @@ pub enum MaterialParams {
         normal_tex: u32,
         metal_tex: u32,
         occlusion_tex: u32,
+        roughness_tex: u32,
         metallic: f32,
         roughness: f32,
     }
@@ -111,9 +112,9 @@ impl MaterialParams {
                     unique_params: [0.; 16],
                 }
             }
-            MaterialParams::Voxel { albedo_tex, normal_tex, metal_tex, occlusion_tex, metallic, roughness } => {
+            MaterialParams::Voxel { albedo_tex, normal_tex, metal_tex, occlusion_tex, roughness_tex, metallic, roughness } => {
                 GpuMaterial {
-                    textures: [albedo_tex, normal_tex, metal_tex, occlusion_tex, 0, 0, 0, 0],
+                    textures: [albedo_tex, normal_tex, metal_tex, occlusion_tex, roughness_tex, 0, 0, 0],
                     unique_params: [
                         metallic, roughness, 0., 0.,
                         0., 0., 0., 0.,            

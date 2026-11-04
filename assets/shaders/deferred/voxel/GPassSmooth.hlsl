@@ -11,7 +11,8 @@ struct VoxelMaterial {
     uint normalTex;
     uint metalTex;
     uint aoTex;
-    uint _texPad[4];
+    uint roughnessTex;
+    uint3 _texPad;
 
     float metallic;
     float roughness;
@@ -62,13 +63,14 @@ GBufferOut frag(Varyings i) {
     float3 texNormal = TriplanarNormal(g_Tex2D[mat.normalTex], PointWrap, i.posW, i.normalW, 1.);
 //    float3 normal = normalize(mul(texNormal.xyz, tbnMat));
 
-    float4 roughnessMetallic = TriplanarSample(g_Tex2D[mat.metalTex], PointWrap, i.posW, i.normalW, 1.);
-    float4 occlusion = TriplanarSample(g_Tex2D[mat.aoTex], PointWrap, i.posW, i.normalW, 1.);
+    float metallic = TriplanarSample(g_Tex2D[mat.metalTex], PointWrap, i.posW, i.normalW, 1.).r;
+    float roughness = TriplanarSample(g_Tex2D[mat.roughnessTex], PointWrap, i.posW, i.normalW, 1.).r;
+    float occlusion = TriplanarSample(g_Tex2D[mat.aoTex], PointWrap, i.posW, i.normalW, 1.).r;
 
     GBufferOut o;
     o.albedo = float4(albedo.rgb, 1);
     o.normal = float4(texNormal * 0.5 + 0.5, 0);
-    o.material = float4(mat.roughness, roughnessMetallic.r * mat.metallic, 1., 0);
+    o.material = float4(roughness * mat.roughness, metallic * mat.metallic, occlusion, 0);
     o.emissive = 0;
     return o;
 }

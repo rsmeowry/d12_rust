@@ -24,6 +24,13 @@ use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_
 use crate::render::texture::{MipCount, Texture};
 use crate::render::voxels::dual_contour::DualContouring;
 
+pub const VOXEL_SCENE_MAT_ORE: u8 = 0;
+pub const VOXEL_SCENE_MAT_STONE: u8 = 1;
+pub const VOXEL_SCENE_MAT_DIRT: u8 = 2;
+pub const VOXEL_SCENE_MAT_DIAMOND_BLOCK: u8 = 3;
+pub const VOXEL_SCENE_MAT_MOSS: u8 = 4;
+pub const VOXEL_SCENE_MAT_SNOW: u8 = 5;
+
 #[derive(Debug)]
 pub struct VoxelsScene {
     gbuffer: GBuffer,
@@ -72,28 +79,30 @@ impl Scene for VoxelsScene {
         let mut batch = renderer.gd.begin_upload()?;
         let mut materials: Vec<GpuMaterial> = vec![];
         let mut voxel_textures: Vec<Texture> = vec![];
-        for (tex, metal, rough) in [("diamond_ore", 0.2, 0.1), ("stone", 0.2, 0.9), ("dirt", 0.2, 1.0), ("diamond_block", 0.1, 0.2)] {
+        for (tex, metal, rough) in [("diamond_ore", 0.2, 0.1), ("stone", 0.2, 0.9), ("dirt", 0.2, 1.0), ("diamond_block", 0.1, 0.2), ("moss", 0.25, 1.0), ("snow", 0.3, 0.8)] {
             // todo: move to atlases
             let diffuse = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_diffuse.png"))?, true, MipCount::All, &format!("{tex}_diffuse"))?;
             let normal = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_normal.png"))?, false, MipCount::All, &format!("{tex}_normal"))?;
             let metallic = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_metallic.png"))?, false, MipCount::All, &format!("{tex}_metal"))?;
+            let roughness = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_roughness.png"))?, false, MipCount::All, &format!("{tex}_rough"))?;
             let ao = Texture::load(&mut batch, &std::fs::read(format!("assets/textures/voxels/{tex}/{tex}_ao.png"))?, false, MipCount::All, &format!("{tex}_ao"))?;
             materials.push(MaterialParams::Voxel {
                 albedo_tex: diffuse.srv_ptr(),
                 normal_tex: normal.srv_ptr(),
                 metal_tex: metallic.srv_ptr(),
                 occlusion_tex: ao.srv_ptr(),
+                roughness_tex: roughness.srv_ptr(),
                 metallic: metal,
                 roughness: rough,
             }.to_gpu_material());
-            voxel_textures.extend([diffuse, normal, metallic, ao]);
+            voxel_textures.extend([diffuse, normal, metallic, ao, roughness]);
         }
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
         batch.finish()?;
 
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
-        let mut world = VoxelWorld::new(Arc::new(DualContouring), renderer, vec![0; 8], unsafe { materials_buf.GetGPUVirtualAddress() })?;
+        let world = VoxelWorld::new(Arc::new(NaiveBoxes), renderer, vec![0, 1, 2, 3, 4, 5, 6, 7], unsafe { materials_buf.GetGPUVirtualAddress() })?;
 
         Ok(Self {
             gbuffer,

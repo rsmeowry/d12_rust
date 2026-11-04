@@ -3,11 +3,12 @@ use std::ops::Div;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Instant;
-use glam::{FloatExt, IVec2, IVec3, UVec3, Vec3, Vec3Swizzles};
+use glam::{DVec3, FloatExt, IVec2, IVec3, UVec3, Vec3, Vec3Swizzles};
 use noise::{NoiseFn, Perlin};
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use crate::render::voxels::{index_to_uvec3, uvec3_to_index, Chunk, PaddedVolume, VoxelMeshData, VoxelMesher, VoxelWorld, CHUNK_DEPTH, CHUNK_FLAT_ARR_DEPTH, NOISE_SCALE};
 use crate::render::voxels::svo::{Voxel, VoxelTree};
+use crate::scenes::voxels::{VOXEL_SCENE_MAT_DIRT, VOXEL_SCENE_MAT_MOSS, VOXEL_SCENE_MAT_ORE, VOXEL_SCENE_MAT_SNOW, VOXEL_SCENE_MAT_STONE};
 use crate::time::Timings;
 
 pub const MAX_CHUNK_MESHES_PER_FRAME: usize = 16;
@@ -129,9 +130,15 @@ fn generate_ground(origin: IVec3, size: usize, out: &mut [Voxel], perlin: &Perli
             for y in 0..size {
                 let abs_y = origin.y + y as i32;
                 let d = abs_y as f32 - h;
+
+                let pos3d = DVec3::new(p.x, y as f64 + origin.y as f64, p.y);
+                let ore_material = perlin.get(((pos3d + DVec3::new(0.6, 0.6, 0.6)) * 3.).into()) * 10.;
+
+                let mat = if pos3d.y < 2. { VOXEL_SCENE_MAT_MOSS } else if pos3d.y < 5. { VOXEL_SCENE_MAT_DIRT } else if pos3d.y > 20. { VOXEL_SCENE_MAT_SNOW } else if ore_material > 7. { VOXEL_SCENE_MAT_ORE } else { VOXEL_SCENE_MAT_STONE };
+
                 out[uvec3_to_index(UVec3::new(x as u32, y as u32, z as u32), size)] = Voxel {
                     density: (d.clamp(-1., 1.) * i8::MAX as f32) as i8,
-                    material: if d >= 0. { 0 } else if abs_y < -6 * 32 { 1 } else { 2 },
+                    material: mat + 1,
                 };
             }
         }

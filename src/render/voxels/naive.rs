@@ -27,7 +27,7 @@ impl VoxelMesher for NaiveBoxes {
 
         for i in 0..(d * d * d) {
             let pos = index_to_ivec3(i as isize, d as isize);
-            if flattened[i].material == 0 {
+            if flattened[i].density >= 0 {
                 continue;
             }
 
@@ -37,7 +37,7 @@ impl VoxelMesher for NaiveBoxes {
                 continue; // pad
             }
 
-            let neighbors = [IVec3::Z, -IVec3::Z, IVec3::Y, -IVec3::Y, IVec3::X, -IVec3::X].map(|o| solid_at(&flattened, d, pos + o).material);
+            let neighbors = [IVec3::Z, -IVec3::Z, IVec3::Y, -IVec3::Y, IVec3::X, -IVec3::X].map(|o| solid_at(&flattened, d, pos + o).density);
 
             cube(&mut total_vertices, &mut total_indices, real_pos.as_vec3(),(flattened[i].material - 1) as u32, neighbors);
         }
@@ -80,8 +80,8 @@ impl VoxelMesher for NaiveBoxes {
     }
 }
 
-fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3, material: u32, neighbors: [u8; 6]) {
-    if neighbors[0] == 0 {
+fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3, material: u32, neighbors: [i8; 6]) {
+    if neighbors[0] >= 0 {
         // front
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
@@ -92,7 +92,7 @@ fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3
         ]);
         indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 3, base]);
     }
-    if neighbors[1] == 0 {
+    if neighbors[1] >= 0 {
         // back
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
@@ -103,7 +103,7 @@ fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3
         ]);
         indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 3, base]);
     }
-    if neighbors[2] == 0 {
+    if neighbors[2] >= 0 {
         // top
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
@@ -114,7 +114,7 @@ fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3
         ]);
         indices.extend_from_slice(&[base, base + 2, base + 1, base + 2, base, base + 3]);
     }
-    if neighbors[3] == 0 {
+    if neighbors[3] >= 0 {
         // bottom
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
@@ -125,7 +125,7 @@ fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3
         ]);
         indices.extend_from_slice(&[base, base + 2, base + 1, base + 2, base, base + 3]);
     }
-    if neighbors[4] == 0 {
+    if neighbors[4] >= 0 {
         // right
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
@@ -136,7 +136,7 @@ fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3
         ]);
         indices.extend_from_slice(&[base, base + 2, base + 1, base + 2, base, base + 3]);
     }
-    if neighbors[5] == 0 {
+    if neighbors[5] >= 0 {
         // left
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
@@ -152,7 +152,7 @@ fn cube(vertices: &mut Vec<VertexCube>, indices: &mut Vec<u32>, offset_pos: Vec3
 fn solid_at(flat: &[Voxel], d: usize, p: IVec3) -> Voxel {
     let di = d as i32;
     if p.cmplt(IVec3::ZERO).any() || p.cmpge(IVec3::splat(di)).any() {
-        return Voxel { material: 0, density: 0};
+        return Voxel::AIR;
     }
     flat[uvec3_to_index(p.as_uvec3(), d)]
 }

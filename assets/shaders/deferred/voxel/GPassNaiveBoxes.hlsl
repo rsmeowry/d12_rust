@@ -10,7 +10,8 @@ struct VoxelMaterial {
     uint normalTex;
     uint metalTex;
     uint aoTex;
-    uint _texPad[4];
+    uint roughnessTex;
+    uint3 _texPad;
 
     float metallic;
     float roughness;
@@ -71,13 +72,14 @@ GBufferOut frag(Varyings i) {
     float4 texNormal = g_Tex2D[mat.normalTex].Sample(PointClamp, i.uv) * 2.0 - 1.0;
     float3 normal = normalize(mul(texNormal.xyz, tbnMat));
 
-    float4 roughnessMetallic = g_Tex2D[mat.metalTex].Sample(PointClamp, i.uv);
-    float4 occlusion = g_Tex2D[mat.aoTex].Sample(PointClamp, i.uv);
+    float metallic = g_Tex2D[mat.metalTex].Sample(PointClamp, i.uv).r;
+    float roughness = g_Tex2D[mat.roughnessTex].Sample(PointClamp, i.uv).r;
+    float occlusion = g_Tex2D[mat.aoTex].Sample(PointClamp, i.uv).r;
 
     GBufferOut o;
     o.albedo = float4(albedo.rgb, 1);
     o.normal = float4(normal * 0.5 + 0.5, 0);
-    o.material = float4(mat.roughness, roughnessMetallic.r * mat.metallic, 1., 0);
+    o.material = float4(roughness * mat.roughness, metallic * mat.metallic, occlusion, 0);
     o.emissive = 0;
     return o;
 }
