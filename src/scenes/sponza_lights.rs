@@ -214,7 +214,7 @@ impl Scene for SponzaWithLights {
         let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
 
         // taa (pre-bloom)
-        let taa = self.taa.add_pass(self.gbuffer.scene_color, renderer, graph)?;
+        let taa = self.taa.add_pass(&self.gbuffer, renderer, graph)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

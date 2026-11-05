@@ -1,9 +1,10 @@
-﻿use glam::{Vec2, Vec3};
+﻿use glam::{Mat4, Vec2, Vec3};
+use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::{ResId, ResSize};
 use crate::render::pipeline::desc::PipelineDesc;
-use crate::render::pipeline::PipelineId;
+use crate::render::pipeline::{Globals, PipelineId};
 use crate::render::renderer::{Renderer, SCENE_FORMAT};
 use crate::time::Time;
 
@@ -51,20 +52,24 @@ impl TaaPass {
     }
 
     /// returns current texture (uav, just written)
-    pub fn add_pass<'a>(&self, scene_color: ResId, rd: &'a Renderer, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
+    pub fn add_pass<'a>(&self, gbuf: &GBuffer, rd: &'a Renderer, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
         let (prev, current) = self.prev_current(rd.frame_count());
         let rs = rd.rs();
         let pipelines = rd.pipelines();
+        let d = rd.gr.get(gbuf.scene_color)?.desc();
         let pass_va = rd.upload_cbuffer(&TaaData {
             prev_tex: rd.gr.get(prev)?.srv_ptr(),
-            current_tex: rd.gr.get(scene_color)?.srv_ptr(),
+            current_tex: rd.gr.get(gbuf.scene_color)?.srv_ptr(),
+            depth_tex: rd.gr.get(gbuf.scene_depth)?.srv_ptr(),
+            velocity_tex: rd.gr.get(gbuf.velocity)?.srv_ptr(),
             out_tex: rd.gr.get(current)?.uav_ptr().unwrap(),
         })?;
-        let d = rd.gr.get(scene_color)?.desc();
         let cs = self.cs;
         graph.add_pass("TAA_Resolve")
             .reads(prev)
-            .reads(scene_color)
+            .reads(gbuf.scene_color)
+            .reads(gbuf.scene_depth)
+            .reads(gbuf.velocity)
             .writes_uav(current, ResLoad::Preserve)
             .exec(move |ctx| {
                 pipelines.get(cs).bind(ctx.cmd);
@@ -82,5 +87,7 @@ impl TaaPass {
 struct TaaData {
     prev_tex: u32,
     current_tex: u32,
+    depth_tex: u32,
+    velocity_tex: u32,
     out_tex: u32,
 }
