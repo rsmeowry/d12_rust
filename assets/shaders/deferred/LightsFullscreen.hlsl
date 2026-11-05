@@ -72,7 +72,7 @@ float4 frag(float4 pos : SV_Position) : SV_Target {
         return float4(s.ao.xxx, 0);
     if (debugView == 5) {
         float2 pxPerSec = s.velocity * resolution / max(deltaTime, 1e-6);
-        return float4(pxPerSec * 0.02 * 0.5 + 0.5, 0., 0);
+        return float4(pxPerSec * 0.002 * 0.5 + 0.5, 0., 0);
     }
     #endif
 

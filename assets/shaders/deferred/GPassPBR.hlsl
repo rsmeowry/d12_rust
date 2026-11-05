@@ -42,7 +42,7 @@ Varyings vert(Attributes i) {
     Varyings o;
     o.pos = mul(viewProj, posW);
     o.normalW = mul((float3x3) obj.model, i.normal);
-    o.currClip = o.pos;
+    o.currClip = mul(viewProjNj, posW);
     o.prevClip = mul(prevViewProj, mul(obj.prevModel, float4(i.pos, 1.0)));
     o.tangentW = mul((float3x3) obj.model, i.tangent);
     o.binormalW = mul((float3x3) obj.model, i.binormal);

@@ -2,6 +2,7 @@
 
 cbuffer Globals : register(b1) {
     float4x4 viewProj;
+    float4x4 viewProjNj;
     float4x4 invViewProj;
     float4x4 prevViewProj;
     float2 resolution;

@@ -1,11 +1,13 @@
-﻿use crate::render::aa::temporal::apply_taa;
+﻿use egui_probe::EguiProbe;
+use crate::render::aa::temporal::apply_taa;
 use crate::render::renderer::Renderer;
 
 pub mod temporal;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Default, EguiProbe)]
 pub enum AntiAliasing {
     Disabled,
+    #[default]
     Temporal
 }
 

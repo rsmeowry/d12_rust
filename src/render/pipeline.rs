@@ -142,6 +142,7 @@ impl Pipeline {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Globals {
     pub view_proj: Mat4,
+    pub view_proj_nj: Mat4,
     pub inv_view_proj: Mat4,
     pub prev_view_proj: Mat4,
     pub resolution: Vec2,

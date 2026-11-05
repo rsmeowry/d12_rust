@@ -10,7 +10,9 @@ use crate::ui::EguiPass;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use egui_probe::{EguiProbe, Probe};
-use glam::{EulerRot, Mat4, Quat, Vec2, Vec3};
+use glam::{EulerRot, Mat4, Quat, Vec2, Vec2Swizzles, Vec3};
+use crate::render::aa::AntiAliasing;
+use crate::render::aa::temporal::jitter_vec;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -55,6 +57,7 @@ impl<S: Scene> App<S> {
 
         let globals = Globals {
             view_proj: cam.view_proj(),
+            view_proj_nj: cam.view_proj(),
             inv_view_proj: cam.view_proj().inverse(),
             prev_view_proj: cam.view_proj(),
             resolution: Vec2::new(WIDTH as f32, HEIGHT as f32),
@@ -187,7 +190,11 @@ impl<S: Scene> App<S> {
 
         self.globals.time = self.time.game_time();
         self.globals.delta_time = dt;
-        self.globals.view_proj = self.renderer.cam.view_proj();
+        let vp_nj = self.renderer.cam.view_proj();
+        self.globals.view_proj_nj = vp_nj;
+        let j = if self.opts.anti_aliasing == AntiAliasing::Temporal { jitter_vec(self.renderer.frame_count(), 8) } else { Vec2::ZERO };
+        let vp_j = Mat4::from_translation(Vec3::new(2.0 * j.x, -2.0 * j.y, 0.) / self.globals.resolution.xyy()) * vp_nj;
+        self.globals.view_proj = vp_j;
         self.globals.prev_view_proj = self.prev_view_proj;
         self.prev_view_proj = self.globals.view_proj;
         self.globals.inv_view_proj = self.renderer.cam.view_proj().inverse();
@@ -323,6 +330,7 @@ pub enum CullingMode {
 pub struct RenderOpts {
     pub vsync: bool,
     pub culling_mode: CullingMode,
+    pub anti_aliasing: AntiAliasing,
     pub use_wireframe: bool,
     pub debug_view_type: DebugViewType,
     pub enable_dbg_text: bool,
