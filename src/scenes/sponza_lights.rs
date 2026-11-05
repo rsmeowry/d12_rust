@@ -21,6 +21,7 @@ use crate::time::Time;
 use egui::Ui;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::aa::temporal::TaaPass;
 
 const MAX_PARTICLES: usize = 4096;
 
@@ -33,6 +34,7 @@ pub struct SponzaWithLights {
     sphere_mat_idx: u32,
 
     materials_buf: ID3D12Resource,
+    taa: TaaPass,
 
     shadows: ShadowMap,
     culler: Culler,
@@ -101,6 +103,7 @@ impl Scene for SponzaWithLights {
         )?;
         let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512, SHADOW_DISTANCE, SHADOW_EXTEND)?;
         lighting.save_local_shadows(&shadows);
+        let taa = TaaPass::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
@@ -114,6 +117,7 @@ impl Scene for SponzaWithLights {
 
             sphere,
             sphere_mat_idx,
+            taa,
 
             shadows,
             culler,
@@ -176,18 +180,6 @@ impl Scene for SponzaWithLights {
         let rs = renderer.rs();
         let pipelines = renderer.pipelines();
 
-        let post_props = PostProperties {
-            albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
-            normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
-            materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
-            depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
-            scene_color: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
-            enable_sobel: 0,
-            enable_fly_eye: 0,
-            enable_vignette: 1,
-            ..Default::default()
-        };
-
         // scene draw pass
         graph
             .add_pass("GPass")
@@ -219,7 +211,10 @@ impl Scene for SponzaWithLights {
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
         self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
 
-        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
+        let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
+
+        // taa (pre-bloom)
+        let taa = self.taa.add_pass(self.gbuffer.scene_color, renderer, graph)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {
@@ -228,8 +223,21 @@ impl Scene for SponzaWithLights {
             radius: 1.0,
             intensity: 1.0,
             ..Default::default()
-        }, self.gbuffer.scene_color, renderer, graph)?;
-        self.post.add_pass(post_props, Some(bloom), renderer, &self.gbuffer, graph)?;
+        }, taa, renderer, graph)?;
+
+        // post
+        let post_props = PostProperties {
+            albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
+            normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
+            materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
+            depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
+            scene_color: gr.get(taa)?.srv_ptr(),
+            enable_sobel: 0,
+            enable_fly_eye: 0,
+            enable_vignette: 1,
+            ..Default::default()
+        };
+        self.post.add_pass(post_props, Some(taa), Some(bloom), renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 
         // debug

@@ -196,8 +196,8 @@ impl<S: Scene> App<S> {
         let vp_j = Mat4::from_translation(Vec3::new(2.0 * j.x, -2.0 * j.y, 0.) / self.globals.resolution.xyy()) * vp_nj;
         self.globals.view_proj = vp_j;
         self.globals.prev_view_proj = self.prev_view_proj;
-        self.prev_view_proj = self.globals.view_proj;
-        self.globals.inv_view_proj = self.renderer.cam.view_proj().inverse();
+        self.prev_view_proj = self.globals.view_proj_nj;
+        self.globals.inv_view_proj = vp_j.inverse();
         self.globals.camera_pos = self.renderer.cam.pos();
 
         let egui_inputs = self.window.input_mut().collect_egui_input(self.globals.resolution.x as u32, self.globals.resolution.y as u32, self.time.game_time());

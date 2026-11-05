@@ -81,8 +81,8 @@ impl PostProcessPass {
     }
 
 
-    pub fn add_pass<'a>(&'a self, mut props: PostProperties, bloom: Option<ResId>, renderer: &'a Renderer, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
-        self.add_generic_pass(props, bloom, renderer, gbuffer.albedo, gbuffer.normals, gbuffer.materials, gbuffer.scene_color, gbuffer.scene_depth, graph)
+    pub fn add_pass<'a>(&'a self, mut props: PostProperties, taa_out: Option<ResId>, bloom: Option<ResId>, renderer: &'a Renderer, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+        self.add_generic_pass(props, bloom, renderer, gbuffer.albedo, gbuffer.normals, gbuffer.materials, taa_out.unwrap_or(gbuffer.scene_color), gbuffer.scene_depth, graph)
     }
 }
 

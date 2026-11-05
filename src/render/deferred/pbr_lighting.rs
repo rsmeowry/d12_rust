@@ -99,7 +99,8 @@ impl PbrLightingPass {
         self.local_shadows.extend(map.fetch_all_local_shadows());
     }
 
-    pub fn add_pass<'a>(&'a self, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, atmosphere: Option<AtmosphereProps>, ambient_strength: f32, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>, opts: &RenderOpts) -> anyhow::Result<(u64, u32)> {
+    pub fn add_pass<'a>(&'a self, target: Option<ResId>, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, atmosphere: Option<AtmosphereProps>, ambient_strength: f32, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>, opts: &RenderOpts) -> anyhow::Result<(u64, u32)> {
+        let target = target.unwrap_or_else(|| gbuffer.scene_color);
         lights.sort_by_key(|l| l.kind);
         let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
         let first_spot = lights.partition_point(|l| l.kind < LIGHT_SPOT) as u32;
@@ -142,7 +143,7 @@ impl PbrLightingPass {
             .reads(gbuffer.normals)
             .reads(gbuffer.materials)
             .reads(gbuffer.scene_depth)
-            .writes(gbuffer.scene_color, ResLoad::Preserve);
+            .writes(target, ResLoad::Preserve);
 
         for local_shadows in &self.local_shadows {
             pass = pass.reads(*local_shadows);
@@ -174,7 +175,7 @@ impl PbrLightingPass {
             .reads(gbuffer.normals)
             .reads(gbuffer.materials)
             .reads_depth(gbuffer.scene_depth)
-            .writes(gbuffer.scene_color, ResLoad::Preserve)
+            .writes(target, ResLoad::Preserve)
             .exec(move |ctx| {
                 pipelines.get(self.lights).bind(ctx.cmd);
                 rs.set_pass(ctx.cmd, light_pass_va);
