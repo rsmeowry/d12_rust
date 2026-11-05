@@ -13,6 +13,7 @@ use glam::Mat4;
 use std::cell::Cell;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16_FLOAT, DXGI_FORMAT_R16G16_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+use crate::app::RenderOpts;
 
 pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16G16B16A16_FLOAT;
 pub const GB_NORMALS: DXGI_FORMAT = DXGI_FORMAT_R10G10B10A2_UNORM;
@@ -142,9 +143,9 @@ impl Renderer {
     }
 
     // executes the graph and presents
-    pub fn execute_graph(&self, graph: FrameGraph) -> anyhow::Result<()> {
+    pub fn execute_graph(&self, opts: &RenderOpts, graph: FrameGraph) -> anyhow::Result<()> {
         graph.execute(&self.gd, &self.gr)?;
-        self.gd.display_rt()
+        self.gd.display_rt(opts)
     }
 }
 

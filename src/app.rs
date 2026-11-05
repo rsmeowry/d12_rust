@@ -251,7 +251,7 @@ impl<S: Scene> App<S> {
             })
             .collect();
 
-        self.renderer.gd.display_rt()
+        self.renderer.gd.display_rt(&self.opts)
     }
 
     fn handle_camera_movement(&mut self) {
@@ -321,6 +321,7 @@ pub enum CullingMode {
 
 #[derive(Debug, Copy, Clone, Default, EguiProbe)]
 pub struct RenderOpts {
+    pub vsync: bool,
     pub culling_mode: CullingMode,
     pub use_wireframe: bool,
     pub debug_view_type: DebugViewType,
