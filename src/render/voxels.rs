@@ -156,6 +156,7 @@ impl<S: GenerationStrategy + 'static> VoxelWorld<S> {
             if chunk_pos_ws.distance_squared(camera_pos) <= VIEW_DISTANCE_SQ && frustum.contains(mesh.aabb(), mat) {
                 Some((mesh, ObjectData {
                     model: mat,
+                    prev_model: Mat4::IDENTITY, // lets just hope terrain NEVER moves alright
                     material_id: chunk_pos.x as u32,
                     _pad: [chunk_pos.y as u32, chunk_pos.z as u32, 0],
                 }))
@@ -181,10 +182,7 @@ impl<S: GenerationStrategy + 'static> VoxelWorld<S> {
         let pipelines = rd.pipelines();
         graph.add_pass("GPassVoxelWorld")
             .writes_depth(gbuf.scene_depth, ResLoad::Clear)
-            .writes(gbuf.albedo, ResLoad::Clear)
-            .writes(gbuf.normals, ResLoad::Clear)
-            .writes(gbuf.materials, ResLoad::Clear)
-            .writes(gbuf.scene_color, ResLoad::Clear)
+            .writes_gbuffer(gbuf, ResLoad::Clear)
             .exec(move |ctx| {
                 pipelines.get(pso).bind(ctx.cmd);
                 rs.set_objects(ctx.cmd, objects_va);

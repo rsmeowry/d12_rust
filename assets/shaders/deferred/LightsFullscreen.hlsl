@@ -70,6 +70,8 @@ float4 frag(float4 pos : SV_Position) : SV_Target {
         return float4(s.roughness.xxx, 0);
     if (debugView == 4)
         return float4(s.ao.xxx, 0);
+    if (debugView == 5)
+        return float4(abs(s.velocity) * resolution * 0.1, 0, 0);
     #endif
 
     float3 V = normalize(cameraPos - s.pos);

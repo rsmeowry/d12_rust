@@ -2,7 +2,7 @@
 use crate::render::mesh::DrawTopology;
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
-use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
+use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, GB_VELOCITY, SCENE_FORMAT};
 use crate::render::vertex::Vertex;
 use glam::{Vec4};
 
@@ -18,6 +18,7 @@ pub struct GBuffer {
     pub albedo: ResId,
     pub normals: ResId,
     pub materials: ResId,
+    pub velocity: ResId,
     pub scene_depth: ResId,
     pub scene_color: ResId,
 
@@ -28,7 +29,7 @@ pub struct GBuffer {
 impl Renderer {
     pub fn build_gpass<V: Vertex>(&mut self, pass_shader: &'static str, topology: DrawTopology) -> anyhow::Result<(PipelineId, PipelineId)> {
         let gpass = self.create_pipeline(PipelineDesc {
-            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT],
+            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT, GB_VELOCITY],
             name: pass_shader.split("/").last().unwrap(),
             shader: pass_shader.into(),
             input: V::LAYOUT,
@@ -36,7 +37,7 @@ impl Renderer {
             ..Default::default()
         })?;
         let gpass_wireframe = self.create_pipeline(PipelineDesc {
-            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT],
+            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT, GB_VELOCITY],
             name: pass_shader.split("/").last().unwrap(),
             shader: pass_shader.into(),
             input: V::LAYOUT,
@@ -53,9 +54,10 @@ impl Renderer {
         let albedo = self.gr.color(&self.gd, "SceneAlbedo", GB_ALBEDO, Vec4::ZERO, ResSize::FitScreen)?;
         let materials = self.gr.color(&self.gd, "SceneSpecular", GB_MATERIAL, Vec4::ZERO, ResSize::FitScreen)?;
         let normals = self.gr.color(&self.gd, "SceneNormals", GB_NORMALS, Vec4::ZERO, ResSize::FitScreen)?;
+        let velocity = self.gr.color(&self.gd, "SceneVelocity", GB_VELOCITY, Vec4::ZERO, ResSize::FitScreen)?;
 
         let gpass = self.create_pipeline(PipelineDesc {
-            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT],
+            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT, GB_VELOCITY],
             name: "GPass",
             shader: pass_shader.into(),
             input: V::LAYOUT,
@@ -63,7 +65,7 @@ impl Renderer {
             ..Default::default()
         })?;
         let gpass_wireframe = self.create_pipeline(PipelineDesc {
-            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT],
+            rts: vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT, GB_VELOCITY],
             name: "GPassWireframe",
             shader: pass_shader.into(),
             input: V::LAYOUT,
@@ -76,6 +78,7 @@ impl Renderer {
             albedo,
             normals,
             materials,
+            velocity,
             scene_depth,
             scene_color,
             gpass,

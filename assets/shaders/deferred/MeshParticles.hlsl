@@ -1,5 +1,6 @@
 ﻿#include "../lib/Core.hlsl"
 #include "../lib/Particles.hlsl"
+#include "../../lib/GBuffer.hlsl"
 
 cbuffer MeshParticlePass : register(b2) {
     uint albedoTex;
@@ -33,13 +34,6 @@ struct Varyings {
     float3 binormalW : BINORMAL;
     float2 uv : TEXCOORD;
     float3 color : COLOR;
-};
-
-struct GBufferOut {
-    float4 albedo : SV_Target0;
-    float4 normal : SV_Target1;
-    float4 material : SV_Target2;
-    float4 emissive : SV_Target3;
 };
 
 static const float TAU = PI * 2;
@@ -95,5 +89,6 @@ GBufferOut frag(Varyings i) {
     o.normal = float4(n * 0.5 + 0.5, 0);
     o.material = float4(mr.g * roughness, mr.b * metallic, ao, 0);
     o.emissive = 0;
+    o.velocity = 0; // TODO: rly need motion vectors for particles tho
     return o;
 }

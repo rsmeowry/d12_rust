@@ -1,10 +1,5 @@
 ﻿#include "../lib/Core.hlsl"
-
-struct ObjectData {
-    float4x4 model;
-    uint materialId;
-    uint3 _pad;
-};
+#include "../lib/GBuffer.hlsl"
 
 struct PhongMaterial {
     uint albedoTex;
@@ -20,7 +15,6 @@ struct PhongMaterial {
 };
 
 cbuffer DrawConstants : register(b0) { uint drawIndex; }
-StructuredBuffer<ObjectData> g_Objects : register(t1);
 StructuredBuffer<PhongMaterial> g_Materials : register(t2);
 SamplerState AnisoWrap : register(s3);
 
@@ -34,13 +28,6 @@ struct Varyings {
     float4 pos : SV_Position;
     float3 normalW : NORMAL;
     float2 uv : TEXCOORD;
-};
-
-struct GBufferOut {
-    float4 albedo : SV_Target0;
-    float4 normal : SV_Target1;
-    float4 material : SV_Target2;
-    float4 emissive : SV_Target3;
 };
 
 Varyings vert(Attributes i) {
@@ -63,5 +50,6 @@ GBufferOut frag(Varyings i) {
     o.normal = float4(normalize(i.normalW) * 0.5 + 0.5, 0);
     o.material = float4(mat.specularK, saturate(mat.shininess / 255.0), 0, 0);
     o.emissive = 0;
+    o.velocity = 0;
     return o;
 }

@@ -7,7 +7,7 @@ use crate::render::particles::simulate::ParticleSimulation;
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::material::GpuMaterial;
 use crate::render::pipeline::PipelineId;
-use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, SCENE_FORMAT};
+use crate::render::renderer::{Renderer, GB_ALBEDO, GB_MATERIAL, GB_NORMALS, GB_VELOCITY, SCENE_FORMAT};
 use crate::render::texture::Texture;
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::transition_barrier;
@@ -64,7 +64,7 @@ pub struct ParticleRendering {
 impl ParticleRendering {
     pub fn new(rd: &mut Renderer, kind: ParticleKind, shape: ParticleShape) -> anyhow::Result<Self> {
 
-        let gbuffer = vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT];
+        let gbuffer = vec![GB_ALBEDO, GB_NORMALS, GB_MATERIAL, SCENE_FORMAT, GB_VELOCITY];
         let (desc, arg_type, stride, initial_args, count_offset) = match &shape {
             ParticleShape::Billboard { .. } => (
                 PipelineDesc {
@@ -146,10 +146,7 @@ impl ParticleRendering {
 
         graph.add_pass("ParticlesDraw")
             .writes_depth(gbuf.scene_depth, ResLoad::Preserve)
-            .writes(gbuf.albedo, ResLoad::Preserve)
-            .writes(gbuf.normals, ResLoad::Preserve)
-            .writes(gbuf.materials, ResLoad::Preserve)
-            .writes(gbuf.scene_color, ResLoad::Preserve)
+            .writes_gbuffer(gbuf, ResLoad::Preserve)
             .exec(move |ctx| {
                 let cmd = ctx.cmd;
                 // alive counter goes to count

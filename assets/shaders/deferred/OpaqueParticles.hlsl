@@ -1,5 +1,6 @@
 ﻿#include "../lib/Core.hlsl"
 #include "../lib/Particles.hlsl"
+#include "../../lib/GBuffer.hlsl"
 
 cbuffer ParticlesData : register(b2) {
     uint particleTex;
@@ -23,13 +24,6 @@ struct GSOut {
     float3 right : RIGHT;
     float3 up : UP;
     float3 forward : FORWARD;
-};
-
-struct GBufferOut {
-    float4 albedo : SV_Target0;
-    float4 normal : SV_Target1;
-    float4 material : SV_Target2;
-    float4 emissive : SV_Target3;
 };
 
 VSOut vert(uint vid : SV_VertexID) {
@@ -70,5 +64,6 @@ GBufferOut frag(GSOut i) {
     o.normal = float4(i.forward * 0.5 + 0.5, 0);
     o.material = float4(0.4, 0.0, 1.0, 0);
     o.emissive = float4(i.color * 0.3, 0);
+    o.velocity = 0;
     return o;
 }

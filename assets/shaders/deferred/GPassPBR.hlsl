@@ -1,10 +1,5 @@
 ﻿#include "../lib/Core.hlsl"
-
-struct ObjectData {
-    float4x4 model;
-    uint materialId;
-    uint3 _pad;
-};
+#include "../lib/GBuffer.hlsl"
 
 struct PbrMaterial {
     uint albedoTex;
@@ -20,7 +15,6 @@ struct PbrMaterial {
 };
 
 cbuffer DrawConstants : register(b0) { uint drawIndex; }
-StructuredBuffer<ObjectData> g_Objects : register(t1);
 StructuredBuffer<PbrMaterial> g_Materials : register(t2);
 SamplerState AnisoWrap : register(s3);
 
@@ -34,18 +28,12 @@ struct Attributes {
 
 struct Varyings {
     float4 pos : SV_Position;
-    float3 posW : POSITION;
+    float4 currClip : CURR_CLIP;
+    float4 prevClip : PREV_CLIP;
     float3 normalW : NORMAL;
     float3 tangentW : TANGENT;
     float3 binormalW : BINORMAL;
     float2 uv : TEXCOORD;
-};
-
-struct GBufferOut {
-    float4 albedo : SV_Target0;
-    float4 normal : SV_Target1;
-    float4 material : SV_Target2;
-    float4 emissive : SV_Target3;
 };
 
 Varyings vert(Attributes i) {
@@ -54,7 +42,8 @@ Varyings vert(Attributes i) {
     Varyings o;
     o.pos = mul(viewProj, posW);
     o.normalW = mul((float3x3) obj.model, i.normal);
-    o.posW = mul((float3x3) obj.model, i.pos);
+    o.currClip = o.pos;
+    o.prevClip = mul(prevViewProj, mul(obj.prevModel, float4(i.pos, 1.0)));
     o.tangentW = mul((float3x3) obj.model, i.tangent);
     o.binormalW = mul((float3x3) obj.model, i.binormal);
     o.uv = i.uv;
@@ -62,6 +51,7 @@ Varyings vert(Attributes i) {
 }
 
 GBufferOut frag(Varyings i) {
+    ObjectData obj = g_Objects[drawIndex];
     PbrMaterial mat = g_Materials[g_Objects[drawIndex].materialId];
     float4 albedo = g_Tex2D[mat.albedoTex].Sample(AnisoWrap, i.uv);
     clip(albedo.a - 0.5);
@@ -78,5 +68,6 @@ GBufferOut frag(Varyings i) {
     o.normal = float4(normal * 0.5 + 0.5, 0);
     o.material = float4(roughnessMetallic.g * mat.roughness, roughnessMetallic.b * mat.metallic, occlusion.r, 0);
     o.emissive = 0;
+    o.velocity = GetMotionVector(i.currClip, i.prevClip);
     return o;
 }

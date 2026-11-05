@@ -121,10 +121,7 @@ impl Terrain {
 
         graph.add_pass("Terrain")
             .writes_depth(gbuf.scene_depth, ResLoad::Clear)
-            .writes(gbuf.albedo, ResLoad::Clear)
-            .writes(gbuf.normals, ResLoad::Clear)
-            .writes(gbuf.materials, ResLoad::Clear)
-            .writes(gbuf.scene_color, ResLoad::Clear)
+            .writes_gbuffer(gbuf, ResLoad::Clear)
             .exec(move |ctx| {
                 pipelines.get(pipeline).bind(ctx.cmd);
                 rs.set_pass(ctx.cmd, pass_va);

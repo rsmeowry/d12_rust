@@ -130,10 +130,7 @@ impl Scene for TesselatedSample {
         graph
             .add_pass("GPass")
             .writes_depth(self.gbuffer.scene_depth, ResLoad::Clear)
-            .writes(self.gbuffer.albedo, ResLoad::Clear)
-            .writes(self.gbuffer.normals, ResLoad::Clear)
-            .writes(self.gbuffer.materials, ResLoad::Clear)
-            .writes(self.gbuffer.scene_color, ResLoad::Clear)
+            .writes_gbuffer(&self.gbuffer, ResLoad::Clear)
             .exec(move |ctx| {
                 rs.set_objects(ctx.cmd, objects_va);
                 rs.set_materials(ctx.cmd, materials_va);

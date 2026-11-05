@@ -12,19 +12,32 @@ use crate::wrappers::graphics::GraphicsDevice;
 use glam::Mat4;
 use std::cell::Cell;
 use windows::Win32::Foundation::HWND;
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16_FLOAT, DXGI_FORMAT_R16G16_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
 
 pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16G16B16A16_FLOAT;
 pub const GB_NORMALS: DXGI_FORMAT = DXGI_FORMAT_R10G10B10A2_UNORM;
 pub const GB_ALBEDO: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 pub const GB_MATERIAL: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
+pub const GB_VELOCITY: DXGI_FORMAT = DXGI_FORMAT_R16G16_FLOAT;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, PartialEq)]
 pub struct ObjectData {
     pub model: Mat4,
+    pub prev_model: Mat4,
     pub material_id: u32,
     pub _pad: [u32; 3]
+}
+
+impl ObjectData {
+    pub fn new(model: Mat4, material_id: u32) -> Self {
+        Self {
+            model,
+            prev_model: model,
+            material_id,
+            _pad: [0; 3]
+        }
+    }
 }
 
 pub struct Renderer {
@@ -141,11 +154,7 @@ impl LoadedScene {
         let mut draws = Vec::new();
         for (mesh_idx, model) in &self.mesh_indices {
             let (mesh, material) = if self.use_lods && lod > 0 { &self.mesh_lods[*mesh_idx][lod - 1] } else { &self.meshes[*mesh_idx] };
-            objects.push(ObjectData {
-                model: *model,
-                material_id: *material,
-                _pad: [0; 3]
-            });
+            objects.push(ObjectData::new(*model, *material));
             draws.push(mesh);
         }
         (objects, draws)
@@ -156,11 +165,7 @@ impl LoadedScene {
         let mut draws = Vec::new();
         for (mesh_idx, model) in &self.mesh_indices {
             let (mesh, material) = &self.meshes[*mesh_idx];
-            objects.push(ObjectData {
-                model: *model,
-                material_id: *material,
-                _pad: [0; 3]
-            });
+            objects.push(ObjectData::new(*model, *material));
             draws.push(mesh);
         }
         (objects, draws)

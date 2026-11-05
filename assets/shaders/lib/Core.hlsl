@@ -3,6 +3,7 @@
 cbuffer Globals : register(b1) {
     float4x4 viewProj;
     float4x4 invViewProj;
+    float4x4 prevViewProj;
     float2 resolution;
     float time;
     float deltaTime;
@@ -37,12 +38,20 @@ struct Cascades {
     uint enabled;
 };
 
+struct ObjectData {
+    float4x4 model;
+    float4x4 prevModel;
+    uint materialId;
+    uint3 _oPad;
+};
+
 Texture2D g_Tex2D[1024] : register(t0, space1);
 TextureCube g_TexCube[1024] : register(t0, space2);
 Texture3D g_Tex3D[1024] : register(t0, space3);
 RWTexture2D<float4> g_RWTex2D[1024] : register(u0, space1);
 RWByteAddressBuffer g_RWBuffers[1024] : register(u0, space2);
 RWByteAddressBuffer g_RWScratch : register(u0);
+StructuredBuffer<ObjectData> g_Objects : register(t1);
 
 static const float PI = 3.14159265;
 

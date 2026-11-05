@@ -70,11 +70,7 @@ impl Scene for PbrSample {
                     metallic: actual_metallness,
                     roughness: actual_roughness,
                 }.to_gpu_material());
-                objects.push(ObjectData {
-                    model: Mat4::from_translation(Vec3::new(roughness as f32 * 2., metalness as f32 * 2., 0.)),
-                    material_id: materials.len() as u32 - 1,
-                    _pad: [0; 3],
-                })
+                objects.push(ObjectData::new(Mat4::from_translation(Vec3::new(roughness as f32 * 2., metalness as f32 * 2., 0.)), materials.len() as u32 - 1))
             }
         }
 
@@ -132,10 +128,7 @@ impl Scene for PbrSample {
         graph
             .add_pass("GPass")
             .writes_depth(self.gbuffer.scene_depth, ResLoad::Clear)
-            .writes(self.gbuffer.albedo, ResLoad::Clear)
-            .writes(self.gbuffer.normals, ResLoad::Clear)
-            .writes(self.gbuffer.materials, ResLoad::Clear)
-            .writes(self.gbuffer.scene_color, ResLoad::Clear)
+            .writes_gbuffer(&self.gbuffer, ResLoad::Clear)
             .exec(move |ctx| {
                 rs.set_objects(ctx.cmd, objects_va);
                 rs.set_materials(ctx.cmd, materials_va);

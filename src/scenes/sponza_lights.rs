@@ -10,8 +10,6 @@ use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::{unit_sphere, GpuLight};
 use crate::render::mesh::{DrawTopology, Mesh};
-use crate::render::particles::draw::{MeshParticleMaterial, ParticleKind, ParticleRendering, ParticleShape};
-use crate::render::particles::simulate::{ParticleSimulation, SimulateParticleProps};
 use crate::render::perf::frustum::AABB;
 use crate::render::perf::{Culler, NO_LOD};
 use crate::render::pipeline::material::MaterialParams;
@@ -36,13 +34,9 @@ pub struct SponzaWithLights {
 
     materials_buf: ID3D12Resource,
 
-    particles_sim: ParticleSimulation,
-    particles_draw: ParticleRendering,
-
     shadows: ShadowMap,
     culler: Culler,
     bloom: BloomPass,
-    fog: FogPass,
     lighting: PbrLightingPass,
     post: PostProcessPass,
     blit: BlitPass,
@@ -57,13 +51,6 @@ impl Scene for SponzaWithLights {
         for line in std::mem::take(&mut self.debug_lines) {
             ui.label(line);
         }
-
-        ui.add_space(16.);
-        ui.heading("Particles");
-        let (free, alive) = self.particles_sim.particle_counts();
-        ui.label(format!("Alive: {alive}"));
-        ui.label(format!("Free: {free}"));
-        ui.label(format!("Fits maximum ({MAX_PARTICLES}): {}", (free + alive) as usize == MAX_PARTICLES));
 
         Ok(())
     }
@@ -102,37 +89,6 @@ impl Scene for SponzaWithLights {
 
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "Sponza/MaterialBuffer")?;
 
-        // let particle_texture = Texture::load(&mut batch, &std::fs::read("assets/textures/particles/opaque_square.png")?, true, MipCount::All, "OpaqueSquare")?;
-        let (verts, inds) = unit_sphere(8, 6, |pos, norm, tan, binorm, uv| VertexPbr::new(pos, norm, tan, binorm, uv));
-        let aabb = AABB::from_points(&verts.iter().map(|v| Vec3::from(v.pos)).collect::<Vec<_>>());
-        // let particle_mesh = Mesh::new(batch.gd(), &mut batch, &verts, &inds, DrawTopology::TriangleList, aabb, false)?;
-        // let particle_material = MeshParticleMaterial {
-        //     albedo_tex: renderer.white_tex().srv_ptr(),
-        //     normal_tex: renderer.flat_normal_tex().srv_ptr(),
-        //     metal_roughness_tex: renderer.white_tex().srv_ptr(),
-        //     occlusion_tex: renderer.white_tex().srv_ptr(),
-        //     base_color: Vec3::new(0.9, 0.9, 0.9),
-        //     metallic: 0.6,
-        //     roughness: 0.1,
-        // };
-        let mut particle_mats = Vec::new();
-        let model = load_assimp_scene::<VertexPbr, _>(
-            &renderer, &mut batch, "assets/models/pusheen_holding_cookie/scene.gltf", &mut particle_mats,
-            LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP,
-            DrawTopology::TriangleList, false, LodCount::NoLods,
-            |mat, tex| MaterialParams::Pbr {
-                albedo_tex: tex.albedo,
-                normal_tex: tex.normal,
-                metal_roughness_tex: tex.roughness,
-                occlusion_tex: tex.lightmap,
-                base_color: mat.base_color().map(|it| Vec3::new(it.x, it.y, it.z)).unwrap_or(Vec3::ONE),
-                metallic: mat.metallic_factor().unwrap_or(0.2),
-                roughness: mat.roughness_factor().unwrap_or(0.2),
-            }.to_gpu_material(),
-        )?;
-        let material = MeshParticleMaterial::from_gpu(&particle_mats[model.meshes[0].1 as usize]);
-        let (mesh, _transform, textures) = model.into_single_mesh();
-
         batch.finish()?;
 
         let gbuffer = renderer.build_gbuffer::<VertexPbr>("deferred/GPassPBR.hlsl", DrawTopology::TriangleList)?;
@@ -146,19 +102,8 @@ impl Scene for SponzaWithLights {
         let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512, SHADOW_DISTANCE, SHADOW_EXTEND)?;
         lighting.save_local_shadows(&shadows);
         let bloom = BloomPass::new(renderer)?;
-        let fog = FogPass::new(Some(&shadows), renderer)?;
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
-
-        let particles_sim = ParticleSimulation::new(renderer, MAX_PARTICLES as u32)?;
-        // let particles_draw = ParticleRendering::new(renderer, ParticleKind::Opaque, ParticleShape::Billboard {
-        //     tex: particle_texture
-        // })?;
-        let particles_draw = ParticleRendering::new(renderer, ParticleKind::Opaque, ParticleShape::Mesh {
-            mesh,
-            material,
-            textures,
-        })?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
@@ -170,13 +115,9 @@ impl Scene for SponzaWithLights {
             sphere,
             sphere_mat_idx,
 
-            particles_sim,
-            particles_draw,
-
             shadows,
             culler,
             bloom,
-            fog,
             sponza,
             materials_buf,
             lighting,
@@ -191,8 +132,11 @@ impl Scene for SponzaWithLights {
         let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
 
         // sphere
-        let sphere_obj = ObjectData {
-            model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + time.game_time().sin(), -1.)),
+        let t = time.game_time();
+        let prev_t = time.game_time() - time.delta_time();
+        let sphere_obj = ObjectData{
+            model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + t.sin(), -1.)),
+            prev_model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + prev_t.sin(), -1.)),
             material_id: self.sphere_mat_idx,
             _pad: [0; 3],
         };
@@ -248,10 +192,7 @@ impl Scene for SponzaWithLights {
         graph
             .add_pass("GPass")
             .writes_depth(self.gbuffer.scene_depth, ResLoad::Clear)
-            .writes(self.gbuffer.albedo, ResLoad::Clear)
-            .writes(self.gbuffer.normals, ResLoad::Clear)
-            .writes(self.gbuffer.materials, ResLoad::Clear)
-            .writes(self.gbuffer.scene_color, ResLoad::Clear)
+            .writes_gbuffer(&self.gbuffer, ResLoad::Clear)
             .exec(move |ctx| {
                 rs.set_objects(ctx.cmd, objects_va);
                 rs.set_materials(ctx.cmd, materials_va);
@@ -267,18 +208,6 @@ impl Scene for SponzaWithLights {
                 Ok(())
             });
 
-        // particles: simulate
-        // self.particles_sim.add_pass(SimulateParticleProps {
-        //     emitter: Vec3::new(0., 3., -1.),
-        //     rate: 4.,
-        //     spread: 0.6,
-        //     lifetime: 16.,
-        //     velocity_base: Quat::from_rotation_x(time.game_time()) * (Vec3::Y * 4.),
-        //     ..Default::default()
-        // }, time.delta_time(), renderer, &self.gbuffer, graph)?;
-        //
-        // self.particles_draw.add_pass(renderer, &self.gbuffer, &self.particles_sim, graph)?;
-
         let (mut all_objects, mut all_meshes) = self.sponza.to_objects_and_draws();
         all_objects.push(sphere_obj);
         all_meshes.push(&self.sphere);
@@ -290,12 +219,7 @@ impl Scene for SponzaWithLights {
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
         self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
 
-        let (lights_va, light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
-
-        self.fog.add_pass(FogProperties {
-            density: 0.12,
-            ..Default::default()
-        }, renderer, Some(shadow), lights_va, light_count, &self.gbuffer, graph)?;
+        let (_lights_va, _light_count) = self.lighting.add_pass(lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {

@@ -71,11 +71,7 @@ impl Scene for CullingScene {
 
         for _ in 0..10000 {
             let pos = Vec3::new(rand::random(), rand::random(), rand::random()) * 200. - 100.;
-            let object_data = ObjectData {
-                model: Mat4::from_scale_rotation_translation(4. * Vec3::ONE, Quat::from_euler(EulerRot::XYZ, rand::random::<f32>() * 90., rand::random::<f32>() * 90., rand::random::<f32>() * 90.), pos),
-                material_id: 0,
-                _pad: [0; 3],
-            };
+            let object_data = ObjectData::new(Mat4::from_scale_rotation_translation(4. * Vec3::ONE, Quat::from_euler(EulerRot::XYZ, rand::random::<f32>() * 90., rand::random::<f32>() * 90., rand::random::<f32>() * 90.), pos), 0);
             objects.push(object_data);
         }
 
@@ -176,10 +172,7 @@ impl Scene for CullingScene {
         let mut pass = graph
             .add_pass("GPass")
             .writes_depth(self.gbuffer.scene_depth, ResLoad::Clear)
-            .writes(self.gbuffer.albedo, ResLoad::Clear)
-            .writes(self.gbuffer.normals, ResLoad::Clear)
-            .writes(self.gbuffer.materials, ResLoad::Clear)
-            .writes(self.gbuffer.scene_color, ResLoad::Clear);
+            .writes_gbuffer(&self.gbuffer, ResLoad::Clear);
 
         pass = self.lod.reads_all_baked(pass);
         let lod = &self.lod;

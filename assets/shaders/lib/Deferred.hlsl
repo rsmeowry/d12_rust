@@ -3,10 +3,10 @@
     uint normalTex;
     uint materialTex;
     uint depthTex;
+    uint velocityTex;
     uint dirCount;
     uint debugView;
     uint skyTex;
-    float _pad;
     float3 ambientColor;
     float _alsoPad;
     Cascades csm;
@@ -30,6 +30,7 @@ struct Surface {
     float roughness;
     float metallic;
     float ao;
+    float2 velocity;
     #else
     float specular;
     float shininess;
@@ -52,6 +53,7 @@ bool LoadSurface(float2 pixel, out Surface s) {
     s.roughness = m.r;
     s.metallic = m.g;
     s.ao = m.b;
+    s.velocity = g_Tex2D[velocityTex].Load(px).xy;
     #endif
     s.pos = WorldPosFromDepth(pixel / resolution, depth);
     return true;

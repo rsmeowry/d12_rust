@@ -1,9 +1,5 @@
 ﻿#include "../../lib/Core.hlsl"
-
-struct ObjectData {
-    float4x4 model;
-    uint4 _pad;
-};
+#include "../../lib/GBuffer.hlsl"
 
 struct VoxelMaterial {
     uint albedoTex;
@@ -19,7 +15,6 @@ struct VoxelMaterial {
 };
 
 cbuffer DrawConstants : register(b0) { uint drawIndex; }
-StructuredBuffer<ObjectData> g_Objects : register(t1);
 StructuredBuffer<VoxelMaterial> g_Materials : register(t2);
 SamplerState PointClamp : register(s2);
 
@@ -40,13 +35,6 @@ struct Varyings {
     float2 uv : TEXCOORD;
     float ao : AO;
     nointerpolation uint material : MATERIAL;
-};
-
-struct GBufferOut {
-    float4 albedo : SV_Target0;
-    float4 normal : SV_Target1;
-    float4 material : SV_Target2;
-    float4 emissive : SV_Target3;
 };
 
 Varyings vert(Attributes i) {
@@ -85,5 +73,6 @@ GBufferOut frag(Varyings i) {
     o.normal = float4(normal * 0.5 + 0.5, 0);
     o.material = float4(roughness * mat.roughness, metallic * mat.metallic, occlusion * aoVal, 0);
     o.emissive = 0;
+    o.velocity = 0;
     return o;
 }

@@ -16,5 +16,5 @@ mod scenes;
 pub mod ui;
 
 fn main() -> anyhow::Result<()> {
-    app::App::<VoxelsScene>::new()?.run()
+    app::App::<SponzaWithLights>::new()?.run()
 }

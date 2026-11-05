@@ -1,4 +1,5 @@
-﻿use crate::render::graph::FrameGraph;
+﻿use crate::render::deferred::GBuffer;
+use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::{DepthUse, Pass, PassCtx, ResLoad};
 use crate::render::graph::res::ResId;
 
@@ -39,6 +40,15 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
     pub fn writes(mut self, res: ResId, load: ResLoad) -> Self {
         self.writes_color.push((res, load));
         self
+    }
+
+    pub fn writes_gbuffer(mut self, gbuf: &GBuffer, load: ResLoad) -> Self {
+        self
+            .writes(gbuf.albedo, load)
+            .writes(gbuf.normals, load)
+            .writes(gbuf.materials, load)
+            .writes(gbuf.scene_color, load)
+            .writes(gbuf.velocity, load)
     }
 
     pub fn writes_depth(self, res: ResId, load: ResLoad) -> Self {

@@ -10,7 +10,7 @@ use crate::ui::EguiPass;
 use crate::wrappers::event::WindowEvent;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use egui_probe::{EguiProbe, Probe};
-use glam::{EulerRot, Quat, Vec2, Vec3};
+use glam::{EulerRot, Mat4, Quat, Vec2, Vec3};
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -34,6 +34,7 @@ pub struct App<S: Scene> {
 
     window: NativeWindow,
     timings: Vec<(&'static str, f32)>,
+    prev_view_proj: Mat4,
 
     opts: RenderOpts,
     controller: ControllerInfo
@@ -55,6 +56,7 @@ impl<S: Scene> App<S> {
         let globals = Globals {
             view_proj: cam.view_proj(),
             inv_view_proj: cam.view_proj().inverse(),
+            prev_view_proj: cam.view_proj(),
             resolution: Vec2::new(WIDTH as f32, HEIGHT as f32),
             time: 0.0,
             delta_time: 0.0,
@@ -83,6 +85,7 @@ impl<S: Scene> App<S> {
             last_title_update: 0.,
             frames: 0,
             fps: 0,
+            prev_view_proj: globals.view_proj,
 
             is_focused: true,
             egui: egui::Context::default(),
@@ -171,7 +174,7 @@ impl<S: Scene> App<S> {
         }
 
         if input.was_released(KeyCode::F7) {
-            self.opts.debug_view_type = DebugViewType::from_u32((self.opts.debug_view_type as u32 + 1) % 5);
+            self.opts.debug_view_type = DebugViewType::from_u32((self.opts.debug_view_type as u32 + 1) % 6);
         }
 
         if input.was_released(KeyCode::F8) {
@@ -185,6 +188,8 @@ impl<S: Scene> App<S> {
         self.globals.time = self.time.game_time();
         self.globals.delta_time = dt;
         self.globals.view_proj = self.renderer.cam.view_proj();
+        self.globals.prev_view_proj = self.prev_view_proj;
+        self.prev_view_proj = self.globals.view_proj;
         self.globals.inv_view_proj = self.renderer.cam.view_proj().inverse();
         self.globals.camera_pos = self.renderer.cam.pos();
 
@@ -330,7 +335,8 @@ pub enum DebugViewType {
     Normals,
     Metallic,
     Roughness,
-    AO
+    AO,
+    Velocity
 }
 
 impl DebugViewType {
@@ -341,6 +347,7 @@ impl DebugViewType {
             2 => Self::Metallic,
             3 => Self::Roughness,
             4 => Self::AO,
+            5 => Self::Velocity,
             _ => Self::Default,
         }
     }

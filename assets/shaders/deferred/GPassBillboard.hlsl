@@ -1,10 +1,5 @@
 ﻿#include "../lib/Core.hlsl"
-
-struct ObjectData {
-    float4x4 model;
-    uint materialId;
-    uint3 _pad;
-};
+#include "../lib/GBuffer.hlsl"
 
 struct BillboardMaterial {
     uint albedoTex;
@@ -16,7 +11,6 @@ struct BillboardMaterial {
 };
 
 cbuffer DrawConstants : register(b0) { uint drawIndex; }
-StructuredBuffer<ObjectData> g_Objects : register(t1);
 StructuredBuffer<BillboardMaterial> g_Materials : register(t2);
 SamplerState LinearClamp : register(s1);
 
@@ -33,13 +27,6 @@ struct GSOut {
     float3 up : UP;
     float3 forward : FORWARD;
     nointerpolation uint material : MATERIAL;
-};
-
-struct GBufferOut {
-    float4 albedo : SV_Target0;
-    float4 normal : SV_Target1;
-    float4 material : SV_Target2;
-    float4 emissive : SV_Target3;
 };
 
 Varyings vert(uint vid : SV_VertexID) {
@@ -84,5 +71,6 @@ GBufferOut frag(GSOut i) {
     o.normal = float4(n * 0.5 + 0.5, 0);
     o.material = texMat;
     o.emissive = 0;
+    o.velocity = 0;
     return o;
 }

@@ -1,7 +1,9 @@
 ﻿#include "../../lib/Core.hlsl"
+#include "../../lib/GBuffer.hlsl"
 
-struct ObjectData {
+struct SmoothVoxelObjectData {
     float4x4 model;
+    float4x4 prevModel;
     int3 chunkPos;
     uint _pad;
 };
@@ -20,7 +22,6 @@ struct VoxelMaterial {
 };
 
 cbuffer DrawConstants : register(b0) { uint drawIndex; }
-StructuredBuffer<ObjectData> g_Objects : register(t1);
 StructuredBuffer<VoxelMaterial> g_Materials : register(t2);
 SamplerState PointWrap : register(s5);
 
@@ -36,15 +37,8 @@ struct Varyings {
     nointerpolation uint material : MATERIAL;
 };
 
-struct GBufferOut {
-    float4 albedo : SV_Target0;
-    float4 normal : SV_Target1;
-    float4 material : SV_Target2;
-    float4 emissive : SV_Target3;
-};
-
 Varyings vert(Attributes i) {
-    ObjectData obj = g_Objects[drawIndex];
+    SmoothVoxelObjectData obj = SmoothVoxelObjectData(g_Objects[drawIndex]);
     float3 posPm = float3(i.posMaterial.xyz) / 1024.;
     float4 posW = mul(obj.model, float4(posPm, 1.0));
     Varyings o;
@@ -72,5 +66,6 @@ GBufferOut frag(Varyings i) {
     o.normal = float4(texNormal * 0.5 + 0.5, 0);
     o.material = float4(roughness * mat.roughness, metallic * mat.metallic, occlusion, 0);
     o.emissive = 0;
+    o.velocity = 0;
     return o;
 }

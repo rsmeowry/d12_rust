@@ -143,6 +143,7 @@ impl Pipeline {
 pub struct Globals {
     pub view_proj: Mat4,
     pub inv_view_proj: Mat4,
+    pub prev_view_proj: Mat4,
     pub resolution: Vec2,
     pub time: f32,
     pub delta_time: f32,

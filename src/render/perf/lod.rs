@@ -157,11 +157,8 @@ impl LodRenderer {
         let (scale, _, _) = obj.model.to_scale_rotation_translation();
         let center = obj.model.transform_point3((aabb.min + aabb.max) * 0.5);
         let radius = (aabb.max - aabb.min).length() * 0.5 * scale.max_element();
-        ObjectData {
-            model: Mat4::from_scale_rotation_translation(Vec3::splat(radius), Quat::IDENTITY, center),
-            material_id: self.material_ids[mesh_idx],
-            _pad: [0; 3],
-        }
+        let mat = Mat4::from_scale_rotation_translation(Vec3::splat(radius), Quat::IDENTITY, center);
+        ObjectData::new(mat, self.material_ids[mesh_idx]) // TODO: probably need proper prev model here
     }
 
     pub fn reads_all_baked<'g, 'f>(&self, pass: PassBuilder<'g, 'f>) -> PassBuilder<'g, 'f> {
