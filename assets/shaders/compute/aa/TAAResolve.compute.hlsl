@@ -41,13 +41,28 @@ void CS(int3 threadId : SV_DispatchThreadID) {
     float currDepth = depth.Load(threadId).r;
     float2 currVelocity = velocity.Load(threadId).rg;
 
+    #define MV_REP
+
     // backprojected
     float2 uv = float2(threadId.xy) / resolution;
+    #ifndef MV_REP
     float3 currWp = WorldPosFromDepth(uv, currDepth);
     // reprojected
     float4 rpClip = mul(prevViewProj, float4(currWp, 1.0));
     float2 rpNdc = (rpClip.xy / rpClip.w);
     float2 rpUv = float2(rpNdc.x * 0.5 + 0.5, 0.5 - rpNdc.y * 0.5);
+    #else
+    float2 rpUv = uv + currVelocity;
+    if (currDepth == 0) { // sky still needs reprojection
+        float4 c = mul(prevViewProj, float4(WorldPosFromDepth(uv, 0), 1));
+        rpUv = c.xy / c.w * float2(0.5, -0.5) + 0.5;
+    }
+    #endif
+
+    if(any(rpUv < 0.) || any(rpUv >= 1.)) {
+        o[threadId.xy] = currCol;
+        return;
+    }
     int2 rpPix = round(rpUv * resolution);
     float4 prevCol = prev.Load(int3(rpPix, 0));
 

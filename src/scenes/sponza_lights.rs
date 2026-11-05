@@ -21,6 +21,7 @@ use crate::time::Time;
 use egui::Ui;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::aa::AntiAliasing;
 use crate::render::aa::temporal::TaaPass;
 
 const MAX_PARTICLES: usize = 4096;
@@ -213,8 +214,12 @@ impl Scene for SponzaWithLights {
 
         let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
 
-        // taa (pre-bloom)
-        let taa = self.taa.add_pass(&self.gbuffer, renderer, graph)?;
+        let scene_color = if opts.anti_aliasing == AntiAliasing::Temporal {
+            // taa (pre-bloom)
+            self.taa.add_pass(&self.gbuffer, renderer, graph)?
+        } else {
+            self.gbuffer.scene_color
+        };
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {
@@ -223,7 +228,7 @@ impl Scene for SponzaWithLights {
             radius: 1.0,
             intensity: 1.0,
             ..Default::default()
-        }, taa, renderer, graph)?;
+        }, scene_color, renderer, graph)?;
 
         // post
         let post_props = PostProperties {
@@ -231,13 +236,13 @@ impl Scene for SponzaWithLights {
             normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
             materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
             depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
-            scene_color: gr.get(taa)?.srv_ptr(),
+            scene_color: gr.get(scene_color)?.srv_ptr(),
             enable_sobel: 0,
             enable_fly_eye: 0,
             enable_vignette: 1,
             ..Default::default()
         };
-        self.post.add_pass(post_props, Some(taa), Some(bloom), renderer, &self.gbuffer, graph)?;
+        self.post.add_pass(post_props, Some(scene_color), Some(bloom), renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 
         // debug
