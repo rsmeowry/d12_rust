@@ -48,6 +48,10 @@ impl GraphResources {
         self.screen_size
     }
 
+    pub fn render_scale(&self) -> f32 {
+        self.render_scale
+    }
+
     pub fn render_size(&self) -> (u32, u32) {
         ((self.screen_size.0 as f32 * self.render_scale).max(1.) as u32, (self.screen_size.1 as f32 * self.render_scale).max(1.) as u32)
     }

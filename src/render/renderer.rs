@@ -9,7 +9,7 @@ use crate::render::pipeline::signature::RootSignature;
 use crate::render::pipeline::{Globals, PipelineId, PipelineManager};
 use crate::render::texture::{MipCount, Texture};
 use crate::wrappers::graphics::GraphicsDevice;
-use glam::Mat4;
+use glam::{Mat4, Vec2};
 use std::cell::Cell;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16_FLOAT, DXGI_FORMAT_R16G16_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
@@ -50,7 +50,8 @@ pub struct Renderer {
     flat_normal_tex: Texture,
     pipeline_mgr: PipelineManager,
     shaders: ShaderStorage,
-    frame_count: Cell<u32>
+    frame_count: Cell<u32>,
+    jitter: Cell<Vec2>,
 }
 
 impl Renderer {
@@ -79,6 +80,7 @@ impl Renderer {
             shaders,
             cam,
             frame_count: Cell::new(0),
+            jitter: Cell::new(Vec2::ZERO)
         })
     }
 
@@ -103,6 +105,14 @@ impl Renderer {
     }
     
     pub fn frame_count(&self) -> u32 { self.frame_count.get() }
+
+    pub fn set_jitter(&self, j: Vec2) {
+        self.jitter.set(j);
+    }
+
+    pub fn jitter(&self) -> Vec2 {
+        self.jitter.get()
+    }
 
     pub fn create_pipeline(&mut self, desc: PipelineDesc) -> anyhow::Result<PipelineId> {
         self.pipeline_mgr.create(&self.gd, &self.shaders, desc)

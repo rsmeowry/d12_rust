@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use crate::input::KeyCode;
 use crate::render::camera::Camera;
 use crate::render::deferred::util::DebugTextPass;
@@ -11,7 +12,7 @@ use crate::wrappers::event::WindowEvent;
 use crate::wrappers::window::{NativeWindow, WindowProps};
 use egui_probe::{EguiProbe, Probe};
 use glam::{EulerRot, Mat4, Quat, Vec2, Vec2Swizzles, Vec3};
-use crate::render::aa::AntiAliasing;
+use crate::render::aa::{AntiAliasing, FsrQuality};
 use crate::render::aa::temporal::jitter_vec;
 
 const WIDTH: u32 = 800;
@@ -40,7 +41,7 @@ pub struct App<S: Scene> {
     prev_render_scale: f32,
 
     opts: RenderOpts,
-    controller: ControllerInfo
+    controller: ControllerInfo,
 }
 
 impl<S: Scene> App<S> {
@@ -154,13 +155,6 @@ impl<S: Scene> App<S> {
         let input = self.window.input();
         let dt = self.time.delta_time();
 
-        if (self.prev_render_scale - self.opts.render_scale).abs() > 0.001 {
-            self.prev_render_scale = self.opts.render_scale;
-            self.renderer.set_render_scale(self.opts.render_scale)?;
-            let (rw, rh) = self.renderer.gr.render_size();
-            self.globals.resolution = Vec2::new(rw as f32, rh as f32);
-        }
-
         if input.was_released(KeyCode::Escape) {
             self.is_focused = false;
             self.window.set_cursor_locked(false)?;
@@ -199,10 +193,26 @@ impl<S: Scene> App<S> {
 
         self.globals.time = self.time.game_time();
         self.globals.delta_time = dt;
+
+        // jitter (taa + fsr)
+        let scale = if self.opts.anti_aliasing == AntiAliasing::Fsr2 { self.opts.fsr_quality.ratio().recip() } else { self.opts.render_scale.max(0.01) };
+        if scale != self.renderer.gr.render_scale() {
+            self.renderer.set_render_scale(scale)?;
+            let (rw, rh) = self.renderer.gr.render_size();
+            self.globals.resolution = Vec2::new(rw as f32, rh as f32);
+        }
+
+        let j = match self.opts.anti_aliasing {
+            AntiAliasing::Disabled => Vec2::ZERO,
+            AntiAliasing::Temporal => jitter_vec(self.renderer.frame_count(), 8),
+            AntiAliasing::Fsr2 => jitter_vec(self.renderer.frame_count(), (8. * self.opts.fsr_quality.ratio() * self.opts.fsr_quality.ratio()).ceil() as u32),
+        };
+        self.renderer.set_jitter(j);
+
         let vp_nj = self.renderer.cam.view_proj();
         self.globals.view_proj_nj = vp_nj;
-        let j = if self.opts.anti_aliasing == AntiAliasing::Temporal { jitter_vec(self.renderer.frame_count(), 8) } else { Vec2::ZERO };
         let vp_j = Mat4::from_translation(Vec3::new(2.0 * j.x, -2.0 * j.y, 0.) / self.globals.resolution.xyy()) * vp_nj;
+
         self.globals.view_proj = vp_j;
         self.globals.prev_view_proj = self.prev_view_proj;
         self.prev_view_proj = self.globals.view_proj_nj;
@@ -340,6 +350,7 @@ pub struct RenderOpts {
     pub vsync: bool,
     pub culling_mode: CullingMode,
     pub anti_aliasing: AntiAliasing,
+    pub fsr_quality: FsrQuality,
     pub use_wireframe: bool,
     pub debug_view_type: DebugViewType,
     pub render_scale: f32,
