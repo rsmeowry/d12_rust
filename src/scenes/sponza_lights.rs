@@ -22,6 +22,7 @@ use egui::Ui;
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::aa::AntiAliasing;
+use crate::render::aa::fsr2::Fsr2Pass;
 use crate::render::aa::temporal::TaaPass;
 use crate::render::deferred::sky_velocity::SkyVelocityPass;
 
@@ -38,7 +39,8 @@ pub struct SponzaWithLights {
     materials_buf: ID3D12Resource,
     sky_velocity: SkyVelocityPass,
     taa: TaaPass,
-    
+    fsr: Fsr2Pass,
+
     shadows: ShadowMap,
     culler: Culler,
     bloom: BloomPass,
@@ -107,6 +109,7 @@ impl Scene for SponzaWithLights {
         let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512, SHADOW_DISTANCE, SHADOW_EXTEND)?;
         lighting.save_local_shadows(&shadows);
         let taa = TaaPass::new(renderer)?;
+        let fsr = Fsr2Pass::new(renderer)?;
         let sky_velocity = SkyVelocityPass::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
@@ -114,7 +117,7 @@ impl Scene for SponzaWithLights {
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
-        
+
 
         Ok(Self {
             gbuffer,
@@ -123,6 +126,7 @@ impl Scene for SponzaWithLights {
             sphere,
             sphere_mat_idx,
             taa,
+            fsr,
             sky_velocity,
 
             shadows,
@@ -205,7 +209,7 @@ impl Scene for SponzaWithLights {
                 }
                 Ok(())
             });
-        
+
         // sky velocity
         self.sky_velocity.add_pass(&self.gbuffer, renderer, graph)?;
 
@@ -222,11 +226,10 @@ impl Scene for SponzaWithLights {
 
         let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
 
-        let scene_color = if opts.anti_aliasing == AntiAliasing::Temporal {
-            // taa (pre-bloom)
-            self.taa.add_pass(&self.gbuffer, renderer, graph)?
-        } else {
-            self.gbuffer.scene_color
+        let scene_color = match opts.anti_aliasing {
+            AntiAliasing::Disabled => self.gbuffer.scene_color,
+            AntiAliasing::Temporal => self.taa.add_pass(&self.gbuffer, renderer, graph)?,
+            AntiAliasing::Fsr2 => self.fsr.add_pass(&self.gbuffer, renderer, time, graph)?
         };
 
         // bloom

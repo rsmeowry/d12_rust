@@ -1,6 +1,7 @@
 ﻿use egui_probe::EguiProbe;
 
 pub mod temporal;
+pub mod fsr2;
 
 #[derive(Debug, Copy, Clone, PartialEq, Default, EguiProbe)]
 pub enum AntiAliasing {

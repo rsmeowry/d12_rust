@@ -12,6 +12,7 @@ use crate::wrappers::graphics::GraphicsDevice;
 use glam::{Mat4, Vec2};
 use std::cell::Cell;
 use windows::Win32::Foundation::HWND;
+use windows::Win32::Graphics::Direct3D12::ID3D12GraphicsCommandList;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16_FLOAT, DXGI_FORMAT_R16G16_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
 use crate::app::RenderOpts;
 
@@ -52,6 +53,7 @@ pub struct Renderer {
     shaders: ShaderStorage,
     frame_count: Cell<u32>,
     jitter: Cell<Vec2>,
+    globals_va: Cell<u64>,
 }
 
 impl Renderer {
@@ -80,7 +82,8 @@ impl Renderer {
             shaders,
             cam,
             frame_count: Cell::new(0),
-            jitter: Cell::new(Vec2::ZERO)
+            jitter: Cell::new(Vec2::ZERO),
+            globals_va: Cell::new(0),
         })
     }
 
@@ -140,8 +143,17 @@ impl Renderer {
         self.frame_count.set(self.frame_count.get() + 1);
         self.gd.prepare_rt()?;
         let globals_va = self.gd.frame_context()?.frame_alloc.push(globals)?;
+        self.globals_va.set(globals_va);
         self.rs().bind(self.gd.command_list()?, globals_va, self.gd.srv_heap_start()?);
         self.rs().bind_compute(self.gd.command_list()?, globals_va, self.gd.srv_heap_start()?);
+        Ok(())
+    }
+    
+    pub fn rebind_root(&self, cmd: &ID3D12GraphicsCommandList) -> anyhow::Result<()> {
+        let (va, start) = (self.globals_va.get(), self.gd.srv_heap_start()?);
+        unsafe { cmd.SetDescriptorHeaps(&[Some(self.gd.srv_heap()?.raw().clone())]) };
+        self.rs().bind(cmd, va, start);
+        self.rs().bind_compute(cmd, va, start);
         Ok(())
     }
 
