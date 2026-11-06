@@ -26,7 +26,7 @@ Varyings vert(uint vid : SV_VertexID, uint iid: SV_InstanceID) {
     float2 c = CORNERS[vid];
     float2 px = g.pos + c * 8.0 * g.scale;
     Varyings o;
-    o.pos = float4(px / resolution * float2(2, -2) + float2(-1, 1), 0, 1);
+    o.pos = float4(px / displayResolution * float2(2, -2) + float2(-1, 1), 0, 1);
     o.uv = float2((g.code + c.x) / GLYPH_COUNT, c.y);
     o.color = g.col;
     return o;

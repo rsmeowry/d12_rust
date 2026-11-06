@@ -37,6 +37,7 @@ pub struct App<S: Scene> {
     window: NativeWindow,
     timings: Vec<(&'static str, f32)>,
     prev_view_proj: Mat4,
+    prev_render_scale: f32,
 
     opts: RenderOpts,
     controller: ControllerInfo
@@ -55,6 +56,9 @@ impl<S: Scene> App<S> {
             Quat::from_rotation_x(30f32.to_radians()),
         );
 
+        let mut opts = RenderOpts::default();
+        opts.render_scale = 1.;
+
         let globals = Globals {
             view_proj: cam.view_proj(),
             view_proj_nj: cam.view_proj(),
@@ -63,17 +67,16 @@ impl<S: Scene> App<S> {
             resolution: Vec2::new(WIDTH as f32, HEIGHT as f32),
             time: 0.0,
             delta_time: 0.0,
-            _pad2: 0.0,
+            display_resolution: Vec2::new(WIDTH as f32, HEIGHT as f32),
             camera_pos: cam.pos(),
+            _pad2: [0; 2],
+            _pad1: 0
         };
 
         let mut renderer = Renderer::new(window.handle(), WIDTH, HEIGHT, cam)?;
 
         let scene = S::setup(&mut renderer)?;
         let text = DebugTextPass::new(&mut renderer)?;
-
-        let mut opts = RenderOpts::default();
-        opts.enable_dbg_text = true;
 
         let egui_pass = EguiPass::new(&mut renderer)?;
 
@@ -89,6 +92,7 @@ impl<S: Scene> App<S> {
             frames: 0,
             fps: 0,
             prev_view_proj: globals.view_proj,
+            prev_render_scale: 1.0,
 
             is_focused: true,
             egui: egui::Context::default(),
@@ -137,7 +141,9 @@ impl<S: Scene> App<S> {
         if let Some((w, h)) = new_size {
             self.renderer.resize(w, h)?;
             self.renderer.cam.resize(w, h);
-            self.globals.resolution = Vec2::new(w as f32, h as f32);
+            self.globals.display_resolution = Vec2::new(w as f32, h as f32);
+            let (rw, rh) = self.renderer.gr.render_size();
+            self.globals.resolution = Vec2::new(rw as f32, rh as f32);
         }
         Ok(true)
     }
@@ -148,6 +154,13 @@ impl<S: Scene> App<S> {
         let input = self.window.input();
         let dt = self.time.delta_time();
 
+        if (self.prev_render_scale - self.opts.render_scale).abs() > 0.001 {
+            self.prev_render_scale = self.opts.render_scale;
+            self.renderer.set_render_scale(self.opts.render_scale)?;
+            let (rw, rh) = self.renderer.gr.render_size();
+            self.globals.resolution = Vec2::new(rw as f32, rh as f32);
+        }
+
         if input.was_released(KeyCode::Escape) {
             self.is_focused = false;
             self.window.set_cursor_locked(false)?;
@@ -156,10 +169,6 @@ impl<S: Scene> App<S> {
         if input.was_released(KeyCode::F) {
             self.is_focused = true;
             self.window.set_cursor_locked(true)?;
-        }
-
-        if input.was_released(KeyCode::F3) {
-            self.opts.enable_dbg_text = !self.opts.enable_dbg_text;
         }
 
         if input.was_released(KeyCode::F4) {
@@ -200,7 +209,7 @@ impl<S: Scene> App<S> {
         self.globals.inv_view_proj = vp_j.inverse();
         self.globals.camera_pos = self.renderer.cam.pos();
 
-        let egui_inputs = self.window.input_mut().collect_egui_input(self.globals.resolution.x as u32, self.globals.resolution.y as u32, self.time.game_time());
+        let egui_inputs = self.window.input_mut().collect_egui_input(self.globals.display_resolution.x as u32, self.globals.display_resolution.y as u32, self.time.game_time());
 
         let out = self.egui.run_ui(egui_inputs, |ctx| {
             egui::Window::new(format!("Brine: {}", S::NAME)).show(ctx, |ui| {
@@ -245,7 +254,7 @@ impl<S: Scene> App<S> {
         let text = format!("FPS: {} | tpf: {:.2}ms\nCamera: {cam_pos:.2}\nScene: {}", self.fps, 1000. / self.fps as f32, S::NAME);
         if let Some((prims, tex, ppp)) = &mut self.egui_ui_out {
             self.egui_pass.update_textures(&self.renderer.gd, tex)?;
-            self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.resolution.x, self.globals.resolution.y), &self.renderer, &mut graph)?;
+            self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.display_resolution.x, self.globals.display_resolution.y), &self.renderer, &mut graph)?;
             tex.clear();
         }
 
@@ -333,7 +342,7 @@ pub struct RenderOpts {
     pub anti_aliasing: AntiAliasing,
     pub use_wireframe: bool,
     pub debug_view_type: DebugViewType,
-    pub enable_dbg_text: bool,
+    pub render_scale: f32,
 }
 
 #[repr(u32)]

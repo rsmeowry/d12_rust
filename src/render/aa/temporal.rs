@@ -35,7 +35,7 @@ pub struct TaaPass {
 
 impl TaaPass {
     pub fn new(rd: &mut Renderer) -> anyhow::Result<Self> {
-        let history = [0, 1].map(|each| rd.gr.storage(&rd.gd, &format!("TAA_History_{each}"), SCENE_FORMAT, ResSize::FitScreen).expect("Failed to init TAA storage texture"));
+        let history = [0, 1].map(|each| rd.gr.storage(&rd.gd, &format!("TAA_History_{each}"), SCENE_FORMAT, ResSize::FitRender).expect("Failed to init TAA storage texture"));
         let cs = rd.create_pipeline(PipelineDesc {
             name: "TAAResolve",
             shader: "compute/aa/TAAResolve.compute.hlsl".into(),

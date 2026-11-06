@@ -32,7 +32,7 @@ float Bayer4x4(float2 p){
 }
 
 float4 frag(Varyings i) : SV_Target {
-    float2 pos = i.uv * resolution;
+    float2 pos = i.uv * displayResolution;
     float dither = Bayer4x4(pos);
     float4 scene = g_Tex2D[sourceTex].Sample(PointClamp, i.uv);
     if(transformHdr == 1) {

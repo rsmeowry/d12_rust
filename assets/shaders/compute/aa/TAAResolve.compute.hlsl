@@ -1,14 +1,4 @@
-﻿cbuffer Globals : register(b1) {
-    float4x4 viewProj;
-    float4x4 viewProjNj;
-    float4x4 invViewProj;
-    float4x4 prevViewProj;
-    float2 resolution;
-    float time;
-    float deltaTime;
-    float3 cameraPos;
-    float _pad2;
-};
+﻿#include "../../lib/Core.hlsl"
 
 cbuffer DownsampleProperties : register(b2) {
     uint prevTex;
@@ -18,16 +8,7 @@ cbuffer DownsampleProperties : register(b2) {
     uint outTex;
 }
 
-RWTexture2D<float4> g_RWTex2D[1024] : register(u0, space1);
-Texture2D g_Tex2D[1024] : register(t0, space1);
-
 SamplerState Linear : register(s1);
-
-float3 WorldPosFromDepth(float2 uv, float depth) {
-    float4 clip = float4(uv.x * 2 - 1, 1 - uv.y * 2, depth, 1);
-    float4 w = mul(invViewProj, clip);
-    return w.xyz / w.w;
-}
 
 // https://www.elopezr.com/temporal-aa-and-the-quest-for-the-holy-trail/
 float2 GetVelocity(int2 pix)

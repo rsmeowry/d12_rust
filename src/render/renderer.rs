@@ -67,7 +67,7 @@ impl Renderer {
         let flat_normal_tex = Texture::from_rgba8(&mut batch, 1, 1, &[128, 128, 255, 255], false, MipCount::All, "builtin/FLAT_NORMAL")?;
         batch.finish()?;
 
-        let mut gr = GraphResources::new(width, height);
+        let gr = GraphResources::new(width, height, 1.0);
 
         Ok(Self {
             pipeline_mgr: PipelineManager::new(&gd)?,
@@ -117,6 +117,11 @@ impl Renderer {
     pub fn resize(&mut self, width: u32, height: u32) -> anyhow::Result<()> {
         self.gd.resize(width, height)?;
         self.gr.on_resize(&self.gd, width, height)
+    }
+
+    pub fn set_render_scale(&mut self, scale: f32) -> anyhow::Result<()> {
+        self.gd.flush_command_queue()?;
+        self.gr.change_render_scale(scale, &self.gd)
     }
 
     // waits for this frame's slot, resets the command list and binds the root signature with globals.

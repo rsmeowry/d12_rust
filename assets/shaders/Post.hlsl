@@ -30,7 +30,7 @@ Varyings vert(uint id : SV_VertexID) {
 }
 
 int2 ClampPx(int2 p) {
-    return clamp(p, int2(0, 0), int2(resolution) - 1);
+    return clamp(p, int2(0, 0), int2(displayResolution) - 1);
 }
 
 float3 NormalAt(int2 p) {
@@ -46,8 +46,8 @@ float HexagonSDF(float2 p, float r) {
 #define EYES 8
 #define FISHEYE_FAC 0.8
 float4 frag(Varyings i) : SV_Target {
-    float2 t = float2(1.0, 1.0) / resolution;
-    float2 pos = i.uv * resolution;
+    float2 t = float2(1.0, 1.0) / displayResolution;
+    float2 pos = i.uv * displayResolution;
     Texture2D scene = g_Tex2D[sceneColorTex];
     Texture2D normals = g_Tex2D[normalTex];
 

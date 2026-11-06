@@ -40,7 +40,7 @@ impl FogPass {
             blend: Blend::Premultiplied,
             ..Default::default()
         })?;
-        let fog_tex = renderer.gr.storage(&renderer.gd, "Fog", SCENE_FORMAT, ResSize::ScreenDiv(Self::DOWNSCALE))?;
+        let fog_tex = renderer.gr.storage(&renderer.gd, "Fog", SCENE_FORMAT, ResSize::RenderDiv(Self::DOWNSCALE))?;
 
         let mut batch = renderer.gd.begin_upload()?;
         let fog_noise = Texture::from_rgba8_3d(&mut batch, 64, 64, 64, &std::fs::read("assets/textures/noise/noise_3d_64.raw")?, "Noise3D")?;

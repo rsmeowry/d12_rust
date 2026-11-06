@@ -28,7 +28,7 @@ Varyings vert(uint vid : SV_VertexID) {
     V v = g_Verts[vid];
 
     Varyings o;
-    o.pos = float4(v.pos / resolution * float2(2, -2) + float2(-1, 1), 0, 1);
+    o.pos = float4(v.pos / displayResolution * float2(2, -2) + float2(-1, 1), 0, 1);
     o.uv = v.uv;
     float4 c = float4(v.col & 0xFF, (v.col >> 8) & 0xFF, (v.col >> 16) & 0xFF, v.col >> 24) / 255.0;
     o.color = float4(SrgbToLinear(c.rgb), c.a);
