@@ -23,6 +23,7 @@ use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::aa::AntiAliasing;
 use crate::render::aa::temporal::TaaPass;
+use crate::render::deferred::sky_velocity::SkyVelocityPass;
 
 const MAX_PARTICLES: usize = 4096;
 
@@ -35,8 +36,9 @@ pub struct SponzaWithLights {
     sphere_mat_idx: u32,
 
     materials_buf: ID3D12Resource,
+    sky_velocity: SkyVelocityPass,
     taa: TaaPass,
-
+    
     shadows: ShadowMap,
     culler: Culler,
     bloom: BloomPass,
@@ -105,12 +107,14 @@ impl Scene for SponzaWithLights {
         let shadows = ShadowMap::new(renderer, 1024, 2048, 512, 512, SHADOW_DISTANCE, SHADOW_EXTEND)?;
         lighting.save_local_shadows(&shadows);
         let taa = TaaPass::new(renderer)?;
+        let sky_velocity = SkyVelocityPass::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
+        
 
         Ok(Self {
             gbuffer,
@@ -119,6 +123,7 @@ impl Scene for SponzaWithLights {
             sphere,
             sphere_mat_idx,
             taa,
+            sky_velocity,
 
             shadows,
             culler,
@@ -200,6 +205,9 @@ impl Scene for SponzaWithLights {
                 }
                 Ok(())
             });
+        
+        // sky velocity
+        self.sky_velocity.add_pass(&self.gbuffer, renderer, graph)?;
 
         let (mut all_objects, mut all_meshes) = self.sponza.to_objects_and_draws();
         all_objects.push(sphere_obj);

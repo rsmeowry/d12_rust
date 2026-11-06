@@ -118,13 +118,6 @@ void CS(int3 threadId : SV_DispatchThreadID) {
     float2 rpUv = float2(rpNdc.x * 0.5 + 0.5, 0.5 - rpNdc.y * 0.5);
     #else
     float2 rpUv = uv + currVelocity;
-    // stop shaking my sky !!!!!!!!!!!
-    if (currDepth == 0) {
-        float4 w = float4(WorldPosFromDepth(uv, 0), 1);
-        float4 curr = mul(viewProjNj, w);
-        float4 prev = mul(prevViewProj, w);
-        rpUv = uv + (prev.xy / prev.w - curr.xy / curr.w) * float2(0.5, -0.5);
-    }
     #endif
 
     if(any(rpUv < 0.) || any(rpUv >= 1.)) {

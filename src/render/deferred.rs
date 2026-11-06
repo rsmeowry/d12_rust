@@ -12,6 +12,7 @@ pub mod bloom;
 pub mod fog;
 pub mod lighting;
 pub mod pbr_lighting;
+pub mod sky_velocity;
 
 #[derive(Debug, Copy, Clone)]
 pub struct GBuffer {
