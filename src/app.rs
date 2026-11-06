@@ -71,7 +71,7 @@ impl<S: Scene> App<S> {
             display_resolution: Vec2::new(WIDTH as f32, HEIGHT as f32),
             camera_pos: cam.pos(),
             _pad2: [0; 2],
-            _pad1: 0
+            mip_bias: 0.,
         };
 
         let mut renderer = Renderer::new(window.handle(), WIDTH, HEIGHT, cam)?;
@@ -145,6 +145,9 @@ impl<S: Scene> App<S> {
             self.globals.display_resolution = Vec2::new(w as f32, h as f32);
             let (rw, rh) = self.renderer.gr.render_size();
             self.globals.resolution = Vec2::new(rw as f32, rh as f32);
+            self.globals.mip_bias = if self.opts.anti_aliasing == AntiAliasing::Fsr2 {
+                self.opts.fsr_quality.ratio().recip().log2() - 1.0
+            } else { 0.0 };
         }
         Ok(true)
     }
@@ -200,6 +203,9 @@ impl<S: Scene> App<S> {
             self.renderer.set_render_scale(scale)?;
             let (rw, rh) = self.renderer.gr.render_size();
             self.globals.resolution = Vec2::new(rw as f32, rh as f32);
+            self.globals.mip_bias = if self.opts.anti_aliasing == AntiAliasing::Fsr2 {
+                self.opts.fsr_quality.ratio().recip().log2() - 1.0
+            } else { 0.0 };
         }
 
         let j = match self.opts.anti_aliasing {

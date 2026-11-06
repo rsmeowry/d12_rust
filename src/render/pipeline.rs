@@ -149,7 +149,7 @@ pub struct Globals {
     pub time: f32,
     pub delta_time: f32,
     pub camera_pos: Vec3,
-    pub _pad1: u32,
+    pub mip_bias: f32,
     pub display_resolution: Vec2,
     pub _pad2: [u32; 2]
 }

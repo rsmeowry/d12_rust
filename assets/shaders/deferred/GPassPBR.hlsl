@@ -53,15 +53,15 @@ Varyings vert(Attributes i) {
 GBufferOut frag(Varyings i) {
     ObjectData obj = g_Objects[drawIndex];
     PbrMaterial mat = g_Materials[g_Objects[drawIndex].materialId];
-    float4 albedo = g_Tex2D[mat.albedoTex].Sample(AnisoWrap, i.uv);
+    float4 albedo = g_Tex2D[mat.albedoTex].SampleBias(AnisoWrap, i.uv, mipBias);
     clip(albedo.a - 0.5);
 
     float3x3 tbnMat = float3x3(normalize(i.tangentW), normalize(i.binormalW), normalize(i.normalW));
-    float4 texNormal = g_Tex2D[mat.normalTex].Sample(AnisoWrap, i.uv) * 2.0 - 1.0;
+    float4 texNormal = g_Tex2D[mat.normalTex].SampleBias(AnisoWrap, i.uv, mipBias) * 2.0 - 1.0;
     float3 normal = normalize(mul(texNormal.xyz, tbnMat));
 
-    float4 roughnessMetallic = g_Tex2D[mat.metalRoughnessTex].Sample(AnisoWrap, i.uv);
-    float4 occlusion = g_Tex2D[mat.occlusionTex].Sample(AnisoWrap, i.uv);
+    float4 roughnessMetallic = g_Tex2D[mat.metalRoughnessTex].SampleBias(AnisoWrap, i.uv, mipBias);
+    float4 occlusion = g_Tex2D[mat.occlusionTex].SampleBias(AnisoWrap, i.uv, mipBias);
 
     GBufferOut o;
     o.albedo = float4(albedo.rgb * mat.baseColor, 1);

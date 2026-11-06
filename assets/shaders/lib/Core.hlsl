@@ -9,7 +9,7 @@ cbuffer Globals : register(b1) {
     float time;
     float deltaTime;
     float3 cameraPos;
-    uint _pad1;
+    float mipBias;
     float2 displayResolution;
     uint2 _pad2;
 };
