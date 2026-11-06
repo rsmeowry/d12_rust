@@ -5,7 +5,6 @@
 #include "../lib/Atmosphere.hlsl"
 
 StructuredBuffer<Light> g_Lights : register(t3);
-//SamplerState LinearWrap : register(s0);
 
 #define SKY_INTENSITY 1.2
 #define SKY_CUBEMAP 0

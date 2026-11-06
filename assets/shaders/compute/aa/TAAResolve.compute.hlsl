@@ -118,9 +118,12 @@ void CS(int3 threadId : SV_DispatchThreadID) {
     float2 rpUv = float2(rpNdc.x * 0.5 + 0.5, 0.5 - rpNdc.y * 0.5);
     #else
     float2 rpUv = uv + currVelocity;
-    if (currDepth == 0) { // sky still needs reprojection
-        float4 c = mul(prevViewProj, float4(WorldPosFromDepth(uv, 0), 1));
-        rpUv = c.xy / c.w * float2(0.5, -0.5) + 0.5;
+    // stop shaking my sky !!!!!!!!!!!
+    if (currDepth == 0) {
+        float4 w = float4(WorldPosFromDepth(uv, 0), 1);
+        float4 curr = mul(viewProjNj, w);
+        float4 prev = mul(prevViewProj, w);
+        rpUv = uv + (prev.xy / prev.w - curr.xy / curr.w) * float2(0.5, -0.5);
     }
     #endif
 
