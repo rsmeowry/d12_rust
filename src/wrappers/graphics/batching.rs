@@ -35,6 +35,10 @@ impl<'a> UploadBatch<'a> {
         Ok((buf, 0, ptr.cast()))
     }
 
+    pub fn leave_and_forget(&mut self, res: ID3D12Resource) {
+        self.not_fitting.push(res);
+    }
+
     pub fn finish(mut self) -> anyhow::Result<()> {
         self.submit_and_wait()?;
         self.gd.resources()?.upload_open.replace(false);

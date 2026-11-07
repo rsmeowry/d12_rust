@@ -13,7 +13,7 @@ use crate::wrappers::graphics::batching::UploadBatch;
 pub struct Mesh {
     _vb: ID3D12Resource,
     _ib: ID3D12Resource,
-    blas: Option<(ID3D12Resource, ID3D12Resource)>,
+    blas: Option<ID3D12Resource>,
     vbv: D3D12_VERTEX_BUFFER_VIEW,
     ibv: D3D12_INDEX_BUFFER_VIEW,
     indices: u32,
@@ -81,7 +81,7 @@ impl Mesh {
     }
 
     pub fn blas_va(&self) -> Option<u64> {
-        self.blas.as_ref().map(|it| unsafe { it.1.GetGPUVirtualAddress() })
+        self.blas.as_ref().map(|it| unsafe { it.GetGPUVirtualAddress() })
     }
     
     pub fn is_static(&self) -> bool { 
@@ -125,7 +125,7 @@ impl Mesh {
         }
     }
 
-    unsafe fn build_blas<T: Vertex>(batch: &mut UploadBatch, id: u16, ib: &ID3D12Resource, vb: &ID3D12Resource, vertex_count: u32, index_count: u32) -> anyhow::Result<(ID3D12Resource, ID3D12Resource)> {
+    unsafe fn build_blas<T: Vertex>(batch: &mut UploadBatch, id: u16, ib: &ID3D12Resource, vb: &ID3D12Resource, vertex_count: u32, index_count: u32) -> anyhow::Result<ID3D12Resource> {
         let geom_desc = D3D12_RAYTRACING_GEOMETRY_DESC {
             Type: D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
             Flags: D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE,
@@ -171,13 +171,13 @@ impl Mesh {
             ScratchAccelerationStructureData: blas_scratch.GetGPUVirtualAddress(),
             ..Default::default()
         };
+        batch.leave_and_forget(blas_scratch);
 
         let cmd = batch.cmd().cast::<ID3D12GraphicsCommandList4>()?;
         cmd.BuildRaytracingAccelerationStructure(&as_desc, None);
-
         cmd.ResourceBarrier(&[uav_barrier(&blas_result)]);
 
-        Ok((blas_scratch, blas_result))
+        Ok(blas_result)
     }
 }
 
