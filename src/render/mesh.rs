@@ -13,8 +13,7 @@ use crate::wrappers::graphics::batching::UploadBatch;
 pub struct Mesh {
     _vb: ID3D12Resource,
     _ib: ID3D12Resource,
-    _blas_scratch: ID3D12Resource,
-    _blas_result: ID3D12Resource,
+    blas: Option<(ID3D12Resource, ID3D12Resource)>,
     vbv: D3D12_VERTEX_BUFFER_VIEW,
     ibv: D3D12_INDEX_BUFFER_VIEW,
     indices: u32,
@@ -32,8 +31,9 @@ impl Mesh {
         topology: DrawTopology,
         aabb: AABB,
         is_static: bool,
+        build_blas: bool,
     ) -> anyhow::Result<Self> {
-        Self::new_from_bytes::<TVert>(gd, batch, bytemuck::cast_slice(vertices), bytemuck::cast_slice(indices), indices.len() as u32, topology, aabb, is_static)
+        Self::new_from_bytes::<TVert>(gd, batch, bytemuck::cast_slice(vertices), bytemuck::cast_slice(indices), indices.len() as u32, topology, aabb, is_static, build_blas)
     }
 
     pub fn new_from_bytes<TVert: Vertex>(
@@ -45,6 +45,7 @@ impl Mesh {
         topology: DrawTopology,
         aabb: AABB,
         is_static: bool,
+        build_blas: bool,
     ) -> anyhow::Result<Self> {
         let id: u16 = rand::random();
 
@@ -62,15 +63,14 @@ impl Mesh {
             Format: DXGI_FORMAT_R32_UINT,
         };
 
-        let (blas_scratch, blas_result) = unsafe {
-            Self::build_blas::<TVert>(batch, id, &ib, &vb, (vertices.len() / size_of::<TVert>()) as u32, index_count)?
-        };
+        let blas = if build_blas { unsafe {
+            Some(Self::build_blas::<TVert>(batch, id, &ib, &vb, (vertices.len() / size_of::<TVert>()) as u32, index_count)?)
+        } } else { None };
 
         Ok(Self {
             _vb: vb,
             _ib: ib,
-            _blas_scratch: blas_scratch,
-            _blas_result: blas_result,
+            blas,
             vbv,
             ibv,
             indices: index_count,
@@ -78,6 +78,10 @@ impl Mesh {
             aabb,
             is_static
         })
+    }
+
+    pub fn blas_va(&self) -> Option<u64> {
+        self.blas.as_ref().map(|it| unsafe { it.1.GetGPUVirtualAddress() })
     }
     
     pub fn is_static(&self) -> bool { 

@@ -196,7 +196,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
         }
         let vc = vertices.clone();
         let ic = indices.clone();
-        Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions), is_static).map(|it| (it, base + mesh.material_index() as u32, vc, ic))
+        Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions), is_static, true).map(|it| (it, base + mesh.material_index() as u32, vc, ic))
     }).collect::<anyhow::Result<_>>()?;
 
     let mut optimized: Vec<Vec<(Mesh, u32)>> = Vec::new();
@@ -248,7 +248,7 @@ fn optimize_mesh<TVert: LodVertex>(batch: &mut UploadBatch, aabb: AABB, is_stati
 
     let mut meshes = Vec::new();
     for (i, _) in target_levels.iter().enumerate() {
-        let mesh = Mesh::new(batch.gd(), batch, &collapsed_vertices[i], &collapsed_indices[i], DrawTopology::TriangleList, aabb, is_static).unwrap();
+        let mesh = Mesh::new(batch.gd(), batch, &collapsed_vertices[i], &collapsed_indices[i], DrawTopology::TriangleList, aabb, is_static, false).unwrap();
         meshes.push((mesh, idx));
     }
 

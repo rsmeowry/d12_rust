@@ -82,7 +82,7 @@ impl Scene for SponzaWithLights {
             }.to_gpu_material()
         )?;
         let sphere = unit_sphere(32, 32, |pos, norm, tan, binorm, uv| VertexPbr::new(pos, norm, tan, binorm, uv));
-        let sphere = Mesh::new(batch.gd(), &mut batch, &sphere.0, &sphere.1, DrawTopology::TriangleList, AABB { min: Vec3::ZERO, max: Vec3::ONE }, false)?;
+        let sphere = Mesh::new(batch.gd(), &mut batch, &sphere.0, &sphere.1, DrawTopology::TriangleList, AABB { min: Vec3::ZERO, max: Vec3::ONE }, false, true)?;
         let sphere_mat_idx = materials.len() as u32;
         materials.push(MaterialParams::Pbr {
             albedo_tex: renderer.white_tex().srv_ptr(),

@@ -207,7 +207,7 @@ impl Terrain {
             min: Vec3::new(0., 0., 0.),
             max: Vec3::new(1., 0., 1.)
         };
-        Mesh::new(batch.gd(), batch, &vertices, &indices, DrawTopology::TriangleList, aabb, true)
+        Mesh::new(batch.gd(), batch, &vertices, &indices, DrawTopology::TriangleList, aabb, true, false)
     }
 }
 
