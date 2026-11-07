@@ -66,7 +66,7 @@ impl Camera {
     pub fn set_rot(&mut self, rot: Quat) {
         self.rot = rot;
         self.view =
-            glam::camera::lh::view::look_to_mat4(self.pos, self.rot.mul_vec3(Vec3::Z), Vec3::Y);
+            glam::camera::lh::view::look_to_mat4(self.pos, self.rot.mul_vec3(Vec3::Z), self.rot.mul_vec3(Vec3::Y));
         self.view_proj = self.proj * self.view;
         self.frustum = Frustum::from_view_proj(self.view_proj);
     }
@@ -81,6 +81,10 @@ impl Camera {
 
     pub fn forward(&self) -> Vec3 {
         self.rot * Vec3::Z
+    }
+
+    pub fn right(&self) -> Vec3 {
+        self.rot * Vec3::X
     }
 
     pub fn view(&self) -> Mat4 {

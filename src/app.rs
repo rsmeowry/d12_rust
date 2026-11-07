@@ -20,6 +20,8 @@ const HEIGHT: u32 = 600;
 
 pub struct App<S: Scene> {
     renderer: Renderer,
+    cam_target: Vec3,
+    tilt: Vec2,
 
     is_focused: bool,
     egui_pass: EguiPass,
@@ -82,6 +84,8 @@ impl<S: Scene> App<S> {
         let egui_pass = EguiPass::new(&mut renderer)?;
 
         Ok(Self {
+            cam_target: renderer.cam.pos(),
+            tilt: Vec2::ZERO,
             renderer,
 
             text,
@@ -294,7 +298,6 @@ impl<S: Scene> App<S> {
         self.controller.yaw += (input.mouse_delta().x * MOUSE_SENSITIVITY).to_radians();
         self.controller.pitch += (input.mouse_delta().y * MOUSE_SENSITIVITY).to_radians();
         self.controller.pitch = self.controller.pitch.clamp(-MAX_PITCH, MAX_PITCH);
-        self.renderer.cam.set_rot(Quat::from_euler(EulerRot::YXZ, self.controller.yaw, self.controller.pitch, 0.));
 
         let camera_rot_2d = Quat::from_rotation_y(self.controller.yaw);
         let left = camera_rot_2d * Vec3::NEG_X;
@@ -311,14 +314,35 @@ impl<S: Scene> App<S> {
             (KeyCode::LeftControl, 2. * Vec3::NEG_Y)
         ];
 
-        let mut pos = self.renderer.cam.pos();
         let move_speed = MOVE_SPEED * (if input.is_held(KeyCode::LeftShift) { SHIFT_MUL } else { 2.5 }) * self.time.delta_time();
         for (btn, axis) in btn_axis {
             if input.is_held(btn) {
-                pos += axis * move_speed;
+                self.cam_target += axis * move_speed;
             }
         }
-        self.renderer.cam.set_pos(pos);
+        let speed = 7.0;
+        let t = 1.0 - (-speed * self.time.delta_time()).exp();
+        let old_pos = self.renderer.cam.pos();
+        let new_pos = old_pos.lerp(self.cam_target, t);
+        self.renderer.cam.set_pos(new_pos);
+        let velocity = (new_pos - old_pos) / self.time.delta_time().max(1e-4);
+
+        // tilt
+        let side = velocity.dot(right);
+        let fwd = velocity.dot(front);
+        let max_angle = 3.0_f32.to_radians();
+        let ref_speed = MOVE_SPEED * 2.5;
+        let target = Vec2::new(
+            (fwd / ref_speed).clamp(-1.0, 1.0) * max_angle,
+            (-side / ref_speed).clamp(-1.0, 1.0) * max_angle,
+        );
+        let tt = 1.0 - (-10.0 * self.time.delta_time()).exp();
+        self.tilt = self.tilt.lerp(target, tt);
+
+        self.renderer.cam.set_rot(
+            Quat::from_euler(EulerRot::YXZ, self.controller.yaw, self.controller.pitch, 0.)
+                * Quat::from_euler(EulerRot::XYZ, self.tilt.x, 0., self.tilt.y),
+        );
     }
 }
 

@@ -1,9 +1,11 @@
+use std::ptr::null;
 use glam::Vec3;
 use crate::render::vertex::Vertex;
-use crate::wrappers::graphics::GraphicsDevice;
+use crate::wrappers::graphics::{transition_barrier, uav_barrier, GraphicsDevice};
 use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY, D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST};
-use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, ID3D12Resource, D3D12_INDEX_BUFFER_VIEW, D3D12_PRIMITIVE_TOPOLOGY_TYPE, D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RESOURCE_STATE_INDEX_BUFFER, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_VERTEX_BUFFER_VIEW};
-use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R32_UINT;
+use windows::Win32::Graphics::Direct3D12::{ID3D12Device5, ID3D12GraphicsCommandList, ID3D12GraphicsCommandList4, ID3D12Resource, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0, D3D12_ELEMENTS_LAYOUT_ARRAY, D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE, D3D12_INDEX_BUFFER_VIEW, D3D12_PRIMITIVE_TOPOLOGY_TYPE, D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL, D3D12_RAYTRACING_GEOMETRY_DESC, D3D12_RAYTRACING_GEOMETRY_DESC_0, D3D12_RAYTRACING_GEOMETRY_FLAGS, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE, D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC, D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_INDEX_BUFFER, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_VERTEX_BUFFER_VIEW};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32_UINT};
+use windows_core::Interface;
 use crate::render::perf::frustum::AABB;
 use crate::wrappers::graphics::batching::UploadBatch;
 
@@ -11,6 +13,8 @@ use crate::wrappers::graphics::batching::UploadBatch;
 pub struct Mesh {
     _vb: ID3D12Resource,
     _ib: ID3D12Resource,
+    _blas_scratch: ID3D12Resource,
+    _blas_result: ID3D12Resource,
     vbv: D3D12_VERTEX_BUFFER_VIEW,
     ibv: D3D12_INDEX_BUFFER_VIEW,
     indices: u32,
@@ -44,8 +48,8 @@ impl Mesh {
     ) -> anyhow::Result<Self> {
         let id: u16 = rand::random();
 
-        let vb = gd.create_default_buffer(batch, vertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, format!("Mesh_VB_{:04x}", id))?;
-        let ib = gd.create_default_buffer(batch, indices,  D3D12_RESOURCE_STATE_INDEX_BUFFER, format!("Mesh_IB_{:04x}", id))?;
+        let vb = gd.create_default_buffer(batch, vertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, format!("Mesh_VB_{:04x}", id))?;
+        let ib = gd.create_default_buffer(batch, indices,  D3D12_RESOURCE_STATE_INDEX_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, format!("Mesh_IB_{:04x}", id))?;
 
         let vbv = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation: unsafe { vb.GetGPUVirtualAddress() },
@@ -58,9 +62,15 @@ impl Mesh {
             Format: DXGI_FORMAT_R32_UINT,
         };
 
+        let (blas_scratch, blas_result) = unsafe {
+            Self::build_blas::<TVert>(batch, id, &ib, &vb, (vertices.len() / size_of::<TVert>()) as u32, index_count)?
+        };
+
         Ok(Self {
             _vb: vb,
             _ib: ib,
+            _blas_scratch: blas_scratch,
+            _blas_result: blas_result,
             vbv,
             ibv,
             indices: index_count,
@@ -110,6 +120,61 @@ impl Mesh {
             cmd.DrawIndexedInstanced(self.indices, instances, 0, 0, 0);
         }
     }
+
+    unsafe fn build_blas<T: Vertex>(batch: &mut UploadBatch, id: u16, ib: &ID3D12Resource, vb: &ID3D12Resource, vertex_count: u32, index_count: u32) -> anyhow::Result<(ID3D12Resource, ID3D12Resource)> {
+        let geom_desc = D3D12_RAYTRACING_GEOMETRY_DESC {
+            Type: D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
+            Flags: D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE,
+            Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
+                Triangles: D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC {
+                    Transform3x4: 0,
+                    IndexFormat: DXGI_FORMAT_R32_UINT,
+                    VertexFormat: DXGI_FORMAT_R32G32B32_FLOAT,
+                    IndexCount: index_count,
+                    VertexCount: vertex_count,
+                    IndexBuffer: ib.GetGPUVirtualAddress(),
+                    VertexBuffer: D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE {
+                        StartAddress: vb.GetGPUVirtualAddress(),
+                        StrideInBytes: size_of::<T>() as u64,
+                    },
+                }
+            },
+        };
+
+        let as_inputs = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS {
+            Type: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
+            Flags: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE,
+            NumDescs: 1,
+            DescsLayout: D3D12_ELEMENTS_LAYOUT_ARRAY,
+            Anonymous: D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
+                pGeometryDescs: &geom_desc as *const _,
+            },
+        };
+
+        let mut as_build_info = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO::default();
+
+        let dev = batch.gd().device().cast::<ID3D12Device5>()?;
+        dev.GetRaytracingAccelerationStructurePrebuildInfo(&as_inputs, &mut as_build_info);
+
+        let scratch_size = as_build_info.ScratchDataSizeInBytes as usize;
+        let res_size = as_build_info.ResultDataMaxSizeInBytes as usize;
+        let blas_scratch = GraphicsDevice::create_uav_buffer(&dev, scratch_size, format!("BLAS_Scratch_{id:04x}"))?;
+        let blas_result = GraphicsDevice::create_as_buffer(&dev, res_size, format!("BLAS_Result_{id:04x}"))?;
+
+        let as_desc = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC {
+            DestAccelerationStructureData: blas_result.GetGPUVirtualAddress(),
+            Inputs: as_inputs,
+            ScratchAccelerationStructureData: blas_scratch.GetGPUVirtualAddress(),
+            ..Default::default()
+        };
+
+        let cmd = batch.cmd().cast::<ID3D12GraphicsCommandList4>()?;
+        cmd.BuildRaytracingAccelerationStructure(&as_desc, None);
+
+        cmd.ResourceBarrier(&[uav_barrier(&blas_result)]);
+
+        Ok((blas_scratch, blas_result))
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
@@ -134,3 +199,4 @@ impl DrawTopology {
         }
     }
 }
+
