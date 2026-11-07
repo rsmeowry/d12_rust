@@ -136,7 +136,7 @@ impl Scene for PbrSampleMesh {
                 Ok(())
             });
 
-        self.lighting.add_pass(None, lights, renderer, None, None, 1.0, &self.gbuffer, graph, opts)?;
+        self.lighting.add_pass(None, lights, renderer, None, None, None, 1.0, &self.gbuffer, graph, opts)?;
         self.post.add_pass(post_props, None, None, renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 

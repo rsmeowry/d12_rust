@@ -187,7 +187,7 @@ impl<S: Scene> App<S> {
         }
 
         if input.was_released(KeyCode::F7) {
-            self.opts.debug_view_type = DebugViewType::from_u32((self.opts.debug_view_type as u32 + 1) % 6);
+            self.opts.debug_view_type = DebugViewType::from_u32((self.opts.debug_view_type as u32 + 1) % 7);
         }
 
         if input.was_released(KeyCode::F8) {
@@ -395,7 +395,8 @@ pub enum DebugViewType {
     Metallic,
     Roughness,
     AO,
-    Velocity
+    Velocity,
+    RtShadows
 }
 
 impl DebugViewType {
@@ -407,6 +408,7 @@ impl DebugViewType {
             3 => Self::Roughness,
             4 => Self::AO,
             5 => Self::Velocity,
+            6 => Self::RtShadows,
             _ => Self::Default,
         }
     }

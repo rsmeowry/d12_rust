@@ -18,13 +18,15 @@ use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::shadows::{ShadowMap, CASCADE_COUNT, SHADOW_DISTANCE, SHADOW_EXTEND};
 use crate::scenes::Scene;
 use crate::time::Time;
-use egui::Ui;
+use egui::{ComboBox, Ui};
+use egui_probe::{EguiProbe, Probe};
 use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::render::aa::AntiAliasing;
 use crate::render::aa::fsr2::Fsr2Pass;
 use crate::render::aa::temporal::TaaPass;
 use crate::render::deferred::sky_velocity::SkyVelocityPass;
+use crate::render::raytracing::RtShadowsPass;
 
 const MAX_PARTICLES: usize = 4096;
 
@@ -32,6 +34,7 @@ const MAX_PARTICLES: usize = 4096;
 pub struct SponzaWithLights {
     gbuffer: GBuffer,
 
+    shadow_mode: ShadowMode,
     sponza: LoadedScene,
     sphere: Mesh,
     sphere_mat_idx: u32,
@@ -40,6 +43,7 @@ pub struct SponzaWithLights {
     sky_velocity: SkyVelocityPass,
     taa: TaaPass,
     fsr: Fsr2Pass,
+    rt_shadows: RtShadowsPass,
 
     shadows: ShadowMap,
     culler: Culler,
@@ -54,11 +58,21 @@ impl Scene for SponzaWithLights {
     const NAME: &'static str = "Sponza (w/ lights)";
 
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        ui.horizontal(|ui| {
+            ComboBox::from_label("Shadows mode")
+                .selected_text(format!("{:?}", self.shadow_mode))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.shadow_mode, ShadowMode::Cascades, "Cascades");
+                    ui.selectable_value(&mut self.shadow_mode, ShadowMode::Raytraced, "Raytraced");
+                });
+        });
+
+        ui.spacing();
+
         ui.heading("Cascades");
         for line in std::mem::take(&mut self.debug_lines) {
             ui.label(line);
         }
-
         Ok(())
     }
 
@@ -114,6 +128,7 @@ impl Scene for SponzaWithLights {
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let rt_shadows = RtShadowsPass::new(1, renderer)?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
@@ -130,13 +145,15 @@ impl Scene for SponzaWithLights {
             sky_velocity,
 
             shadows,
+            rt_shadows,
             culler,
             bloom,
             sponza,
             materials_buf,
             lighting,
             post,
-            debug_lines: vec![]
+            debug_lines: vec![],
+            shadow_mode: ShadowMode::Cascades,
         })
     }
 
@@ -217,14 +234,24 @@ impl Scene for SponzaWithLights {
         all_objects.push(sphere_obj);
         all_meshes.push(&self.sphere);
 
-        // shadowws (global and local)
-        let all_objects_va = renderer.upload_objects(&all_objects)?;
-        let lambda = 0.6;
-        self.shadows.update(lights[0], lambda, renderer);
-        let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
-        self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
+        if self.shadow_mode == ShadowMode::Cascades {
+            // shadowws (global and local)
+            let all_objects_va = renderer.upload_objects(&all_objects)?;
+            let lambda = 0.6;
+            self.shadows.update(lights[0], lambda, renderer);
+            let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
+            self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
 
-        let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, 0.19, &self.gbuffer, graph, opts)?;
+            let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, None,0.19, &self.gbuffer, graph, opts)?;
+
+            // debug
+            for i in 0..CASCADE_COUNT {
+                self.debug_lines.push(format!("cascade {i}: <= {:.1}m | {} drawn", shadow.splits[i], shadow.drawn[i]))
+            }
+        } else if self.shadow_mode == ShadowMode::Raytraced {
+            self.rt_shadows.add_pass(&all_objects, &all_meshes, &lights, &self.gbuffer, renderer, graph)?;
+            let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, None, Some(&self.rt_shadows), None, 0.19, &self.gbuffer, graph, opts)?;
+        }
 
         let scene_color = match opts.anti_aliasing {
             AntiAliasing::Disabled => self.gbuffer.scene_color,
@@ -256,15 +283,16 @@ impl Scene for SponzaWithLights {
         self.post.add_pass(post_props, Some(scene_color), Some(bloom), renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 
-        // debug
-        for i in 0..CASCADE_COUNT {
-            self.debug_lines.push(format!("cascade {i}: <= {:.1}m | {} drawn", shadow.splits[i], shadow.drawn[i]))
-        }
-
         Ok(())
     }
 
     fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
         Ok(())
     }
+}
+
+#[derive(Debug, Copy, Clone, EguiProbe, PartialEq)]
+pub enum ShadowMode {
+    Cascades,
+    Raytraced
 }

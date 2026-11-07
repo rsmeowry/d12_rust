@@ -73,6 +73,10 @@ float4 frag(float4 pos : SV_Position) : SV_Target {
         float2 pxPerSec = s.velocity * resolution / max(deltaTime, 1e-6);
         return float4(pxPerSec * 0.002 * 0.5 + 0.5, 0., 0);
     }
+    if (debugView == 6) {
+        float2 v = g_Tex2D[rtShadowTex].Load(int3(pos.xy, 0)).xy;
+        return float4(v.y > 0 ? v.y / 20. : 0., v.x, 0, 0);
+    }
     #endif
 
     float3 V = normalize(cameraPos - s.pos);

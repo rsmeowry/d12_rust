@@ -119,7 +119,9 @@ impl PhongLightingPass {
             h_mie: 0.0,
             beta_mie: Default::default(),
             mie_g: 0.0,
-            _padL: [0; 3]
+            rt_shadows_tex: 0,
+            shadow_mode: 0,
+            _pad3: 0
         }), 256)?;
 
         let rs = renderer.rs();
@@ -205,6 +207,8 @@ pub struct LightingPass {
     pub h_mie: f32,
     pub beta_mie: Vec3,
     pub mie_g: f32,
-    pub _padL: [u32; 3]
+    pub rt_shadows_tex: u32,
+    pub shadow_mode: u32,
+    pub _pad3: u32
 }
 const _: () = assert!(std::mem::offset_of!(LightingPass, csm) == 48);

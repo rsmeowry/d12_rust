@@ -19,7 +19,9 @@
     float hMie;
     float3 betaMie;
     float mieG;
-    uint3 _lPad;
+    uint rtShadowTex;
+    uint shadowMode;
+    uint _pad3;
 };
 
 struct Surface {

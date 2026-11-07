@@ -37,7 +37,7 @@ impl Tlas {
             .map(|(id, pair)| Self::build_instance_from_blas_mesh(id as u32, *pair.1, pair.0)).collect::<Vec<_>>();
 
         let instances_bytes = unsafe {
-            std::slice::from_raw_parts(build_instance_descs.as_ptr() as *const u8, size_of_val(&build_instance_descs.as_slice()))
+            std::slice::from_raw_parts(build_instance_descs.as_ptr() as *const u8, size_of_val(build_instance_descs.as_slice()))
         };
         let instances_va = rd.upload_slice(instances_bytes, 16)?;
         let result_va = unsafe { self.result.GetGPUVirtualAddress() };

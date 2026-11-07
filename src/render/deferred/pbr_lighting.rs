@@ -15,6 +15,7 @@ use crate::render::lights::{light_cone, unit_sphere, GpuLight, LIGHT_POINT, LIGH
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
+use crate::render::raytracing::RtShadowsPass;
 use crate::render::renderer::{Renderer, SCENE_FORMAT};
 use crate::render::shadows::{GpuCascades, ShadowCascades, ShadowMap};
 use crate::render::texture::{MipCount, Texture};
@@ -99,7 +100,7 @@ impl PbrLightingPass {
         self.local_shadows.extend(map.fetch_all_local_shadows());
     }
 
-    pub fn add_pass<'a>(&'a self, target: Option<ResId>, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, atmosphere: Option<AtmosphereProps>, ambient_strength: f32, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>, opts: &RenderOpts) -> anyhow::Result<(u64, u32)> {
+    pub fn add_pass<'a>(&'a self, target: Option<ResId>, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, rt_shadows: Option<&RtShadowsPass>, atmosphere: Option<AtmosphereProps>, ambient_strength: f32, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>, opts: &RenderOpts) -> anyhow::Result<(u64, u32)> {
         let target = target.unwrap_or_else(|| gbuffer.scene_color);
         lights.sort_by_key(|l| l.kind);
         let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
@@ -108,6 +109,12 @@ impl PbrLightingPass {
         let spot_count = lights.len() as u32 - first_spot;
         let lights_va = renderer.upload_slice(bytemuck::cast_slice(&lights), 16)?;
         let gr = &renderer.gr;
+        
+        let (rt_tex_ptr, shadow_mode) = if let Some(rt) = rt_shadows {
+            (renderer.gr.get(rt.shadows_tex())?.srv_ptr(), 1)
+        } else {
+            (0, 0)
+        };
 
         let light_pass_va = renderer.upload_slice(bytemuck::bytes_of(&LightingPass {
             albedo: gr.get(gbuffer.albedo)?.srv_ptr(),
@@ -130,7 +137,9 @@ impl PbrLightingPass {
             h_mie: atmosphere.map(|it| it.h_mie).unwrap_or_default(),
             beta_mie: atmosphere.map(|it| Vec3::splat(it.beta_mie)).unwrap_or_default(),
             mie_g: atmosphere.map(|it| it.mie_g).unwrap_or_default(),
-            _padL: [0; 3],
+            rt_shadows_tex: rt_tex_ptr,
+            shadow_mode,
+            _pad3: 0
         }), 256)?;
 
         let rs = renderer.rs();
@@ -144,6 +153,10 @@ impl PbrLightingPass {
             .reads(gbuffer.materials)
             .reads(gbuffer.scene_depth)
             .writes(target, ResLoad::Preserve);
+        
+        if let Some(rt) = rt_shadows {
+            pass = pass.reads(rt.shadows_tex());
+        }
 
         for local_shadows in &self.local_shadows {
             pass = pass.reads(*local_shadows);
