@@ -20,6 +20,7 @@ impl RootSignature {
     pub const LIGHTS_DATA: u32 = 10; // t3 - root srv for lights
     pub const TEX3D: u32 = 11; // t0 space3 - textures 3D
     pub const PARTICLES: u32 = 12; // u0-u2 space4: pool, deadlist, sortlist
+    pub const TLAS: u32 = 13; // t4 space0 - TLAS
 
     pub fn new(dev: &ID3D12Device) -> anyhow::Result<Self> {
         let tex2d_range = D3D12_DESCRIPTOR_RANGE {
@@ -212,6 +213,17 @@ impl RootSignature {
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
             },
+            // t4 space0 - TLAS
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_SRV,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    Descriptor: D3D12_ROOT_DESCRIPTOR {
+                        ShaderRegister: 4,
+                        RegisterSpace: 0,
+                    }
+                },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL
+            },
         ];
 
         let samplers = [
@@ -303,6 +315,10 @@ impl RootSignature {
 
     pub fn set_compute_particles(&self, cmd: &ID3D12GraphicsCommandList, table: D3D12_GPU_DESCRIPTOR_HANDLE) {
         unsafe { cmd.SetComputeRootDescriptorTable(Self::PARTICLES, table) }
+    }
+
+    pub fn set_compute_tlas(&self, cmd: &ID3D12GraphicsCommandList, tlas_va: u64) {
+        unsafe { cmd.SetComputeRootShaderResourceView(Self::TLAS, tlas_va) };
     }
 }
 
