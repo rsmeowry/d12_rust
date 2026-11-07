@@ -323,6 +323,11 @@ impl ShadowMap {
         self.local_shadows.add_pass(lights, renderer, objects_va, objects, meshes, graph)
     }
 
+    pub fn add_local_shadows_fn_pass<'f>(&mut self, lights: &mut Vec<GpuLight>, renderer: &'f Renderer, graph: &mut FrameGraph<'f>,
+                                         draw: impl FnMut(&mut FrameGraph<'f>, &'static str, ResId, u32, Mat4) -> anyhow::Result<()>) -> anyhow::Result<()> {
+        self.local_shadows.add_fn_pass(lights, renderer, graph, draw)
+    }
+
     pub fn dirty_static_cascades(&self) -> impl Iterator<Item = (ResId, Mat4)> + '_ {
         (0..CASCADE_COUNT).filter(|&i| self.statics[i].dirty).map(|i| (self.cascades_static[i], self.statics[i].vp))
     }
@@ -334,6 +339,16 @@ impl ShadowMap {
 
 impl LocalShadows {
     fn add_pass<'f>(&mut self, lights: &mut Vec<GpuLight>, renderer: &'f Renderer, objects_va: u64, objects: &[ObjectData], meshes: &[&'f Mesh], graph: &mut FrameGraph<'f>) -> anyhow::Result<()> {
+        let pso = self.pipeline;
+        self.add_fn_pass(lights, renderer, graph, |graph, name, target, slice, vp| {
+            shadows_depth_pass(graph, renderer, pso, name, target, slice, vp,
+                               objects_va, objects, meshes, StaticObjects::IncludeAll, ResLoad::Clear).map(|_| ())
+        })
+    }
+
+    /// draw must add a pass that clears and writes depth into target at slice
+    fn add_fn_pass<'f>(&mut self, lights: &mut Vec<GpuLight>, renderer: &'f Renderer, graph: &mut FrameGraph<'f>,
+                       mut draw: impl FnMut(&mut FrameGraph<'f>, &'static str, ResId, u32, Mat4) -> anyhow::Result<()>) -> anyhow::Result<()> {
         self.last_spot = 0;
         self.last_point = 0;
         for light in lights.iter_mut() {
@@ -345,10 +360,7 @@ impl LocalShadows {
                     let (vp, _params) = Self::prepare_spot_light(light, self.spot_size);
                     let tex = self.spots[self.last_spot];
                     light.shadow_tex = renderer.gr.get(tex)?.srv_ptr();
-                    shadows_depth_pass(
-                        graph, renderer, self.pipeline,
-                        "SpotLight", tex, 0, vp,
-                        objects_va, objects, meshes, StaticObjects::IncludeAll, ResLoad::Clear)?;
+                    draw(graph, "SpotLight", tex, 0, vp)?;
                     self.last_spot += 1;
                 },
                 LIGHT_POINT => {
@@ -358,11 +370,7 @@ impl LocalShadows {
                     let (faces, _params) = Self::prepare_point_light(light, self.point_size);
                     let tex = self.points[self.last_point];
                     for (face_idx, face) in faces.into_iter().enumerate() {
-                        shadows_depth_pass(
-                            graph, renderer, self.pipeline,
-                            "PointLight",
-                            tex, face_idx as u32, face,
-                            objects_va, objects, meshes, StaticObjects::IncludeAll, ResLoad::Clear)?;
+                        draw(graph, "PointLight", tex, face_idx as u32, face)?;
                     }
                     light.shadow_tex = renderer.gr.get(tex)?.srv_ptr();
 

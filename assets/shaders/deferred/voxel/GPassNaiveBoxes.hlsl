@@ -34,6 +34,8 @@ struct Varyings {
     float3 binormalW : BINORMAL;
     float2 uv : TEXCOORD;
     float ao : AO;
+    float4 currClip : CURR_CLIP;
+    float4 prevClip : PREV_CLIP;
     nointerpolation uint material : MATERIAL;
 };
 
@@ -51,21 +53,23 @@ Varyings vert(Attributes i) {
     o.uv = float2(i.uv.x, 1.0 - i.uv.y);
     o.material = i.materialAo.x;
     o.ao = i.materialAo.y / 3.;
+    o.currClip = mul(viewProjNj, posW);
+    o.prevClip = mul(prevViewProj, mul(obj.prevModel, float4(i.pos, 1.0)));
     return o;
 }
 
 GBufferOut frag(Varyings i) {
     VoxelMaterial mat = g_Materials[i.material];
-    float4 albedo = g_Tex2D[mat.albedoTex].Sample(PointClamp, i.uv);
+    float4 albedo = g_Tex2D[mat.albedoTex].SampleBias(PointClamp, i.uv, mipBias);
     clip(albedo.a - 0.5);
 
     float3x3 tbnMat = float3x3(normalize(i.tangentW), normalize(i.binormalW), normalize(i.normalW));
-    float4 texNormal = g_Tex2D[mat.normalTex].Sample(PointClamp, i.uv) * 2.0 - 1.0;
+    float4 texNormal = g_Tex2D[mat.normalTex].SampleBias(PointClamp, i.uv, mipBias) * 2.0 - 1.0;
     float3 normal = normalize(mul(texNormal.xyz, tbnMat));
 
-    float metallic = g_Tex2D[mat.metalTex].Sample(PointClamp, i.uv).r;
-    float roughness = g_Tex2D[mat.roughnessTex].Sample(PointClamp, i.uv).r;
-    float occlusion = g_Tex2D[mat.aoTex].Sample(PointClamp, i.uv).r;
+    float metallic = g_Tex2D[mat.metalTex].SampleBias(PointClamp, i.uv, mipBias).r;
+    float roughness = g_Tex2D[mat.roughnessTex].SampleBias(PointClamp, i.uv, mipBias).r;
+    float occlusion = g_Tex2D[mat.aoTex].SampleBias(PointClamp, i.uv, mipBias).r;
     float aoVal = lerp(0.35, 1.0, i.ao);
 
     GBufferOut o;
@@ -73,6 +77,6 @@ GBufferOut frag(Varyings i) {
     o.normal = float4(normal * 0.5 + 0.5, 0);
     o.material = float4(roughness * mat.roughness, metallic * mat.metallic, occlusion * aoVal, 0);
     o.emissive = 0;
-    o.velocity = 0;
+    o.velocity = GetMotionVector(i.currClip, i.prevClip);
     return o;
 }

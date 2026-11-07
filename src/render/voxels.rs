@@ -156,7 +156,7 @@ impl<S: GenerationStrategy + 'static> VoxelWorld<S> {
             if chunk_pos_ws.distance_squared(camera_pos) <= VIEW_DISTANCE_SQ && frustum.contains(mesh.aabb(), mat) {
                 Some((mesh, ObjectData {
                     model: mat,
-                    prev_model: Mat4::IDENTITY, // lets just hope terrain NEVER moves alright
+                    prev_model: mat,
                     material_id: chunk_pos.x as u32,
                     _pad: [chunk_pos.y as u32, chunk_pos.z as u32, 0],
                 }))
@@ -198,32 +198,37 @@ impl<S: GenerationStrategy + 'static> VoxelWorld<S> {
     }
 
     pub fn add_shadow_passes<'a>(&'a self, rd: &'a Renderer, cascades: impl Iterator<Item = (ResId, Mat4)>, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+        for (target, vp) in cascades {
+            self.add_shadow_pass(rd, graph, "VoxelWorldShadows", target, 0, vp, ResLoad::Preserve)?;
+        }
+        Ok(())
+    }
+
+    pub fn add_shadow_pass<'a>(&'a self, rd: &'a Renderer, graph: &mut FrameGraph<'a>, name: &'static str, target: ResId, slice: u32, vp: Mat4, load: ResLoad) -> anyhow::Result<()> {
         let pso = self.pso_shadows;
         let rs = rd.rs();
         let materials = self.materials_va;
         let pipelines = rd.pipelines();
 
-        for (target, vp) in cascades {
-            let (meshes, objects) = self.select(&Frustum::from_view_proj(vp), rd.cam.pos());
-            let pass_va = rd.upload_cbuffer(&VoxelShadowPass {
-                light_vp: vp,
-            })?;
+        let (meshes, objects) = self.select(&Frustum::from_view_proj(vp), rd.cam.pos());
+        let pass_va = rd.upload_cbuffer(&VoxelShadowPass {
+            light_vp: vp,
+        })?;
 
-            let objects_va = rd.upload_objects(&objects)?;
-            graph.add_pass("VoxelWorldShadows")
-                .writes_depth(target, ResLoad::Preserve)
-                .exec(move |ctx| {
-                    pipelines.get(pso).bind(ctx.cmd);
-                    rs.set_objects(ctx.cmd, objects_va);
-                    rs.set_materials(ctx.cmd, materials);
-                    rs.set_pass(ctx.cmd, pass_va);
-                    for (draw_idx, mesh) in meshes {
-                        rs.set_draw_index(ctx.cmd, draw_idx);
-                        mesh.draw(ctx.cmd);
-                    }
-                    Ok(())
-                });
-        }
+        let objects_va = rd.upload_objects(&objects)?;
+        graph.add_pass(name)
+            .writes_depth_slice(target, load, slice)
+            .exec(move |ctx| {
+                pipelines.get(pso).bind(ctx.cmd);
+                rs.set_objects(ctx.cmd, objects_va);
+                rs.set_materials(ctx.cmd, materials);
+                rs.set_pass(ctx.cmd, pass_va);
+                for (draw_idx, mesh) in meshes {
+                    rs.set_draw_index(ctx.cmd, draw_idx);
+                    mesh.draw(ctx.cmd);
+                }
+                Ok(())
+            });
         Ok(())
     }
 }

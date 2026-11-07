@@ -21,6 +21,9 @@ use std::f32::consts::PI;
 use std::ops::Div;
 use std::sync::Arc;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::aa::AntiAliasing;
+use crate::render::graph::pass::ResLoad;
+use crate::render::aa::fsr2::Fsr2Pass;
 use crate::render::texture::{MipCount, Texture};
 use crate::render::voxels::dual_contour::DualContouring;
 use crate::render::voxels::generate::ground::GroundGenStrategy;
@@ -38,6 +41,8 @@ pub struct VoxelsScene {
     world: VoxelWorld<GroundGenStrategy>,
     materials_buf: ID3D12Resource,
     voxel_textures: Vec<Texture>,
+
+    fsr_pass: Fsr2Pass,
 
     sun_t: f32,
     atmosphere: AtmosphereProps,
@@ -102,8 +107,9 @@ impl Scene for VoxelsScene {
         batch.finish()?;
 
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let fsr_pass = Fsr2Pass::new(renderer)?;
 
-        let world = VoxelWorld::new(Arc::new(DualContouring), GroundGenStrategy::new(0x63232), renderer, vec![0, 1, 2, 3, 4, 5, 6, 7], unsafe { materials_buf.GetGPUVirtualAddress() })?;
+        let world = VoxelWorld::new(Arc::new(NaiveBoxes), GroundGenStrategy::new(0x63232), renderer, vec![0, 1, 2, 3, 4, 5, 6, 7], unsafe { materials_buf.GetGPUVirtualAddress() })?;
 
         Ok(Self {
             gbuffer,
@@ -111,6 +117,7 @@ impl Scene for VoxelsScene {
             materials_buf,
             voxel_textures,
 
+            fsr_pass,
             blit,
             atmosphere: AtmosphereProps {
                 beta_mie: 0.05,
@@ -130,21 +137,12 @@ impl Scene for VoxelsScene {
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
         let sun_dir = Vec3::new(self.sun_t.cos(), self.sun_t.sin(), self.sun_t.cos());
         let sun_color = sun_transmittance(&self.atmosphere, renderer.cam.pos().y, -sun_dir);
-        let lights = vec![GpuLight::directional(sun_dir, sun_color, 12.0)];
+        let mut lights = vec![
+            GpuLight::directional(sun_dir, sun_color, 12.0),
+            GpuLight::spot(renderer.cam.pos() + Vec3::Y * 1.5, renderer.cam.forward(), 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.)
+        ];
 
         let gr = &renderer.gr;
-
-        let post_props = PostProperties {
-            albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
-            normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
-            materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
-            depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
-            scene_color: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
-            enable_sobel: 0,
-            enable_fly_eye: 0,
-            enable_vignette: 1,
-            ..Default::default()
-        };
 
         // scene draw pass
         self.world.add_pass(renderer, &self.gbuffer, opts, graph)?;
@@ -156,8 +154,18 @@ impl Scene for VoxelsScene {
         self.shadows.update(lights[0], lambda, renderer);
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
         self.world.add_shadow_passes(renderer, self.shadows.dirty_static_cascades(), graph)?;
+        let world = &self.world;
+        self.shadows.add_local_shadows_fn_pass(&mut lights, renderer, graph, |graph, name, target, slice, vp| {
+            world.add_shadow_pass(renderer, graph, name, target, slice, vp, ResLoad::Clear)
+        })?;
 
         let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), Some(self.atmosphere), 0.19, &self.gbuffer, graph, opts)?;
+
+        let scene_color = if opts.anti_aliasing == AntiAliasing::Fsr2 {
+            self.fsr_pass.add_pass(&self.gbuffer, renderer, time, graph)?
+        } else {
+            self.gbuffer.scene_color
+        };
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {
@@ -166,8 +174,20 @@ impl Scene for VoxelsScene {
             radius: 1.0,
             intensity: 1.0,
             ..Default::default()
-        }, self.gbuffer.scene_color, renderer, graph)?;
-        self.post.add_pass(post_props, None, Some(bloom), renderer, &self.gbuffer, graph)?;
+        }, scene_color, renderer, graph)?;
+
+        let post_props = PostProperties {
+            albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
+            normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
+            materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
+            depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
+            scene_color: gr.get(scene_color)?.srv_ptr(),
+            enable_sobel: 0,
+            enable_fly_eye: 0,
+            enable_vignette: 1,
+            ..Default::default()
+        };
+        self.post.add_pass(post_props, Some(scene_color), Some(bloom), renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 
         Ok(())

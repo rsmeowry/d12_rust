@@ -34,6 +34,8 @@ struct Varyings {
     float4 pos : SV_Position;
     float3 posW : POSITION;
     float3 normalW : NORMAL;
+    float4 currClip : CURR_CLIP;
+    float4 prevClip : PREV_CLIP;
     nointerpolation uint material : MATERIAL;
 };
 
@@ -46,6 +48,8 @@ Varyings vert(Attributes i) {
     o.normalW = mul((float3x3) obj.model, DecodeOctNormals(i.normalOct));
     o.posW = mul((float3x3) obj.model, posPm);
     o.material = i.posMaterial.w;
+    o.currClip = mul(viewProjNj, posW);
+    o.prevClip = mul(prevViewProj, mul(obj.prevModel, float4(posPm, 1.0)));
     return o;
 }
 
@@ -66,6 +70,6 @@ GBufferOut frag(Varyings i) {
     o.normal = float4(texNormal * 0.5 + 0.5, 0);
     o.material = float4(roughness * mat.roughness, metallic * mat.metallic, occlusion, 0);
     o.emissive = 0;
-    o.velocity = 0;
+    o.velocity = GetMotionVector(i.currClip, i.prevClip);
     return o;
 }
