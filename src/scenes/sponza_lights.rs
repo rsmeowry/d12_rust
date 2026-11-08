@@ -124,11 +124,12 @@ impl Scene for SponzaWithLights {
         lighting.save_local_shadows(&shadows);
         let taa = TaaPass::new(renderer)?;
         let fsr = Fsr2Pass::new(renderer)?;
+
         let sky_velocity = SkyVelocityPass::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
-        let rt_shadows = RtShadowsPass::new(1, renderer)?;
+        let rt_shadows = RtShadowsPass::new(1, 0.27, renderer)?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);

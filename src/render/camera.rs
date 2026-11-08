@@ -91,6 +91,8 @@ impl Camera {
         self.view
     }
 
+    pub fn proj(&self) -> Mat4 { self.proj }
+
     pub fn fov_rad(&self) -> f32 {
         self.fov_rad
     }
