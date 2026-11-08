@@ -21,6 +21,9 @@ impl RootSignature {
     pub const TEX3D: u32 = 11; // t0 space3 - textures 3D
     pub const PARTICLES: u32 = 12; // u0-u2 space4: pool, deadlist, sortlist
     pub const TLAS: u32 = 13; // t4 space0 - TLAS
+    // reusing these
+    pub const VB: u32 = Self::LIGHTS_DATA; // t3
+    pub const MESHLETS: u32 = Self::TLAS; // t4
 
     pub fn new(dev: &ID3D12Device) -> anyhow::Result<Self> {
         let tex2d_range = D3D12_DESCRIPTOR_RANGE {
@@ -303,6 +306,13 @@ impl RootSignature {
 
     pub fn set_lights(&self, cmd: &ID3D12GraphicsCommandList, lights_va: u64) {
         unsafe { cmd.SetGraphicsRootShaderResourceView(Self::LIGHTS_DATA, lights_va) };
+    }
+
+    pub fn set_meshlet_data(&self, cmd: &ID3D12GraphicsCommandList, vb: u64, meshlets: u64) {
+        unsafe {
+            cmd.SetGraphicsRootShaderResourceView(Self::VB, vb);
+            cmd.SetGraphicsRootShaderResourceView(Self::MESHLETS, meshlets);
+        }
     }
 
     pub fn set_compute_lights(&self, cmd: &ID3D12GraphicsCommandList, lights_va: u64) {

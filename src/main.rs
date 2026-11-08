@@ -1,4 +1,5 @@
 use crate::scenes::experiment::cloudmarch::CloudmarchScene;
+use crate::scenes::meshlets_scene::MeshletsScene;
 use crate::scenes::pbr_scene::PbrSample;
 use crate::scenes::pbr_scene_mesh::PbrSampleMesh;
 use crate::scenes::sponza_lights::SponzaWithLights;
@@ -16,5 +17,5 @@ mod scenes;
 pub mod ui;
 
 fn main() -> anyhow::Result<()> {
-    app::App::<SponzaWithLights>::new()?.run()
+    app::App::<MeshletsScene>::new()?.run()
 }

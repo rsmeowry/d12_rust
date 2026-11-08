@@ -14,6 +14,7 @@ use glam::{Mat4, Vec2, Vec3, Vec4};
 use image::RgbaImage;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use crate::render::mesh::mesh_pipeline::meshlet::MeshletMesh;
 
 #[derive(Debug)]
 pub struct MaterialDefinition {
@@ -26,6 +27,7 @@ pub struct LoadedScene {
     pub mesh_indices: Vec<(usize, Mat4)>,
     pub meshes: Vec<(Mesh, u32)>,
     pub mesh_lods: Vec<Vec<(Mesh, u32)>>,
+    pub meshlet_meshes: Vec<MeshletMesh>,
     pub textures: Vec<Texture>,
     pub use_lods: bool,
 }
@@ -206,6 +208,13 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
         }
     }
 
+    let mut meshlets: Vec<MeshletMesh> = Vec::new();
+    if let LodCount::Meshlets = lods {
+        for (_, _, vertices, indices) in &built {
+            meshlets.push(MeshletMesh::build_from_vertices::<V>(batch, bytemuck::cast_slice(&vertices), indices)?);
+        }
+    }
+
     let mut out = Vec::new();
     let mut stack = vec![(scene.root_node().unwrap(), Mat4::IDENTITY)];
     while let Some((node, parent)) = stack.pop() {
@@ -224,7 +233,8 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
         meshes: built.into_iter().map(|it| (it.0, it.1)).collect(),
         textures,
         mesh_lods: optimized,
-        use_lods: lods != LodCount::NoLods
+        use_lods: lods != LodCount::NoLods,
+        meshlet_meshes: meshlets,
     })
 }
 
@@ -305,5 +315,6 @@ fn optimize_mesh_to_level<TVert: LodVertex + bytemuck::Zeroable + Copy>(aabb: AA
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum LodCount {
     NoLods,
-    Lods(usize)
+    Lods(usize),
+    Meshlets,
 }

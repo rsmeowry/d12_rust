@@ -128,3 +128,10 @@ float3 TriplanarNormal(Texture2D tex, SamplerState s, float3 pos, float3 n, floa
     // swizzle each plane tangent space back to world
     return normalize(tnX.zyx * w.x + tnY.xzy * w.y + tnZ.xyz * w.z);
 }
+
+uint PcgHash(uint input)
+{
+    uint state = input * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}

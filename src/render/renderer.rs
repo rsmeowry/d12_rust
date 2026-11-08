@@ -15,6 +15,7 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct3D12::ID3D12GraphicsCommandList;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16_FLOAT, DXGI_FORMAT_R16G16_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
 use crate::app::RenderOpts;
+use crate::render::mesh::mesh_pipeline::meshlet::MeshletMesh;
 
 pub const SCENE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R16G16B16A16_FLOAT;
 pub const GB_NORMALS: DXGI_FORMAT = DXGI_FORMAT_R10G10B10A2_UNORM;
@@ -195,6 +196,17 @@ impl LoadedScene {
             let (mesh, material) = &self.meshes[*mesh_idx];
             objects.push(ObjectData::new(*model, *material));
             draws.push(mesh);
+        }
+        (objects, draws)
+    }
+
+    pub fn to_objects_and_draws_meshlets(&self) -> (Vec<ObjectData>, Vec<(&Mesh, &MeshletMesh)>) {
+        let mut objects = Vec::new();
+        let mut draws = Vec::new();
+        for (mesh_idx, model) in &self.mesh_indices {
+            let (mesh, material) = &self.meshes[*mesh_idx];
+            objects.push(ObjectData::new(*model, *material));
+            draws.push((mesh, &self.meshlet_meshes[*mesh_idx]));
         }
         (objects, draws)
     }

@@ -13,7 +13,7 @@ use crate::wrappers::graphics::batching::UploadBatch;
 
 #[derive(Debug, PartialEq)]
 pub struct Mesh {
-    _vb: ID3D12Resource,
+    vb: ID3D12Resource,
     _ib: ID3D12Resource,
     blas: Option<ID3D12Resource>,
     vbv: D3D12_VERTEX_BUFFER_VIEW,
@@ -70,7 +70,7 @@ impl Mesh {
         } } else { None };
 
         Ok(Self {
-            _vb: vb,
+            vb,
             _ib: ib,
             blas,
             vbv,
@@ -80,6 +80,10 @@ impl Mesh {
             aabb,
             is_static
         })
+    }
+
+    pub fn vb_va(&self) -> u64 {
+        unsafe { self.vb.GetGPUVirtualAddress() }
     }
 
     pub fn blas_va(&self) -> Option<u64> {

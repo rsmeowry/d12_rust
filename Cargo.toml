@@ -26,6 +26,7 @@ rustc-hash = "2.1.3"
 noise = "0.9.0"
 rayon = "1.12.0"
 fsr-sys = { version = "0.1.11", features = ["d3d12"] }
+meshopt = "0.7.0"
 
 [dependencies.windows]
 version = "0.62.2"

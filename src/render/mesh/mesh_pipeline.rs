@@ -1,18 +1,18 @@
-﻿use std::ffi::c_void;
-use std::io::pipe;
-use windows::Win32::Graphics::Direct3D12::{ID3D12Device, ID3D12Device14, ID3D12PipelineState, D3D12_BLEND_DESC, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DEPTH_WRITE_MASK_ZERO, D3D12_FILL_MODE_SOLID, D3D12_FILL_MODE_WIREFRAME, D3D12_PIPELINE_STATE_STREAM_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_AS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_MASK, D3D12_RASTERIZER_DESC, D3D12_RT_FORMAT_ARRAY, D3D12_SHADER_BYTECODE};
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_R16_UNORM, DXGI_FORMAT_UNKNOWN, DXGI_SAMPLE_DESC};
-use windows_core::{w, Interface, HSTRING};
+﻿pub mod meshlet;
+
 use crate::assets::shaders::{ShaderStorage, ShaderType};
 use crate::render::pipeline::bytecode;
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::signature::RootSignature;
-use crate::wrappers::graphics::GraphicsDevice;
+use std::ffi::c_void;
+use windows::Win32::Graphics::Direct3D12::{ID3D12Device, ID3D12Device14, ID3D12PipelineState, D3D12_BLEND_DESC, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DEPTH_WRITE_MASK_ZERO, D3D12_FILL_MODE_SOLID, D3D12_FILL_MODE_WIREFRAME, D3D12_PIPELINE_STATE_STREAM_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_AS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_MASK, D3D12_RASTERIZER_DESC, D3D12_RT_FORMAT_ARRAY, D3D12_SHADER_BYTECODE};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_UNKNOWN, DXGI_SAMPLE_DESC};
+use windows_core::{Interface, HSTRING};
 
 pub fn create_mesh_pipeline_state(dev: &ID3D12Device, rs: &RootSignature, shaders: &ShaderStorage, desc: &PipelineDesc) -> anyhow::Result<ID3D12PipelineState> {
     let dev = dev.cast::<ID3D12Device14>()?;
-    let ps = shaders.get_shader(&desc.shader, ShaderType::Fragment).map(bytecode).unwrap_or_default();
-    let amp = shaders.get_shader(&desc.shader, ShaderType::Amplification).map(bytecode).expect("No amplification shader in mesh pipeline!");
+    let ps = shaders.get_shader(&desc.shader, ShaderType::Fragment).map(bytecode).expect("No fragment shader in mesh pipeline!");
+    let amp = shaders.get_shader(&desc.shader, ShaderType::Amplification).map(bytecode).unwrap_or_default();
     let ms = shaders.get_shader(&desc.shader, ShaderType::Mesh).map(bytecode).expect("No mesh shader in mesh pipeline!");
     let depth = desc.depth.expect("No depth desc in mesh pipeline!");
     let mut rtv_formats = [DXGI_FORMAT_UNKNOWN; 8];
