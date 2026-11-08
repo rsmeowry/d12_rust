@@ -86,8 +86,9 @@ float4 frag(float4 pos : SV_Position) : SV_Target {
     #endif
     for (uint i = 0; i < dirCount; i++) {
         float3 litVal = ShadeLight(g_Lights[i], s, V);
+        float2 uv = pos.xy / resolution;
         if(i == 0 && any(litVal > 0)) {
-            litVal *= shadowMode == 1 ? g_Tex2D[rtShadowTex].Load(int3(pos.xy, 0)).r : SampleCascades(s.pos, s.normal, true);
+            litVal *= shadowMode == 1 ? g_Tex2D[rtShadowTex].SampleLevel(LinearWrap, uv, 0).r : SampleCascades(s.pos, s.normal, true);
         }
         color += litVal;
     }
