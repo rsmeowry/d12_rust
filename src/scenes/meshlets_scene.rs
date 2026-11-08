@@ -16,6 +16,10 @@ use crate::time::Time;
 use glam::{Mat4, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList6, ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use windows_core::Interface;
+use crate::render::aa::AntiAliasing;
+use crate::render::aa::fsr2::Fsr2Pass;
+use crate::render::deferred::sky_velocity::SkyVelocityPass;
+use crate::render::raytracing::RtShadowsPass;
 
 #[derive(Debug)]
 pub struct MeshletsScene {
@@ -25,13 +29,16 @@ pub struct MeshletsScene {
     model: LoadedScene,
     materials_buf: ID3D12Resource,
 
+    sky_velocity: SkyVelocityPass,
+    rt_shadows_pass: RtShadowsPass,
+    fsr_pass: Fsr2Pass,
     lighting: PbrLightingPass,
     post: PostProcessPass,
     blit: BlitPass,
 }
 
 impl Scene for MeshletsScene {
-    const NAME: &'static str = "MeshletsMesh";
+    const NAME: &'static str = "Meshlets mesh";
 
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         ui.add(Checkbox::new(&mut self.meshlet_debug, "Meshlet debug"));
@@ -73,6 +80,9 @@ impl Scene for MeshletsScene {
 
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let rt_shadows = RtShadowsPass::new(1, 0.3, renderer)?;
+        let fsr = Fsr2Pass::new(renderer)?;
+        let sky_velocity = SkyVelocityPass::new(renderer)?;
 
         Ok(Self {
             gbuffer,
@@ -81,25 +91,30 @@ impl Scene for MeshletsScene {
             meshlet_debug: false,
             model: scene,
             materials_buf,
+            rt_shadows_pass: rt_shadows,
+            fsr_pass: fsr,
+            sky_velocity,
             lighting,
             post
         })
     }
 
-    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, _time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
+    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
         let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
         let (mut objects, draws) = self.model.to_objects_and_draws_meshlets();
+        let (_, all_draws) = self.model.to_objects_and_draws();
 
         let draws = draws.into_iter().map(|it| (it, pass)).collect::<Vec<_>>();
         for obj in &mut objects {
             obj.model = Mat4::from_scale(6. * Vec3::ONE) * obj.model;
+            obj.prev_model = obj.model;
         }
 
         let objects_va = renderer.upload_objects(&objects)?;
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
 
         let lights = vec![
-            GpuLight::directional(Vec3::new(-0.4, -0.8, 0.5), Vec3::new(1., 0.95, 0.9), 0.6),
+            GpuLight::directional(Vec3::new(-0.4, -0.8, 0.5), Vec3::new(1., 0.9, 0.6), 12.),
             // GpuLight::point(Vec3::new(3., 3., 0.), 8., Vec3::new(0.2, 0.6, 0.3), 16.),
             // GpuLight::point(Vec3::new(-3., 3., 0.), 8., Vec3::new(0.2, 0.3, 0.9), 16.),
         ];
@@ -108,17 +123,6 @@ impl Scene for MeshletsScene {
 
         let rs = renderer.rs();
         let pipelines = renderer.pipelines();
-
-        let post_props = PostProperties {
-            albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
-            normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
-            materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
-            depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
-            scene_color: gr.get(self.gbuffer.scene_color)?.srv_ptr(),
-            enable_sobel: 0,
-            enable_fly_eye: 0,
-            ..Default::default()
-        };
 
         // scene draw pass
         let dbg_va = renderer.upload_cbuffer(&[if self.meshlet_debug { 1 } else { 0}])?;
@@ -146,8 +150,25 @@ impl Scene for MeshletsScene {
                 Ok(())
             });
 
-        self.lighting.add_pass(None, lights, renderer, None, None, None, 1.0, &self.gbuffer, graph, opts)?;
-        self.post.add_pass(post_props, None, None, renderer, &self.gbuffer, graph)?;
+        self.sky_velocity.add_pass(&self.gbuffer, renderer, graph)?;
+        self.rt_shadows_pass.add_pass(&objects, &all_draws, &lights, &self.gbuffer, renderer, graph)?;
+        self.lighting.add_pass(None, lights, renderer, None, Some(&self.rt_shadows_pass), None, 0.4, &self.gbuffer, graph, opts)?;
+        let scene_color = if opts.anti_aliasing == AntiAliasing::Fsr2 {
+            self.fsr_pass.add_pass(&self.gbuffer, renderer, time, graph)?
+        } else {
+            self.gbuffer.scene_color
+        };
+        let post_props = PostProperties {
+            albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
+            normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
+            materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
+            depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
+            scene_color: gr.get(scene_color)?.srv_ptr(),
+            enable_sobel: 0,
+            enable_fly_eye: 0,
+            ..Default::default()
+        };
+        self.post.add_pass(post_props, Some(scene_color), None, renderer, &self.gbuffer, graph)?;
         self.blit.add_pass(renderer, graph)?;
 
         Ok(())

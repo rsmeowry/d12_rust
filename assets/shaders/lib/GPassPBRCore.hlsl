@@ -72,6 +72,7 @@ GBufferOut frag(GPBRVaryings i) {
     if (meshletDebug == 1) {
         uint h = PcgHash(i.meshletId);
         o.albedo.rgb = float3(h & 0xFF, (h >> 8) & 0xFF, (h >> 16) & 0xFF) / 255.0;
+        o.emissive.rgb = o.albedo.rgb;
     }
     return o;
 }
