@@ -288,6 +288,10 @@ impl RootSignature {
         }
     }
 
+    pub fn set_root_uav(&self, cmd: &ID3D12GraphicsCommandList, va: u64) {
+        unsafe { cmd.SetGraphicsRootUnorderedAccessView(Self::ROOT_UAV, va) };
+    }
+
     pub fn set_objects(&self, cmd: &ID3D12GraphicsCommandList, va: u64) {
         unsafe { cmd.SetGraphicsRootShaderResourceView(Self::OBJECTS, va) };
     }

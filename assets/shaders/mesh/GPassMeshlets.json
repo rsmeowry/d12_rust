@@ -6,7 +6,11 @@
     },
     {
       "type": "mesh",
-      "entry": "ms"
+      "entry": "mesh"
+    },
+    {
+      "type": "amplification",
+      "entry": "amp"
     }
   ]
 }

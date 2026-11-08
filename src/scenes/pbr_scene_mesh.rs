@@ -47,20 +47,35 @@ impl Scene for PbrSampleMesh {
 
         let mut materials = Vec::new();
         let scene = load_assimp_scene::<VertexPbr, _>(
-            &renderer, &mut batch, "assets/models/bananas/bananas_1k.gltf",
+            &renderer, &mut batch, "assets/models/stanford_dragon/dragon_vrip.ply",
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
-            true, LodCount::NoLods,
+            true, LodCount::Meshlets,
             |mat, tex| MaterialParams::Pbr {
                 albedo_tex: tex.albedo,
                 normal_tex: tex.normal,
                 metal_roughness_tex: tex.roughness,
                 occlusion_tex: tex.lightmap,
-                base_color: mat.base_color().map(|it| Vec3::new(it.x, it.y, it.z)).unwrap_or(Vec3::ONE),
-                metallic: mat.metallic_factor().unwrap_or(1.0),
-                roughness: mat.roughness_factor().unwrap_or(1.0),
+                base_color: Vec3::new(247. / 256., 193. / 256., 56. / 256.),
+                metallic: 0.7,
+                roughness: 0.4,
             }.to_gpu_material()
         )?;
+        // let scene = load_assimp_scene::<VertexPbr, _>(
+        //     &renderer, &mut batch, "assets/models/bananas/bananas_1k.gltf",
+        //     &mut materials,
+        //     LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
+        //     true, LodCount::NoLods,
+        //     |mat, tex| MaterialParams::Pbr {
+        //         albedo_tex: tex.albedo,
+        //         normal_tex: tex.normal,
+        //         metal_roughness_tex: tex.roughness,
+        //         occlusion_tex: tex.lightmap,
+        //         base_color: mat.base_color().map(|it| Vec3::new(it.x, it.y, it.z)).unwrap_or(Vec3::ONE),
+        //         metallic: mat.metallic_factor().unwrap_or(1.0),
+        //         roughness: mat.roughness_factor().unwrap_or(1.0),
+        //     }.to_gpu_material()
+        // )?;
 
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
 

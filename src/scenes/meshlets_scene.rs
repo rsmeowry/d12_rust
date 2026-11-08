@@ -14,12 +14,13 @@ use crate::render::renderer::Renderer;
 use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{Mat4, Vec3};
-use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList6, ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList2, ID3D12GraphicsCommandList6, ID3D12Resource, D3D12_RANGE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_WRITEBUFFERIMMEDIATE_PARAMETER};
 use windows_core::Interface;
 use crate::render::aa::AntiAliasing;
 use crate::render::aa::fsr2::Fsr2Pass;
 use crate::render::deferred::sky_velocity::SkyVelocityPass;
 use crate::render::raytracing::RtShadowsPass;
+use crate::wrappers::graphics::{transition_barrier, GraphicsDevice};
 
 #[derive(Debug)]
 pub struct MeshletsScene {
@@ -28,6 +29,9 @@ pub struct MeshletsScene {
     meshlet_debug: bool,
     model: LoadedScene,
     materials_buf: ID3D12Resource,
+    counter: ID3D12Resource,
+    readback: ID3D12Resource,
+    visible_meshlets: u32,
 
     sky_velocity: SkyVelocityPass,
     rt_shadows_pass: RtShadowsPass,
@@ -42,6 +46,8 @@ impl Scene for MeshletsScene {
 
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         ui.add(Checkbox::new(&mut self.meshlet_debug, "Meshlet debug"));
+        let total: u32 = self.model.meshlet_meshes.iter().map(|m| m.count()).sum();
+        ui.label(format!("Visible: {}/{total}", self.visible_meshlets));
         Ok(())
     }
 
@@ -84,9 +90,16 @@ impl Scene for MeshletsScene {
         let fsr = Fsr2Pass::new(renderer)?;
         let sky_velocity = SkyVelocityPass::new(renderer)?;
 
+        let dev = renderer.gd.device();
+        let counter = GraphicsDevice::create_uav_buffer(dev, 4, "MeshletCounter")?;
+        let readback = GraphicsDevice::create_readback_buffer(dev, 4 * GraphicsDevice::FRAMES_IN_FLIGHT, "MeshletReadback")?;
+
         Ok(Self {
             gbuffer,
             blit,
+            counter,
+            readback,
+            visible_meshlets: 0,
 
             meshlet_debug: false,
             model: scene,
@@ -100,6 +113,16 @@ impl Scene for MeshletsScene {
     }
 
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
+        // readback
+        let off = renderer.gd.frame_index()? * 4;
+        unsafe {
+            let mut ptr = std::ptr::null_mut();
+            self.readback.Map(0, Some(&D3D12_RANGE { Begin: off, End: off + 4 }), Some(&mut ptr))?;
+            self.visible_meshlets = ptr.cast::<u8>().add(off).cast::<u32>().read_unaligned();
+            self.readback.Unmap(0, Some(&D3D12_RANGE::default()));
+        }
+        let (counter, readback) = (&self.counter, &self.readback);
+
         let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
         let (mut objects, draws) = self.model.to_objects_and_draws_meshlets();
         let (_, all_draws) = self.model.to_objects_and_draws();
@@ -131,6 +154,16 @@ impl Scene for MeshletsScene {
             .writes_depth(self.gbuffer.scene_depth, ResLoad::Clear)
             .writes_gbuffer(&self.gbuffer, ResLoad::Clear)
             .exec(move |ctx| {
+                // more readbacking,,
+                let counter_va = unsafe { counter.GetGPUVirtualAddress() };
+                let cmd2 = ctx.cmd.cast::<ID3D12GraphicsCommandList2>()?;
+                unsafe {
+                    ctx.cmd.ResourceBarrier(&[transition_barrier(counter, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST)]);
+                    cmd2.WriteBufferImmediate(1, &D3D12_WRITEBUFFERIMMEDIATE_PARAMETER { Dest: counter_va, Value: 0 }, None);
+                    ctx.cmd.ResourceBarrier(&[transition_barrier(counter, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)]);
+                }
+                rs.set_root_uav(ctx.cmd, counter_va);
+
                 rs.set_pass(ctx.cmd, dbg_va);
                 rs.set_objects(ctx.cmd, objects_va);
                 rs.set_materials(ctx.cmd, materials_va);
@@ -144,8 +177,13 @@ impl Scene for MeshletsScene {
                     rs.set_meshlet_data(ctx.cmd, mesh.vb_va(), meshlets.va());
                     rs.set_draw_index(ctx.cmd, i as u32);
                     unsafe {
-                        cmd6.DispatchMesh(meshlets.count(), 1, 1)
+                        cmd6.DispatchMesh(meshlets.count().div_ceil(32), 1, 1)
                     };
+                }
+
+                unsafe {
+                    ctx.cmd.ResourceBarrier(&[transition_barrier(counter, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)]);
+                    ctx.cmd.CopyBufferRegion(readback, off as u64, counter, 0, 4);
                 }
                 Ok(())
             });
