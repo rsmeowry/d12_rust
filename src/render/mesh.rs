@@ -1,3 +1,5 @@
+pub mod mesh_pipeline;
+
 use std::ptr::null;
 use glam::Vec3;
 use crate::render::vertex::Vertex;

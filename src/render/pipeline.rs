@@ -11,6 +11,7 @@ use windows::core::HSTRING;
 use windows::Win32::Graphics::Direct3D::ID3DBlob;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Device, ID3D12GraphicsCommandList, ID3D12PipelineState, D3D12_COMPUTE_PIPELINE_STATE_DESC, D3D12_DEPTH_STENCIL_DESC, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_DEPTH_WRITE_MASK_ZERO, D3D12_FILL_MODE_SOLID, D3D12_FILL_MODE_WIREFRAME, D3D12_GRAPHICS_PIPELINE_STATE_DESC, D3D12_INPUT_LAYOUT_DESC, D3D12_RASTERIZER_DESC, D3D12_SHADER_BYTECODE};
 use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
+use crate::render::mesh::mesh_pipeline::create_mesh_pipeline_state;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PipelineId(usize);
@@ -63,6 +64,13 @@ pub struct Pipeline {
 impl Pipeline {
     fn new(dev: &ID3D12Device, rs: &RootSignature, shaders: &ShaderStorage, desc: &PipelineDesc) -> anyhow::Result<Self> {
         anyhow::ensure!(desc.rts.len() <= 8, "{}: max 8 render targets!! got {}", desc.name, desc.rts.len());
+
+        if shaders.get_shader(&desc.shader, ShaderType::Mesh).is_some() {
+            // mesh pipeline, delegating to it
+            let mesh_pso = create_mesh_pipeline_state(dev, rs, shaders, desc)?;
+            return Ok(Self { pso: mesh_pso })
+        }
+
         let stage = |ty| shaders.get_shader(&desc.shader, ty).map(bytecode).unwrap_or_default();
 
         let vs = shaders.get_shader(&desc.shader, ShaderType::Vertex);
