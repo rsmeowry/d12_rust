@@ -57,7 +57,7 @@ impl Scene for MeshletsScene {
 
         let mut materials = Vec::new();
         let scene = load_assimp_scene::<VertexPbr, _>(
-            &renderer, &mut batch, "assets/models/marble_bust/marble_bust_01_1k.gltf",
+            &renderer, &mut batch, "assets/models/stanford_dragon/dragon_vrip.ply",
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
             true, LodCount::Meshlets,
@@ -66,9 +66,9 @@ impl Scene for MeshletsScene {
                 normal_tex: tex.normal,
                 metal_roughness_tex: tex.roughness,
                 occlusion_tex: tex.lightmap,
-                base_color: mat.base_color().map(|it| Vec3::new(it.x, it.y, it.z)).unwrap_or(Vec3::ONE),
-                metallic: mat.metallic_factor().unwrap_or(1.0),
-                roughness: mat.roughness_factor().unwrap_or(1.0),
+                base_color: Vec3::new(247. / 256., 193. / 256., 56. / 256.),
+                metallic: 0.7,
+                roughness: 0.4,
             }.to_gpu_material()
         )?;
 
@@ -106,7 +106,7 @@ impl Scene for MeshletsScene {
 
         let draws = draws.into_iter().map(|it| (it, pass)).collect::<Vec<_>>();
         for obj in &mut objects {
-            obj.model = Mat4::from_scale(6. * Vec3::ONE) * obj.model;
+            obj.model = Mat4::from_scale(10. * Vec3::ONE) * obj.model;
             obj.prev_model = obj.model;
         }
 

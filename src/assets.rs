@@ -177,17 +177,26 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
             .normals().iter().flatten()
             .map(|it| Vec3::new(it.x, it.y, it.z)).collect::<Vec<_>>();
 
-        let uvs = mesh
+        let mut uvs = mesh
             .texture_coords(0).iter().flatten()
             .map(|it| Vec2::new(it.x, it.y)).collect::<Vec<_>>();
+        if uvs.is_empty() {
+            uvs = std::iter::repeat(Vec2::ZERO).take(positions.len()).collect::<Vec<_>>();
+        }
 
-        let binormals = mesh
-            .bitangents().iter().flatten()
-            .map(|it| Vec3::new(it.x, it.y, it.z)).collect::<Vec<_>>();
-
-        let tangents = mesh
+        let mut tangents = mesh
             .tangents().iter().flatten()
             .map(|it| Vec3::new(it.x, it.y, it.z)).collect::<Vec<_>>();
+        if tangents.is_empty() {
+            tangents = normals.iter().map(|n| n.cross(if n.y.abs() < 0.99 { Vec3::Y } else { Vec3::X }).normalize()).collect::<Vec<_>>();
+        }
+
+        let mut binormals = mesh
+            .bitangents().iter().flatten()
+            .map(|it| Vec3::new(it.x, it.y, it.z)).collect::<Vec<_>>();
+        if binormals.is_empty() {
+            binormals = normals.iter().enumerate().map(|n| tangents[n.0].cross(*n.1).normalize()).collect::<Vec<_>>();
+        }
 
         let indices = mesh.triangle_indices_iter().collect::<Vec<u32>>();
 
