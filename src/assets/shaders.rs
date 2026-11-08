@@ -39,6 +39,12 @@ enum ShaderTarget {
     },
     Geometry {
         entry: String
+    },
+    Amplification {
+        entry: String,
+    },
+    Mesh {
+        entry: String
     }
 }
 
@@ -50,7 +56,9 @@ impl ShaderTarget {
             ShaderTarget::Domain { .. } => ShaderType::Domain,
             ShaderTarget::Hull { .. } => ShaderType::Hull,
             ShaderTarget::Compute { .. } => ShaderType::Compute,
-            ShaderTarget::Geometry { .. } => ShaderType::Geometry
+            ShaderTarget::Geometry { .. } => ShaderType::Geometry,
+            ShaderTarget::Amplification { .. } => ShaderType::Amplification,
+            ShaderTarget::Mesh { .. } => ShaderType::Mesh,
         }
     }
 }
@@ -63,6 +71,8 @@ pub enum ShaderType {
     Domain,
     Geometry,
     Fragment,
+    Amplification,
+    Mesh,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -228,7 +238,9 @@ impl ShaderStorage {
                 ShaderTarget::Domain { entry } => (entry, w!("ds_6_6")),
                 ShaderTarget::Hull { entry } => (entry, w!("hs_6_6")),
                 ShaderTarget::Compute { entry } => (entry, w!("cs_6_6")),
-                ShaderTarget::Geometry { entry } => (entry, w!("gs_6_6"))
+                ShaderTarget::Geometry { entry } => (entry, w!("gs_6_6")),
+                ShaderTarget::Amplification { entry } => (entry, w!("as_6_6")),
+                ShaderTarget::Mesh { entry } => (entry, w!("ms_6_6")),
             };
             let entry = entry.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
 
