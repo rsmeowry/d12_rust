@@ -158,7 +158,7 @@ impl<S: GenerationStrategy + 'static> VoxelWorld<S> {
                     model: mat,
                     prev_model: mat,
                     material_id: chunk_pos.x as u32,
-                    _pad: [chunk_pos.y as u32, chunk_pos.z as u32, 0],
+                    ..Default::default()
                 }))
             } else {
                 None

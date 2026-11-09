@@ -153,12 +153,12 @@ impl LodRenderer {
         }
     }
 
-    pub fn billboard_for_mesh(&self, obj: &ObjectData, aabb: &AABB, mesh_idx: usize) -> ObjectData {
+    pub fn billboard_for_mesh(&self, obj: &ObjectData, aabb: &AABB, mesh_idx: usize, mesh: &Mesh) -> ObjectData {
         let (scale, _, _) = obj.model.to_scale_rotation_translation();
         let center = obj.model.transform_point3((aabb.min + aabb.max) * 0.5);
         let radius = (aabb.max - aabb.min).length() * 0.5 * scale.max_element();
         let mat = Mat4::from_scale_rotation_translation(Vec3::splat(radius), Quat::IDENTITY, center);
-        ObjectData::new(mat, self.material_ids[mesh_idx]) // TODO: probably need proper prev model here
+        ObjectData::new(mat, self.material_ids[mesh_idx], mesh) // TODO: probably need proper prev model here
     }
 
     pub fn reads_all_baked<'g, 'f>(&self, pass: PassBuilder<'g, 'f>) -> PassBuilder<'g, 'f> {

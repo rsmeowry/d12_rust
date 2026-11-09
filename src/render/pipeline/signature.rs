@@ -21,9 +21,9 @@ impl RootSignature {
     pub const TEX3D: u32 = 11; // t0 space3 - textures 3D
     pub const PARTICLES: u32 = 12; // u0-u2 space4: pool, deadlist, sortlist
     pub const TLAS: u32 = 13; // t4 space0 - TLAS
-    // reusing these
-    pub const VB: u32 = Self::LIGHTS_DATA; // t3
+    pub const VB: u32 = Self::LIGHTS_DATA; // t3, reusing these
     pub const MESHLETS: u32 = Self::TLAS; // t4
+    pub const BUFFERS: u32 = 14; // t0 space4 - ib/vb
 
     pub fn new(dev: &ID3D12Device) -> anyhow::Result<Self> {
         let tex2d_range = D3D12_DESCRIPTOR_RANGE {
@@ -69,6 +69,14 @@ impl RootSignature {
         let particles_range = D3D12_DESCRIPTOR_RANGE {
             RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
             NumDescriptors: 3,
+            BaseShaderRegister: 0,
+            RegisterSpace: 4,
+            OffsetInDescriptorsFromTableStart: 0,
+        };
+
+        let buffers_range = D3D12_DESCRIPTOR_RANGE {
+            RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+            NumDescriptors: u32::MAX,
             BaseShaderRegister: 0,
             RegisterSpace: 4,
             OffsetInDescriptorsFromTableStart: 0,
@@ -227,6 +235,17 @@ impl RootSignature {
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL
             },
+            // t0 space4 - BUFFERS
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE {
+                        NumDescriptorRanges: 1,
+                        pDescriptorRanges: &buffers_range,
+                    }
+                },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+            }
         ];
 
         let samplers = [
@@ -273,6 +292,7 @@ impl RootSignature {
             cmd.SetGraphicsRootDescriptorTable(Self::UAV_TEX2D, heap_start);
             cmd.SetGraphicsRootDescriptorTable(Self::UAV_BUF, heap_start);
             cmd.SetGraphicsRootDescriptorTable(Self::TEX3D, heap_start);
+            cmd.SetGraphicsRootDescriptorTable(Self::BUFFERS, heap_start)
         }
     }
 
@@ -285,6 +305,7 @@ impl RootSignature {
             cmd.SetComputeRootDescriptorTable(Self::UAV_TEX2D, heap_start);
             cmd.SetComputeRootDescriptorTable(Self::UAV_BUF, heap_start);
             cmd.SetComputeRootDescriptorTable(Self::TEX3D, heap_start);
+            cmd.SetComputeRootDescriptorTable(Self::BUFFERS, heap_start)
         }
     }
 

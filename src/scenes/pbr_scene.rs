@@ -70,7 +70,7 @@ impl Scene for PbrSample {
                     metallic: actual_metallness,
                     roughness: actual_roughness,
                 }.to_gpu_material());
-                objects.push(ObjectData::new(Mat4::from_translation(Vec3::new(roughness as f32 * 2., metalness as f32 * 2., 0.)), materials.len() as u32 - 1))
+                objects.push(ObjectData::new(Mat4::from_translation(Vec3::new(roughness as f32 * 2., metalness as f32 * 2., 0.)), materials.len() as u32 - 1, &sphere_mesh))
             }
         }
 

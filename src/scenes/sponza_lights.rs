@@ -166,11 +166,13 @@ impl Scene for SponzaWithLights {
         // sphere
         let t = time.game_time();
         let prev_t = time.game_time() - time.delta_time();
-        let sphere_obj = ObjectData{
+        let sphere_obj = ObjectData {
             model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + t.sin(), -1.)),
             prev_model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + prev_t.sin(), -1.)),
             material_id: self.sphere_mat_idx,
-            _pad: [0; 3],
+            vb_srv: self.sphere.vb_srv(),
+            ib_srv: self.sphere.ib_srv(),
+            stride: self.sphere.stride(),
         };
         objects.push(sphere_obj);
         draws.push((&self.sphere, pass));

@@ -1,18 +1,20 @@
 pub mod mesh_pipeline;
 
-use std::ptr::null;
-use glam::Vec3;
+use crate::render::perf::frustum::AABB;
 use crate::render::vertex::Vertex;
-use crate::wrappers::graphics::{transition_barrier, uav_barrier, GraphicsDevice};
+use crate::wrappers::graphics::batching::UploadBatch;
+use crate::wrappers::graphics::{uav_barrier, GraphicsDevice};
+use glam::Vec3;
 use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY, D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST};
-use windows::Win32::Graphics::Direct3D12::{ID3D12Device5, ID3D12GraphicsCommandList, ID3D12GraphicsCommandList4, ID3D12Resource, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0, D3D12_ELEMENTS_LAYOUT_ARRAY, D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE, D3D12_INDEX_BUFFER_VIEW, D3D12_PRIMITIVE_TOPOLOGY_TYPE, D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL, D3D12_RAYTRACING_GEOMETRY_DESC, D3D12_RAYTRACING_GEOMETRY_DESC_0, D3D12_RAYTRACING_GEOMETRY_FLAGS, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE, D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC, D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_INDEX_BUFFER, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_VERTEX_BUFFER_VIEW};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Device5, ID3D12GraphicsCommandList, ID3D12GraphicsCommandList4, ID3D12Resource, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0, D3D12_ELEMENTS_LAYOUT_ARRAY, D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE, D3D12_INDEX_BUFFER_VIEW, D3D12_PRIMITIVE_TOPOLOGY_TYPE, D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL, D3D12_RAYTRACING_GEOMETRY_DESC, D3D12_RAYTRACING_GEOMETRY_DESC_0, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE, D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC, D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES, D3D12_RESOURCE_STATE_INDEX_BUFFER, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_VERTEX_BUFFER_VIEW};
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32_UINT};
 use windows_core::Interface;
-use crate::render::perf::frustum::AABB;
-use crate::wrappers::graphics::batching::UploadBatch;
 
 #[derive(Debug, PartialEq)]
 pub struct Mesh {
+    vb_srv: u32,
+    ib_srv: u32,
+    stride: u32,
     vb: ID3D12Resource,
     _ib: ID3D12Resource,
     blas: Option<ID3D12Resource>,
@@ -54,6 +56,18 @@ impl Mesh {
         let vb = gd.create_default_buffer(batch, vertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, format!("Mesh_VB_{:04x}", id))?;
         let ib = gd.create_default_buffer(batch, indices,  D3D12_RESOURCE_STATE_INDEX_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, format!("Mesh_IB_{:04x}", id))?;
 
+        let vb_srv: u32;
+        let ib_srv: u32;
+        if build_blas {
+            // so the heap doesnt overflow
+            vb_srv = gd.create_raw_srv(&vb, vertices.len() as u32)?;
+            ib_srv = gd.create_raw_srv(&ib, indices.len() as u32)?;
+        } else {
+            vb_srv = u32::MAX;
+            ib_srv = u32::MAX;
+        }
+        let stride = size_of::<TVert>() as u32;
+
         let vbv = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation: unsafe { vb.GetGPUVirtualAddress() },
             SizeInBytes: size_of_val(vertices) as u32,
@@ -72,18 +86,33 @@ impl Mesh {
         Ok(Self {
             vb,
             _ib: ib,
+            vb_srv,
+            ib_srv,
+            stride,
             blas,
             vbv,
             ibv,
             indices: index_count,
             topology,
             aabb,
-            is_static
+            is_static,
         })
     }
 
     pub fn vb_va(&self) -> u64 {
         unsafe { self.vb.GetGPUVirtualAddress() }
+    }
+
+    pub fn vb_srv(&self) -> u32 {
+        self.vb_srv
+    }
+
+    pub fn ib_srv(&self) -> u32 {
+        self.ib_srv
+    }
+
+    pub fn stride(&self) -> u32 {
+        self.stride
     }
 
     pub fn blas_va(&self) -> Option<u64> {

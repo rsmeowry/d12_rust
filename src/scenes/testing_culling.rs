@@ -71,7 +71,7 @@ impl Scene for CullingScene {
 
         for _ in 0..10000 {
             let pos = Vec3::new(rand::random(), rand::random(), rand::random()) * 200. - 100.;
-            let object_data = ObjectData::new(Mat4::from_scale_rotation_translation(4. * Vec3::ONE, Quat::from_euler(EulerRot::XYZ, rand::random::<f32>() * 90., rand::random::<f32>() * 90., rand::random::<f32>() * 90.), pos), 0);
+            let object_data = ObjectData::new(Mat4::from_scale_rotation_translation(4. * Vec3::ONE, Quat::from_euler(EulerRot::XYZ, rand::random::<f32>() * 90., rand::random::<f32>() * 90., rand::random::<f32>() * 90.), pos), 0, mesh);
             objects.push(object_data);
         }
 
@@ -136,7 +136,7 @@ impl Scene for CullingScene {
             .partition(|(o, _)| cam_pos.distance(o.model.transform_point3(Vec3::ZERO)) > self.max_dist);
         let (mut objects, draws): (Vec<ObjectData>, Vec<_>) = near.into_iter().unzip();
         let first_billboard = objects.len() as u32;
-        objects.extend(far.iter().map(|(o, (mesh, _))| self.lod.billboard_for_mesh(o, mesh.aabb(), 0)));
+        objects.extend(far.iter().map(|(o, (mesh, _))| self.lod.billboard_for_mesh(o, mesh.aabb(), 0, mesh)));
         let billboard_count = objects.len() as u32 - first_billboard;
 
         let objects_va = renderer.upload_objects(&objects)?;

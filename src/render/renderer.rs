@@ -24,21 +24,25 @@ pub const GB_MATERIAL: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
 pub const GB_VELOCITY: DXGI_FORMAT = DXGI_FORMAT_R16G16_FLOAT;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, PartialEq)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, PartialEq, Default)]
 pub struct ObjectData {
     pub model: Mat4,
     pub prev_model: Mat4,
     pub material_id: u32,
-    pub _pad: [u32; 3]
+    pub vb_srv: u32,
+    pub ib_srv: u32,
+    pub stride: u32,
 }
 
 impl ObjectData {
-    pub fn new(model: Mat4, material_id: u32) -> Self {
+    pub fn new(model: Mat4, material_id: u32, mesh: &Mesh) -> Self {
         Self {
             model,
             prev_model: model,
             material_id,
-            _pad: [0; 3]
+            vb_srv: mesh.vb_srv(),
+            stride: mesh.stride(),
+            ib_srv: mesh.ib_srv(),
         }
     }
 }
@@ -183,7 +187,7 @@ impl LoadedScene {
         let mut draws = Vec::new();
         for (mesh_idx, model) in &self.mesh_indices {
             let (mesh, material) = if self.use_lods && lod > 0 { &self.mesh_lods[*mesh_idx][lod - 1] } else { &self.meshes[*mesh_idx] };
-            objects.push(ObjectData::new(*model, *material));
+            objects.push(ObjectData::new(*model, *material, mesh));
             draws.push(mesh);
         }
         (objects, draws)
@@ -194,7 +198,7 @@ impl LoadedScene {
         let mut draws = Vec::new();
         for (mesh_idx, model) in &self.mesh_indices {
             let (mesh, material) = &self.meshes[*mesh_idx];
-            objects.push(ObjectData::new(*model, *material));
+            objects.push(ObjectData::new(*model, *material, mesh));
             draws.push(mesh);
         }
         (objects, draws)
@@ -205,7 +209,7 @@ impl LoadedScene {
         let mut draws = Vec::new();
         for (mesh_idx, model) in &self.mesh_indices {
             let (mesh, material) = &self.meshes[*mesh_idx];
-            objects.push(ObjectData::new(*model, *material));
+            objects.push(ObjectData::new(*model, *material, mesh));
             draws.push((mesh, &self.meshlet_meshes[*mesh_idx]));
         }
         (objects, draws)

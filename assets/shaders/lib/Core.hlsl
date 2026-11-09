@@ -45,12 +45,15 @@ struct ObjectData {
     float4x4 model;
     float4x4 prevModel;
     uint materialId;
-    uint3 _oPad;
+    uint vbSrv;
+    uint ibSrv;
+    uint stride;
 };
 
 Texture2D g_Tex2D[1024] : register(t0, space1);
 TextureCube g_TexCube[1024] : register(t0, space2);
 Texture3D g_Tex3D[1024] : register(t0, space3);
+ByteAddressBuffer g_Buffers[1024] : register(t0, space4);
 RWTexture2D<float4> g_RWTex2D[1024] : register(u0, space1);
 RWByteAddressBuffer g_RWBuffers[1024] : register(u0, space2);
 RWByteAddressBuffer g_RWScratch : register(u0);
@@ -134,4 +137,20 @@ uint PcgHash(uint input)
     uint state = input * 747796405u + 2891336453u;
     uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     return (word >> 22u) ^ word;
+}
+
+void LoadNormalUv(uint primIdx, float2 bary, in ObjectData obj, out float3 norm, out float2 uv) {
+    ByteAddressBuffer ib = g_Buffers[NonUniformResourceIndex(obj.ibSrv)];
+    ByteAddressBuffer vb = g_Buffers[NonUniformResourceIndex(obj.vbSrv)];
+    uint3 tri = ib.Load3(primIdx * 12);
+    float3 w = float3(1 - bary.x - bary.y, bary.x, bary.y);
+    norm = 0; uv = 0;
+    // just PRAY we hit VertexPBR
+    [unroll]
+    for (uint i = 0; i < 3; i++) {
+        uint base = tri[i] * obj.stride;
+        norm += w[i] * asfloat(vb.Load3(base + 12));
+        uv   += w[i] * asfloat(vb.Load2(base + 48));
+    }
+    norm = normalize(norm);
 }
