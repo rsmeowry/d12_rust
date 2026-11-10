@@ -91,7 +91,7 @@ impl Scene for SponzaWithLights {
         }
 
         if ui.button("Load GI Dump").clicked() {
-            self.baked_vpls = postcard::from_bytes(&std::fs::read("dumps/baked_vpl.dump")?)?;
+            self.baked_vpls = postcard::from_bytes(&std::fs::read("bakes/baked_vpl.dump")?)?;
         }
 
         Probe::new(&mut self.vpl_settings).with_header("VPLs").show(ui);
@@ -115,7 +115,8 @@ impl Scene for SponzaWithLights {
                 base_color: mat.base_color().map(|it| Vec3::new(it.x, it.y, it.z)).unwrap_or(Vec3::ONE),
                 metallic: mat.metallic_factor().unwrap_or(0.5),
                 roughness: mat.roughness_factor().unwrap_or(0.5),
-            }.to_gpu_material()
+            }.to_gpu_material(),
+            Some("bakes/baked_sponza.bke".into())
         )?;
         let sphere = unit_sphere(32, 32, |pos, norm, tan, binorm, uv| VertexPbr::new(pos, norm, tan, binorm, uv));
         let sphere = Mesh::new(batch.gd(), &mut batch, &sphere.0, &sphere.1, DrawTopology::TriangleList, AABB { min: Vec3::ZERO, max: Vec3::ONE }, false, true)?;
@@ -201,9 +202,9 @@ impl Scene for SponzaWithLights {
             self.pending_gi_read = false;
             let vpls = self.rt_gi_bakery.read(&renderer.gd)?;
             self.baked_vpls = vpls.clone();
-            std::fs::create_dir_all("dumps")?;
+            std::fs::create_dir_all("bakes")?;
             let bytes = postcard::to_allocvec(&vpls)?;
-            std::fs::write("dumps/baked_vpl.dump", &bytes)?;
+            std::fs::write("bakes/baked_vpl.dump", &bytes)?;
         }
 
         if self.should_dump_gi {

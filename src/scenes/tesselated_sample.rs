@@ -61,7 +61,8 @@ impl Scene for TesselatedSample {
                 shininess: 64.0,
                 diffuse_k: 0.4,
                 specular_k: 0.8,
-            }.to_gpu_material()
+            }.to_gpu_material(),
+            None
         )?;
 
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;

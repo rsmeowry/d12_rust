@@ -11,7 +11,15 @@ pub struct MeshletMesh {
 }
 
 impl MeshletMesh {
-    pub fn build_from_vertices<V: Vertex>(batch: &mut UploadBatch, vertices: &[u8], indices: &[u32]) -> anyhow::Result<Self> {
+    pub fn upload(batch: &mut UploadBatch, bytes: &[u8], meshlet_count: u32) -> anyhow::Result<Self> {
+        let mb = batch.gd().create_default_buffer(batch, &bytes, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, "MeshletsBuffer")?;
+        Ok(Self {
+            mb,
+            meshlet_count: meshlet_count,
+        })
+    }
+
+    pub fn build_bytes<V: Vertex>(vertices: &[u8], indices: &[u32]) -> anyhow::Result<(Vec<u8>, u32)> {
         let vda = VertexDataAdapter::new(vertices, size_of::<V>(), 0)?;
         let meshlets = meshopt::build_meshlets(indices, &vda, 64, 124, 0.25);
         let mut gpu = Vec::with_capacity(meshlets.len());
@@ -47,11 +55,7 @@ impl MeshletMesh {
         bytes.extend_from_slice(bytemuck::cast_slice(&verts));
         bytes.extend_from_slice(bytemuck::cast_slice(&tris));
 
-        let mb = batch.gd().create_default_buffer(batch, &bytes, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, "MeshletsBuffer")?;
-        Ok(Self {
-            mb,
-            meshlet_count: meshlets.len() as u32,
-        })
+        Ok((bytes, meshlets.len() as u32))
     }
 
     pub fn va(&self) -> u64 {

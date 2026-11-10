@@ -438,32 +438,14 @@ impl Texture {
         let n = if desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D { desc.MipLevels as usize } else { desc.MipLevels as usize * desc.DepthOrArraySize as usize };
         anyhow::ensure!(mips.len() == n, "{}: {} mips given, resource has {}", self.name, mips.len(), n);
 
-        let mut fps = vec![D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default(); n];
-        let mut num_rows = vec![0u32; n];
-        let mut row_size = vec![0u64; n];
-        let mut total = 0u64; // needed staging buffer size
-        unsafe {
-            batch.gd().device().GetCopyableFootprints(
-                &desc, 0, n as u32, 0,
-                Some(fps.as_mut_ptr()),
-                Some(num_rows.as_mut_ptr()),
-                Some(row_size.as_mut_ptr()),
-                Some(&mut total),
-            );
-        }
+        let (fps, row_size, total) = Self::footprints(batch.gd(), &self.res);
 
         let (staging, base, dest) = batch.alloc(total as usize, 512)?;
 
         let cmd = batch.cmd();
-        for (i, mip) in mips.iter().enumerate() {
-            let pitch = fps[i].Footprint.RowPitch as usize;
-            let row = row_size[i] as usize;
 
-            let mip_dst = unsafe { dest.add(fps[i].Offset as usize) };
-            for (y, src) in mip.chunks_exact(row).enumerate() {
-                unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), mip_dst.add(y * pitch), row) };
-            }
-        }
+        Self::copy_rows(&fps, &row_size, mips, dest);
+
         for (i, mip_fp) in fps.iter().enumerate() {
             let mut fp = *mip_fp;
             fp.Offset += base;
@@ -483,6 +465,46 @@ impl Texture {
         }
         self.transition(cmd, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
         Ok(())
+    }
+
+    pub fn pack_subresources(&self, gd: &GraphicsDevice, subs: &[&[u8]]) -> Vec<u8> {
+        let (fps, rows, total) = Self::footprints(gd, &self.res);
+        let mut out = vec![0u8; total as usize];
+        Self::copy_rows(&fps, &rows, subs, out.as_mut_ptr());
+        out
+    }
+
+    fn copy_rows(fps: &[D3D12_PLACED_SUBRESOURCE_FOOTPRINT], row_size: &[u64], subs: &[&[u8]], dst: *mut u8) {
+        for (i, mip) in subs.iter().enumerate() {
+            let pitch = fps[i].Footprint.RowPitch as usize;
+            let row = row_size[i] as usize;
+
+            let mip_dst = unsafe { dst.add(fps[i].Offset as usize) };
+            for (y, src) in mip.chunks_exact(row).enumerate() {
+                unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), mip_dst.add(y * pitch), row) };
+            }
+        }
+
+    }
+
+    // frames / row numbers \ row size
+    fn footprints(gd: &GraphicsDevice, res: &ID3D12Resource) -> (Vec<D3D12_PLACED_SUBRESOURCE_FOOTPRINT>, Vec<u64>, u64){
+        let desc = unsafe { res.GetDesc() };
+        let n = if desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D { desc.MipLevels as usize } else { desc.MipLevels as usize * desc.DepthOrArraySize as usize };
+        let mut total = 0;
+        let mut fps = vec![D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default(); n];
+        let mut num_rows = vec![0u32; n];
+        let mut row_size = vec![0u64; n];
+        unsafe {
+            gd.device().GetCopyableFootprints(
+                &desc, 0, n as u32, 0,
+                Some(fps.as_mut_ptr()),
+                Some(num_rows.as_mut_ptr()),
+                Some(row_size.as_mut_ptr()),
+                Some(&mut total),
+            );
+        }
+        (fps, row_size, total)
     }
 }
 

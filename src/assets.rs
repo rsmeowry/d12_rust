@@ -12,9 +12,12 @@ use asset_importer::postprocess::PostProcessSteps;
 use asset_importer::{Material, TextureType};
 use bitflags::{bitflags, bitflags_match};
 use glam::{Mat4, Vec2, Vec3, Vec4};
-use image::RgbaImage;
+use image::{EncodableLayout, RgbaImage};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use egui::IntoAtoms;
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R16_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+use crate::assets::dstorage::{DSBlobWriter, DSHeader, DSMesh, DSMeshlet, DSTexture};
 use crate::render::mesh::mesh_pipeline::meshlet::MeshletMesh;
 
 #[derive(Debug)]
@@ -74,8 +77,14 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
     is_static: bool,
     lods: LodCount,
     make_material: impl Fn(&asset_importer::material::Material, TextureSet) -> GpuMaterial,
+    bake_to: Option<PathBuf>,
 ) -> anyhow::Result<LoadedScene> {
     let pathbuf = path.as_ref().to_path_buf();
+
+    // for DStorage
+    let mut bw = bake_to.as_ref().map(|p| DSBlobWriter::default());
+    let mut ds_texs = vec![];
+    let mut ds_meshlets = vec![];
 
     let scene = asset_importer::Importer::new().read_file(path)
         .with_post_process(PostProcessSteps::TRIANGULATE |
@@ -129,6 +138,24 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
     for ((path, srgb, _mips, _tex_type), tex_mips) in texture_paths.iter().zip(texture_mips.into_iter()) {
         let tex_mips = tex_mips?;
         let loaded = Texture::load_from_mips(batch, &tex_mips.0, *srgb, path.file_name().unwrap().to_str().unwrap())?;
+
+        // dstorage
+        if let Some(bw) = &mut bw {
+            let desc = loaded.desc();
+            let mips: Vec<&[u8]> = tex_mips.0.iter().map(|mip| mip.as_bytes()).collect();
+            let (offset, size) = bw.push(&loaded.pack_subresources(&renderer.gd, &mips));
+            ds_texs.push(DSTexture {
+                name: path.file_name().unwrap().to_string_lossy().into(),
+                w: desc.width,
+                h: desc.height,
+                mips: desc.mips,
+                format: desc.format.0 as u32,
+                srgb: *srgb,
+                offset: offset as u32,
+                size: size as u32,
+            });
+        }
+
         let idx = textures.len();
         textures.push(loaded);
         by_path.insert(path.to_path_buf(), idx);
@@ -221,7 +248,9 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
     let mut meshlets: Vec<MeshletMesh> = Vec::new();
     if let LodCount::Meshlets = lods {
         for (_, _, vertices, indices) in &built {
-            meshlets.push(MeshletMesh::build_from_vertices::<V>(batch, bytemuck::cast_slice(&vertices), indices)?);
+            let (meshlet_bytes, meshlet_count) = MeshletMesh::build_bytes::<V>(bytemuck::cast_slice(&vertices), indices)?;
+            meshlets.push(MeshletMesh::upload(batch, &meshlet_bytes, meshlet_count)?);
+            ds_meshlets.push((meshlet_bytes, meshlet_count));
         }
     }
 
@@ -235,6 +264,44 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
         for child in node.children() {
             stack.push((child, world));
         }
+    }
+
+    // baking
+    if let Some(mut bw) = bw {
+        let path = bake_to.unwrap();
+
+        let meshlets_padded = ds_meshlets.iter().map(|it| Some(it)).chain(std::iter::repeat_n(None, built.len() - ds_meshlets.len()));
+        let meshes = built.iter().zip(meshlets_padded).map(|((mesh, mat, vc, ic), ml)| DSMesh {
+            vb: bw.push(bytemuck::cast_slice(vc)),
+            ib: bw.push(bytemuck::cast_slice(ic)),
+            index_count: ic.len() as u32,
+            aabb_min: mesh.aabb().min.into(),
+            aabb_max: mesh.aabb().max.into(),
+            material_idx: *mat - base, // since base is local, need to add it later when loading ill totally not forget about that
+            meshlet: ml.as_ref().map(|(b, n)| {
+                let (off, size) = bw.push(b);
+                DSMeshlet {
+                    offset: off,
+                    size,
+                    meshlet_count: *n
+                }
+            }),
+        }).collect();
+
+        let srv_to_tex = textures.iter().enumerate().map(|(i, t)| (t.srv_ptr(), i as i16)).collect::<HashMap<_, _>>();;
+        let materials = materials[base as usize..].iter().map(|m: &GpuMaterial| {
+            (*m, m.textures.map(|srv| *srv_to_tex.get(&srv).unwrap_or(&-1)))
+        }).collect::<Vec<(GpuMaterial, [i16; 8])>>();
+
+        let header = DSHeader {
+            textures: ds_texs,
+            meshes,
+            mesh_indices: out.clone(),
+            materials,
+            vertex_stride: size_of::<V>() as u32
+        };
+
+        bw.flush(header, &path)?;
     }
 
     

@@ -65,7 +65,8 @@ impl Scene for CullingScene {
                 shininess: 32.0,
                 diffuse_k: 0.4,
                 specular_k: 0.7,
-            }.to_gpu_material()
+            }.to_gpu_material(),
+            None
         )?;
         let (mesh, _model) = scene.as_first_mesh();
 

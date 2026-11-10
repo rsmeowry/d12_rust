@@ -59,7 +59,8 @@ impl Scene for PbrSampleMesh {
                 base_color: Vec3::new(247. / 256., 193. / 256., 56. / 256.),
                 metallic: 0.7,
                 roughness: 0.4,
-            }.to_gpu_material()
+            }.to_gpu_material(),
+            None
         )?;
         // let scene = load_assimp_scene::<VertexPbr, _>(
         //     &renderer, &mut batch, "assets/models/bananas/bananas_1k.gltf",

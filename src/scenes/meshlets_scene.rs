@@ -75,7 +75,8 @@ impl Scene for MeshletsScene {
                 base_color: Vec3::new(247. / 256., 193. / 256., 56. / 256.),
                 metallic: 0.7,
                 roughness: 0.4,
-            }.to_gpu_material()
+            }.to_gpu_material(),
+            Some("bakes/baked_meshlets.bke".into())
         )?;
 
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
