@@ -348,6 +348,14 @@ impl RootSignature {
         unsafe { cmd.SetComputeRootConstantBufferView(Self::PASS_DATA, pass) }
     }
 
+    pub fn set_compute_objects(&self, cmd: &ID3D12GraphicsCommandList, va: u64) {
+        unsafe { cmd.SetComputeRootShaderResourceView(Self::OBJECTS, va) };
+    }
+
+    pub fn set_compute_materials(&self, cmd: &ID3D12GraphicsCommandList, va: u64) {
+        unsafe { cmd.SetComputeRootShaderResourceView(Self::MATERIALS, va) };
+    }
+
     pub fn set_compute_particles(&self, cmd: &ID3D12GraphicsCommandList, table: D3D12_GPU_DESCRIPTOR_HANDLE) {
         unsafe { cmd.SetComputeRootDescriptorTable(Self::PARTICLES, table) }
     }

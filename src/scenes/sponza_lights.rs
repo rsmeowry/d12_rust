@@ -1,4 +1,6 @@
-﻿use crate::app::RenderOpts;
+﻿use std::fs::File;
+use std::io::{Cursor, Write};
+use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
@@ -26,6 +28,7 @@ use crate::render::aa::AntiAliasing;
 use crate::render::aa::fsr2::Fsr2Pass;
 use crate::render::aa::temporal::TaaPass;
 use crate::render::deferred::sky_velocity::SkyVelocityPass;
+use crate::render::raytracing::gi::{GpuVpl, RtGiBakeryPass};
 use crate::render::raytracing::RtShadowsPass;
 
 const MAX_PARTICLES: usize = 4096;
@@ -44,6 +47,7 @@ pub struct SponzaWithLights {
     taa: TaaPass,
     fsr: Fsr2Pass,
     rt_shadows: RtShadowsPass,
+    rt_gi_bakery: RtGiBakeryPass,
 
     shadows: ShadowMap,
     culler: Culler,
@@ -52,6 +56,9 @@ pub struct SponzaWithLights {
     post: PostProcessPass,
     blit: BlitPass,
     debug_lines: Vec<String>,
+    should_rebake: bool,
+    should_dump_gi: bool,
+    pending_gi_read: bool,
 }
 
 impl Scene for SponzaWithLights {
@@ -72,6 +79,14 @@ impl Scene for SponzaWithLights {
         ui.heading("Cascades");
         for line in std::mem::take(&mut self.debug_lines) {
             ui.label(line);
+        }
+
+        if ui.button("Rebake GI").clicked() {
+            self.should_rebake = true;
+        }
+
+        if ui.button("Dump GI").clicked() {
+            self.should_dump_gi = true;
         }
         Ok(())
     }
@@ -130,10 +145,10 @@ impl Scene for SponzaWithLights {
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
         let rt_shadows = RtShadowsPass::new(1, 0.27, renderer)?;
+        let rt_gi_bakery = RtGiBakeryPass::new(512, renderer)?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
-
 
         Ok(Self {
             gbuffer,
@@ -147,6 +162,7 @@ impl Scene for SponzaWithLights {
 
             shadows,
             rt_shadows,
+            rt_gi_bakery,
             culler,
             bloom,
             sponza,
@@ -155,10 +171,28 @@ impl Scene for SponzaWithLights {
             post,
             debug_lines: vec![],
             shadow_mode: ShadowMode::Cascades,
+            should_rebake: false,
+            should_dump_gi: false,
+            pending_gi_read: false
         })
     }
 
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
+        // dumping GI if needed
+        if self.pending_gi_read {
+            self.pending_gi_read = false;
+            let vpls = self.rt_gi_bakery.read(&renderer.gd)?;
+            std::fs::create_dir_all("dumps")?;
+            let bytes = postcard::to_allocvec(&vpls)?;
+            std::fs::write("dumps/baked_vpl.dump", &bytes)?;
+        }
+
+        if self.should_dump_gi {
+            self.should_dump_gi = false;
+            self.rt_gi_bakery.add_copy_pass(graph);
+            self.pending_gi_read = true;
+        }
+
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
         let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
@@ -236,6 +270,14 @@ impl Scene for SponzaWithLights {
         let (mut all_objects, mut all_meshes) = self.sponza.to_objects_and_draws();
         all_objects.push(sphere_obj);
         all_meshes.push(&self.sphere);
+
+        // rebaking gi if needed
+        if self.should_rebake {
+            self.should_rebake = false;
+            self.rt_shadows.tlas().add_build_pass(&all_objects, &all_meshes, renderer, graph)?;
+            let all_objects_va = renderer.upload_objects(&all_objects)?;
+            self.rt_gi_bakery.add_bake_pass(renderer, Vec3::ZERO, 25., all_objects_va, materials_va, self.rt_shadows.tlas().tlas_va(), &lights, graph)?;
+        }
 
         if self.shadow_mode == ShadowMode::Cascades {
             // shadowws (global and local)

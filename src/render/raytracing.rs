@@ -63,6 +63,10 @@ impl RtShadowsPass {
         })
     }
 
+    pub fn tlas(&self) -> &Tlas {
+        &self.tlas
+    }
+    
     pub fn shadows_tex(&self) -> ResId {
         self.blur_tex[2]
     }

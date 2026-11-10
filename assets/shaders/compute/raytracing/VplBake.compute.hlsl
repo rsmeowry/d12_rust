@@ -16,15 +16,16 @@ cbuffer RTBakePass : register(b2) {
     float3 lightDir;
     float spotOuterCos;
     float3 baseFlux; // lumen
+    uint pathOffset;
     float3 sceneCenter; // just for directional
     float sceneRadius;
     uint maxVpl;
-    uint pathIndex;
     uint vplBuf;
     uint maxLevels;
     uint seed;
     float albedoMip;
-    float3 _pad;
+    float spotInnerCos;
+    float2 _pad;
 }
 
 struct PbrMaterial {
@@ -72,7 +73,7 @@ bool TraceScene(float3 ro, float3 rd, out SceneHit hit) {
     RayDesc desc;
     desc.Origin = ro;
     desc.TMin = 1e-3;
-    desc.TMax = 100.;
+    desc.TMax = sceneRadius * 4.;
     desc.Direction = rd;
 
     RayQuery<RAY_FLAG_FORCE_OPAQUE> q;
@@ -90,7 +91,7 @@ bool TraceScene(float3 ro, float3 rd, out SceneHit hit) {
     float2 barycentrics = q.CommittedTriangleBarycentrics();
     hit.bary = float3(1.0 - barycentrics.x - barycentrics.y, barycentrics.x, barycentrics.y);
     hit.primitiveId = q.CommittedPrimitiveIndex();
-    hit.instanceId = q.CommittedInstanceIndex();
+    hit.instanceId = q.CommittedInstanceID();
     return true;
 }
 
@@ -140,22 +141,28 @@ float3 ConvertToWorld(float3 vec, float3 norm) {
     return vec.x * tangent + vec.y * binormal + vec.z * norm;
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(64, 1, 1)]
 void CS(int3 threadId: SV_DispatchThreadID) {
     uint pathCount = maxVpl / maxLevels;
     if(threadId.x >= pathCount)
         return; // STOP !!!!
+    uint path = pathOffset + threadId.x;
+    for (uint l = 0; l < maxLevels; l++) {
+        WriteVpl(path, l, 0, 0, 0); // clearing previous slots
+    }
 
     g_Rng = PcgHash(threadId.x ^ PcgHash(seed));
     float3 origin;
     float3 dir;
     float2 rnd = float2(Rand(), Rand());
+    float3 flux = baseFlux;
     if (lightType == VPL_POINT) {
         origin = lightPos;
         dir = SamplePointSphere(rnd);
     } else if(lightType == VPL_SPOT) {
         origin = lightPos;
         dir = ConvertToWorld(SampleSpotCone(rnd, spotOuterCos), lightDir);
+        flux *= smoothstep(spotOuterCos, spotInnerCos, dot(dir, lightDir));
     } else {
         // for directional light (sun)
         float3 tangent;
@@ -166,8 +173,6 @@ void CS(int3 threadId: SV_DispatchThreadID) {
         dir = lightDir;
         origin = sceneCenter - dir * (2 * sceneRadius) + (tangent * cos(phi) + binormal * sin(phi)) * rad;
     }
-
-    float3 flux = baseFlux;
 
     // cant unroll bwa
     for (uint level = 0; level < maxLevels; level += 1) {
@@ -187,15 +192,15 @@ void CS(int3 threadId: SV_DispatchThreadID) {
 
         float3 pos = origin + dir * hit.depth;
         float3 albedo = g_Tex2D[NonUniformResourceIndex(hitMat.albedoTex)].SampleLevel(LinearWrap, uv, albedoMip).rgb * hitMat.baseColor;
-        float metallic = g_Tex2D[NonUniformResourceIndex(hitMat.metalRoughnessTex)].SampleLevel(LinearWrap, uv, albedoMip).g * hitMat.metallic;
+        float metallic = g_Tex2D[NonUniformResourceIndex(hitMat.metalRoughnessTex)].SampleLevel(LinearWrap, uv, albedoMip).b * hitMat.metallic;
         float3 rho = albedo * (1 - metallic);
 
         flux *= rho;
 
-        WriteVpl(pathIndex, level, pos, norm, flux / PI); // lambertian diffuse uses I = phi/PI
+        WriteVpl(path, level, pos, norm, flux / PI); // lambertian diffuse uses I = phi/PI
 
         // LETS GO GAMBLING
-        float p = clamp((rho.r + rho.g + rho.b) / 3., 0.05, 0.95);
+        float p = clamp(max(rho.r, max(rho.g, rho.b)), 0.05, 0.95);
         if (Rand() >= p)
             break;
         flux /= p; // extinction kinda
