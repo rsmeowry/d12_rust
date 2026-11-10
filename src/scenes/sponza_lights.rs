@@ -1,13 +1,13 @@
-﻿use std::f32::consts::PI;
-use std::fs::File;
-use std::io::{Cursor, Write};
-use crate::app::RenderOpts;
+﻿use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
+use crate::render::aa::fsr2::Fsr2Pass;
+use crate::render::aa::temporal::TaaPass;
+use crate::render::aa::AntiAliasing;
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
-use crate::render::deferred::fog::{FogPass, FogProperties};
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::sky_velocity::SkyVelocityPass;
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
@@ -17,6 +17,8 @@ use crate::render::perf::frustum::AABB;
 use crate::render::perf::{Culler, NO_LOD};
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
+use crate::render::raytracing::gi::{GpuVpl, RtGiBakeryPass, MAX_VPL_LEVELS};
+use crate::render::raytracing::RtShadowsPass;
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::shadows::{ShadowMap, CASCADE_COUNT, SHADOW_DISTANCE, SHADOW_EXTEND};
 use crate::scenes::Scene;
@@ -24,13 +26,9 @@ use crate::time::Time;
 use egui::{ComboBox, Ui};
 use egui_probe::{EguiProbe, Probe};
 use glam::{Mat4, Quat, Vec3};
+use std::f32::consts::PI;
+use std::io::Write;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::render::aa::AntiAliasing;
-use crate::render::aa::fsr2::Fsr2Pass;
-use crate::render::aa::temporal::TaaPass;
-use crate::render::deferred::sky_velocity::SkyVelocityPass;
-use crate::render::raytracing::gi::{GpuVpl, RtGiBakeryPass, MAX_VPL_LEVELS};
-use crate::render::raytracing::RtShadowsPass;
 
 const MAX_PARTICLES: usize = 4096;
 
@@ -260,11 +258,6 @@ impl Scene for SponzaWithLights {
             GpuLight::spot(Vec3::new(4., 2., 0.), Quat::from_rotation_y(-PI) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
         ];
 
-        if self.vpl_settings.enabled {
-            let s = &self.vpl_settings;
-            lights.extend(self.baked_vpls.iter().map(|v| GpuLight::vpl(*v, s.k[v.level as usize], s.threshold)));
-        }
-
         let gr = &renderer.gr;
 
         let rs = renderer.rs();
@@ -303,6 +296,11 @@ impl Scene for SponzaWithLights {
             self.rt_shadows.tlas().add_build_pass(&all_objects, &all_meshes, renderer, graph)?;
             let all_objects_va = renderer.upload_objects(&all_objects)?;
             self.rt_gi_bakery.add_bake_pass(renderer, Vec3::new(self.vpl_settings.sun_target_x, self.vpl_settings.sun_target_y, self.vpl_settings.sun_target_z), self.vpl_settings.sun_radius, all_objects_va, materials_va, self.rt_shadows.tlas().tlas_va(), &lights, graph)?;
+        }
+
+        if self.vpl_settings.enabled {
+            let s = &self.vpl_settings;
+            lights.extend(self.baked_vpls.iter().map(|v| GpuLight::vpl(*v, s.k[v.level as usize], s.threshold)));
         }
 
         if self.shadow_mode == ShadowMode::Cascades {
