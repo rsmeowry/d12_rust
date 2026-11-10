@@ -56,12 +56,28 @@ impl Mesh {
         let vb = gd.create_default_buffer(batch, vertices, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, format!("Mesh_VB_{:04x}", id))?;
         let ib = gd.create_default_buffer(batch, indices,  D3D12_RESOURCE_STATE_INDEX_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, format!("Mesh_IB_{:04x}", id))?;
 
+        Self::new_from_resources::<TVert>(gd, batch, vb, ib, id, size_of_val(vertices) as u32, index_count, topology, aabb, is_static, build_blas)
+    }
+
+    pub fn new_from_resources<TVert: Vertex>(
+        gd: &GraphicsDevice,
+        batch: &mut UploadBatch,
+        vb: ID3D12Resource,
+        ib: ID3D12Resource,
+        id: u16,
+        vb_size: u32,
+        index_count: u32,
+        topology: DrawTopology,
+        aabb: AABB,
+        is_static: bool,
+        build_blas: bool,
+    ) -> anyhow::Result<Self> {
         let vb_srv: u32;
         let ib_srv: u32;
         if build_blas {
             // so the heap doesnt overflow
-            vb_srv = gd.create_raw_srv(&vb, vertices.len() as u32)?;
-            ib_srv = gd.create_raw_srv(&ib, indices.len() as u32)?;
+            vb_srv = gd.create_raw_srv(&vb, vb_size)?;
+            ib_srv = gd.create_raw_srv(&ib, index_count * 4)?;
         } else {
             vb_srv = u32::MAX;
             ib_srv = u32::MAX;
@@ -70,18 +86,22 @@ impl Mesh {
 
         let vbv = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation: unsafe { vb.GetGPUVirtualAddress() },
-            SizeInBytes: size_of_val(vertices) as u32,
+            SizeInBytes: vb_size,
             StrideInBytes: size_of::<TVert>() as u32,
         };
         let ibv = D3D12_INDEX_BUFFER_VIEW {
             BufferLocation: unsafe { ib.GetGPUVirtualAddress() },
-            SizeInBytes: size_of_val(indices) as u32,
+            SizeInBytes: index_count * 4,
             Format: DXGI_FORMAT_R32_UINT,
         };
 
-        let blas = if build_blas { unsafe {
-            Some(Self::build_blas::<TVert>(batch, id, &ib, &vb, (vertices.len() / size_of::<TVert>()) as u32, index_count)?)
-        } } else { None };
+        let blas = if build_blas {
+            unsafe {
+                Some(Self::build_blas::<TVert>(batch, id, &ib, &vb, (vb_size / size_of::<TVert>() as u32), index_count)?)
+            }
+        } else {
+            None
+        };
 
         Ok(Self {
             vb,

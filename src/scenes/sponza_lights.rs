@@ -116,6 +116,7 @@ impl Scene for SponzaWithLights {
                 metallic: mat.metallic_factor().unwrap_or(0.5),
                 roughness: mat.roughness_factor().unwrap_or(0.5),
             }.to_gpu_material(),
+            // None
             Some("bakes/baked_sponza.bke".into())
         )?;
         let sphere = unit_sphere(32, 32, |pos, norm, tan, binorm, uv| VertexPbr::new(pos, norm, tan, binorm, uv));

@@ -575,6 +575,10 @@ impl GraphicsDevice {
         Ok(buf)
     }
 
+    pub fn create_streaming_buffer<S: AsRef<str>>(dev: &ID3D12Device, size: usize, name: S) -> anyhow::Result<ID3D12Resource> {
+        Self::create_committed_buffer(dev, D3D12_HEAP_TYPE_DEFAULT, size, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_NONE, name)
+    }
+
     pub fn create_uav_buffer<S: AsRef<str>>(dev: &ID3D12Device, size: usize, name: S) -> anyhow::Result<ID3D12Resource> {
         Self::create_committed_buffer(dev, D3D12_HEAP_TYPE_DEFAULT, size, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, name)
     }

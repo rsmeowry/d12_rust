@@ -77,6 +77,7 @@ impl Scene for MeshletsScene {
                 roughness: 0.4,
             }.to_gpu_material(),
             Some("bakes/baked_meshlets.bke".into())
+            // None,
         )?;
 
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;

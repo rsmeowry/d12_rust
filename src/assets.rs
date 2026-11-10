@@ -15,9 +15,10 @@ use glam::{Mat4, Vec2, Vec3, Vec4};
 use image::{EncodableLayout, RgbaImage};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use egui::IntoAtoms;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R16_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
-use crate::assets::dstorage::{DSBlobWriter, DSHeader, DSMesh, DSMeshlet, DSTexture};
+use crate::assets::dstorage::{DSBlobUploader, DSBlobWriter, DSHeader, DSMesh, DSMeshlet, DSTexture};
 use crate::render::mesh::mesh_pipeline::meshlet::MeshletMesh;
 
 #[derive(Debug)]
@@ -79,10 +80,19 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
     make_material: impl Fn(&asset_importer::material::Material, TextureSet) -> GpuMaterial,
     bake_to: Option<PathBuf>,
 ) -> anyhow::Result<LoadedScene> {
+    if let Some(baked_path) = bake_to.as_ref() && baked_path.exists() {
+        let mut uploader = DSBlobUploader::new(baked_path)?;
+        let (scene, io_time, batch_time) = uploader.load_scene::<V>(renderer, batch, materials)?;
+        println!("Used DStorage! Load took: io/{io_time:.2}ms batch/{batch_time:.2}ms total/{:.2}ms", io_time + batch_time);
+        return Ok(scene);
+    }
+
+    let t_main = Instant::now();
+
     let pathbuf = path.as_ref().to_path_buf();
 
     // for DStorage
-    let mut bw = bake_to.as_ref().map(|p| DSBlobWriter::default());
+    let mut bw = bake_to.as_ref().map(|p| DSBlobWriter::new(true)).transpose()?;
     let mut ds_texs = vec![];
     let mut ds_meshlets = vec![];
 
@@ -143,7 +153,8 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
         if let Some(bw) = &mut bw {
             let desc = loaded.desc();
             let mips: Vec<&[u8]> = tex_mips.0.iter().map(|mip| mip.as_bytes()).collect();
-            let (offset, size) = bw.push(&loaded.pack_subresources(&renderer.gd, &mips));
+            let raw = loaded.pack_subresources(&renderer.gd, &mips);
+            let (offset, size) = bw.push_compressed(&raw)?;
             ds_texs.push(DSTexture {
                 name: path.file_name().unwrap().to_string_lossy().into(),
                 w: desc.width,
@@ -152,7 +163,8 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
                 format: desc.format.0 as u32,
                 srgb: *srgb,
                 offset: offset as u32,
-                size: size as u32,
+                size: raw.len() as u32,
+                stored_size: size as u32,
             });
         }
 
@@ -298,13 +310,15 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
             meshes,
             mesh_indices: out.clone(),
             materials,
-            vertex_stride: size_of::<V>() as u32
+            vertex_stride: size_of::<V>() as u32,
+            compression: bw.uses_compression()
         };
 
         bw.flush(header, &path)?;
     }
 
-    
+    println!("Loaded scene regularly, elapsed: total/{:.2}ms", t_main.elapsed().as_secs_f32() * 1000.0);
+
     Ok(LoadedScene {
         mesh_indices: out,
         meshes: built.into_iter().map(|it| (it.0, it.1)).collect(),

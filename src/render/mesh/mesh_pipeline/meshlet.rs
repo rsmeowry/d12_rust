@@ -19,6 +19,13 @@ impl MeshletMesh {
         })
     }
 
+    pub fn build_resources<V: Vertex>(mb: ID3D12Resource, count: u32) -> anyhow::Result<Self> {
+        Ok(Self {
+            mb,
+            meshlet_count: count,
+        })
+    }
+
     pub fn build_bytes<V: Vertex>(vertices: &[u8], indices: &[u32]) -> anyhow::Result<(Vec<u8>, u32)> {
         let vda = VertexDataAdapter::new(vertices, size_of::<V>(), 0)?;
         let meshlets = meshopt::build_meshlets(indices, &vda, 64, 124, 0.25);
