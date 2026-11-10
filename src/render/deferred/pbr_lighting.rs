@@ -11,7 +11,7 @@ use crate::render::deferred::lighting::LightingPass;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::ResId;
-use crate::render::lights::{light_cone, unit_sphere, GpuLight, LIGHT_POINT, LIGHT_SPOT};
+use crate::render::lights::{light_cone, unit_sphere, GpuLight, LIGHT_POINT, LIGHT_SPOT, LIGHT_VPL};
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::pipeline::desc::{Blend, Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
@@ -105,8 +105,11 @@ impl PbrLightingPass {
         lights.sort_by_key(|l| l.kind);
         let first_point = lights.partition_point(|l| l.kind < LIGHT_POINT) as u32;
         let first_spot = lights.partition_point(|l| l.kind < LIGHT_SPOT) as u32;
+        let first_vpl = lights.partition_point(|l| l.kind < LIGHT_VPL) as u32;
         let point_count = first_spot - first_point;
-        let spot_count = lights.len() as u32 - first_spot;
+        let spot_count = first_vpl - first_spot;
+        let vpl_count = lights.len() as u32 - first_vpl;
+
         let lights_va = renderer.upload_slice(bytemuck::cast_slice(&lights), 16)?;
         let gr = &renderer.gr;
         
@@ -200,6 +203,10 @@ impl PbrLightingPass {
                 if spot_count > 0 {
                     rs.set_draw_index(ctx.cmd, first_spot);
                     self.spot_light_mesh.draw_instanced(ctx.cmd, spot_count);
+                }
+                if vpl_count > 0 {
+                    rs.set_draw_index(ctx.cmd, first_vpl);
+                    self.point_light_mesh.draw_instanced(ctx.cmd, vpl_count);
                 }
                 Ok(())
             });

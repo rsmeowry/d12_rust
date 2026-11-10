@@ -1,11 +1,13 @@
 ﻿use bytemuck::Zeroable;
 use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
 use crate::render::builtin::Vertex3;
+use crate::render::raytracing::gi::GpuVpl;
 use crate::render::vertex::Vertex;
 
 pub const LIGHT_DIRECTIONAL: u32 = 0;
 pub const LIGHT_POINT: u32 = 1;
 pub const LIGHT_SPOT: u32 = 2;
+pub const LIGHT_VPL: u32 = 3;
 pub const NO_SHADOW: u32 = 0xFFFFFFFF;
 
 #[repr(C)]
@@ -41,6 +43,24 @@ impl GpuLight {
             spot_radius: range * outer_deg.to_radians().tan(),
             shadow_tex: NO_SHADOW,
             ..Self::zeroed()
+        }
+    }
+
+    pub fn vpl(vpl: GpuVpl, intensity: f32, threshold: f32) -> Self {
+        Self {
+            position: vpl.pos,
+            range: ((vpl.intensity * intensity).max_element() / threshold).sqrt(),
+            direction: vpl.normal,
+            kind: LIGHT_VPL,
+            color: vpl.intensity,
+            intensity,
+            spot_inner_cos: 0.0,
+            spot_outer_cos: 0.0,
+            spot_radius: 0.0,
+            shadow_tex: NO_SHADOW,
+            shadow_vp: Default::default(),
+            shadow_params: Default::default(),
+            _pad: 0,
         }
     }
 }

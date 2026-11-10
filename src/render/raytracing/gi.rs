@@ -65,27 +65,35 @@ impl RtGiBakeryPass {
         let rs = rd.rs();
         let pipelines = rd.pipelines();
 
-        for light_idx in 0..lights.len() {
-            let light = lights[light_idx];
+        let total_paths = (self.max_vpl / MAX_VPL_LEVELS as usize) as u32;
+        let fluxes: Vec<Vec3> = lights.iter().map(|l| light_flux(l, scene_radius)).collect();
+        let sum: f32 = fluxes.iter().map(|f| f.max_element()).sum();
+        let mut offset = 0u32;
+
+        for (light, flux) in lights.iter().zip(&fluxes) {
+            let count = ((total_paths as f32 * flux.max_element() / sum) as u32).max(16).min(total_paths - offset);
+            if count == 0 {
+                break;
+            }
             let pass = VplBakeProps {
+                base_flux: *flux / count as f32,
+                path_offset: offset,
+                path_count: count,
                 light_pos: light.position,
                 light_type: light.kind,
                 light_dir: light.direction,
                 spot_outer_cos: light.spot_outer_cos,
                 spot_inner_cos: light.spot_inner_cos,
-                base_flux: light_flux(&light, scene_radius),
                 scene_center,
                 scene_radius,
                 max_vpl: self.max_vpl as u32,
-                path_offset: light_idx as u32,
                 vpl_buf: self.vpl_uav,
                 max_levels: MAX_VPL_LEVELS,
                 seed: rand::random(),
                 albedo_mip: 0.0,
-                _pad: [0; 2],
+                _pad: 0,
             };
             let pass_va = rd.upload_cbuffer(&pass)?;
-            let path_count = self.max_vpl / MAX_VPL_LEVELS as usize;
 
             graph.add_pass("RTGIBakePass")
                 .has_side_effects()
@@ -96,10 +104,11 @@ impl RtGiBakeryPass {
                     rs.set_compute_materials(ctx.cmd, materials_va);
                     rs.set_compute_tlas(ctx.cmd, tlas_va);
                     unsafe {
-                        ctx.cmd.Dispatch(path_count.div_ceil(64) as u32, 1, 1);
+                        ctx.cmd.Dispatch(count.div_ceil(64) as u32, 1, 1);
                     }
                     Ok(())
                 });
+            offset += count;
         }
 
 
@@ -124,17 +133,18 @@ struct VplBakeProps {
     seed: u32,
     albedo_mip: f32,
     spot_inner_cos: f32,
-    _pad: [u32; 2]
+    path_count: u32,
+    _pad: u32
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Serialize, Deserialize)]
 pub struct GpuVpl {
-    pos: Vec3,
-    level: u32,
-    normal: Vec3,
+    pub pos: Vec3,
+    pub level: u32,
+    pub normal: Vec3,
     _pad1: u32,
-    intensity: Vec3,
+    pub intensity: Vec3,
     _pad2: u32,
 }
 

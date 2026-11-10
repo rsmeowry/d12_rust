@@ -1,6 +1,7 @@
 ﻿#define LIGHT_DIRECTIONAL 0
 #define LIGHT_POINT 1
 #define LIGHT_SPOT 2
+#define LIGHT_VPL 3
 
 SamplerComparisonState ShadowCmp : register(s4);
 
@@ -99,6 +100,15 @@ float3 ShadeLightPBR(Light l, Surface s, float3 V) {
     float3 L = -l.direction;
     float atten = 1.0;
     if (l.type != LIGHT_DIRECTIONAL) {
+        if (l.type == LIGHT_VPL) { // lambertian diffuse
+            float3 toL = l.position - s.pos;
+            float d = length(toL);
+            float3 L = toL / max(d, 1e-4);
+            float cosSurf = saturate(dot(s.normal, L));
+            float cosPhi  = saturate(dot(l.direction, -L));
+            float atten   = DistanceAttenuation(d, l.range);
+            return s.albedo * (1 - s.metallic) / PI * l.color * l.intensity * cosSurf * cosPhi * atten;
+        }
         float3 toLight = l.position - s.pos;
         float dist = length(toLight);
         L = toLight / max(dist, 1e-4);

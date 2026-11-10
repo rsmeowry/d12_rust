@@ -25,7 +25,8 @@ cbuffer RTBakePass : register(b2) {
     uint seed;
     float albedoMip;
     float spotInnerCos;
-    float2 _pad;
+    uint pathCount;
+    float _pad;
 }
 
 struct PbrMaterial {
@@ -143,7 +144,6 @@ float3 ConvertToWorld(float3 vec, float3 norm) {
 
 [numthreads(64, 1, 1)]
 void CS(int3 threadId: SV_DispatchThreadID) {
-    uint pathCount = maxVpl / maxLevels;
     if(threadId.x >= pathCount)
         return; // STOP !!!!
     uint path = pathOffset + threadId.x;

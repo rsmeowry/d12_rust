@@ -1,4 +1,5 @@
-﻿use std::fs::File;
+﻿use std::f32::consts::PI;
+use std::fs::File;
 use std::io::{Cursor, Write};
 use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
@@ -28,7 +29,7 @@ use crate::render::aa::AntiAliasing;
 use crate::render::aa::fsr2::Fsr2Pass;
 use crate::render::aa::temporal::TaaPass;
 use crate::render::deferred::sky_velocity::SkyVelocityPass;
-use crate::render::raytracing::gi::{GpuVpl, RtGiBakeryPass};
+use crate::render::raytracing::gi::{GpuVpl, RtGiBakeryPass, MAX_VPL_LEVELS};
 use crate::render::raytracing::RtShadowsPass;
 
 const MAX_PARTICLES: usize = 4096;
@@ -59,6 +60,8 @@ pub struct SponzaWithLights {
     should_rebake: bool,
     should_dump_gi: bool,
     pending_gi_read: bool,
+    baked_vpls: Vec<GpuVpl>,
+    vpl_settings: VplSettings
 }
 
 impl Scene for SponzaWithLights {
@@ -88,6 +91,8 @@ impl Scene for SponzaWithLights {
         if ui.button("Dump GI").clicked() {
             self.should_dump_gi = true;
         }
+
+        Probe::new(&mut self.vpl_settings).with_header("VPLs").show(ui);
         Ok(())
     }
 
@@ -145,7 +150,7 @@ impl Scene for SponzaWithLights {
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
         let rt_shadows = RtShadowsPass::new(1, 0.27, renderer)?;
-        let rt_gi_bakery = RtGiBakeryPass::new(512, renderer)?;
+        let rt_gi_bakery = RtGiBakeryPass::new(8192, renderer)?;
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
@@ -173,7 +178,18 @@ impl Scene for SponzaWithLights {
             shadow_mode: ShadowMode::Cascades,
             should_rebake: false,
             should_dump_gi: false,
-            pending_gi_read: false
+            pending_gi_read: false,
+            baked_vpls: vec![],
+            vpl_settings: VplSettings {
+                k: [0.12, 0.25, 2., 64., 1.],
+                enabled: false,
+                threshold: 0.01,
+                ibl_strength: 0.03,
+                sun_target_x: 0.,
+                sun_target_y: 0.,
+                sun_target_z: 0.,
+                sun_radius: 15.0,
+            }
         })
     }
 
@@ -182,6 +198,7 @@ impl Scene for SponzaWithLights {
         if self.pending_gi_read {
             self.pending_gi_read = false;
             let vpls = self.rt_gi_bakery.read(&renderer.gd)?;
+            self.baked_vpls = vpls.clone();
             std::fs::create_dir_all("dumps")?;
             let bytes = postcard::to_allocvec(&vpls)?;
             std::fs::write("dumps/baked_vpl.dump", &bytes)?;
@@ -235,9 +252,14 @@ impl Scene for SponzaWithLights {
             // GpuLight::point(Vec3::new(4. * t.sin(), 2., -1.2), 12., Vec3::new(1., 0.3, 0.2), 12.),
             // GpuLight::point(Vec3::new(-4. * t.sin(), 1., 1.2), 6., Vec3::new(0.2, 0.5, 1.), 8.),
             // GpuLight::point(Vec3::new(2., 2. + 2. * t.cos(), 0.), 8., Vec3::new(0.2, 0.9, 0.2), 8.),
-            GpuLight::spot(Vec3::new(4., 5., 0.), Quat::from_rotation_y(time.game_time()) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
-            GpuLight::spot(Vec3::new(4., 2., 0.), Quat::from_rotation_y(-time.game_time()) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
+            GpuLight::spot(Vec3::new(4., 5., 0.), Quat::from_rotation_y(PI) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
+            GpuLight::spot(Vec3::new(4., 2., 0.), Quat::from_rotation_y(-PI) * Vec3::Z, 15., 15., 25.,  Vec3::new(1.0, 0.4, 0.2), 100.),
         ];
+
+        if self.vpl_settings.enabled {
+            let s = &self.vpl_settings;
+            lights.extend(self.baked_vpls.iter().map(|v| GpuLight::vpl(*v, s.k[v.level as usize], s.threshold)));
+        }
 
         let gr = &renderer.gr;
 
@@ -276,7 +298,7 @@ impl Scene for SponzaWithLights {
             self.should_rebake = false;
             self.rt_shadows.tlas().add_build_pass(&all_objects, &all_meshes, renderer, graph)?;
             let all_objects_va = renderer.upload_objects(&all_objects)?;
-            self.rt_gi_bakery.add_bake_pass(renderer, Vec3::ZERO, 25., all_objects_va, materials_va, self.rt_shadows.tlas().tlas_va(), &lights, graph)?;
+            self.rt_gi_bakery.add_bake_pass(renderer, Vec3::new(self.vpl_settings.sun_target_x, self.vpl_settings.sun_target_y, self.vpl_settings.sun_target_z), self.vpl_settings.sun_radius, all_objects_va, materials_va, self.rt_shadows.tlas().tlas_va(), &lights, graph)?;
         }
 
         if self.shadow_mode == ShadowMode::Cascades {
@@ -287,7 +309,7 @@ impl Scene for SponzaWithLights {
             let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_meshes)?;
             self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &all_objects, &all_meshes, graph)?;
 
-            let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, None,0.19, &self.gbuffer, graph, opts)?;
+            let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, None,self.vpl_settings.ibl_strength, &self.gbuffer, graph, opts)?;
 
             // debug
             for i in 0..CASCADE_COUNT {
@@ -295,7 +317,7 @@ impl Scene for SponzaWithLights {
             }
         } else if self.shadow_mode == ShadowMode::Raytraced {
             self.rt_shadows.add_pass(&all_objects, &all_meshes, &lights, &self.gbuffer, renderer, graph)?;
-            let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, None, Some(&self.rt_shadows), None, 0.19, &self.gbuffer, graph, opts)?;
+            let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, None, Some(&self.rt_shadows), None, self.vpl_settings.ibl_strength, &self.gbuffer, graph, opts)?;
         }
 
         let scene_color = match opts.anti_aliasing {
@@ -340,4 +362,16 @@ impl Scene for SponzaWithLights {
 pub enum ShadowMode {
     Cascades,
     Raytraced
+}
+
+#[derive(Debug, EguiProbe)]
+struct VplSettings {
+    pub k: [f32; MAX_VPL_LEVELS as usize],
+    pub threshold: f32,
+    pub enabled: bool,
+    pub ibl_strength: f32,
+    pub sun_target_x: f32,
+    pub sun_target_y: f32,
+    pub sun_target_z: f32,
+    pub sun_radius: f32,
 }
