@@ -139,18 +139,17 @@ uint PcgHash(uint input)
     return (word >> 22u) ^ word;
 }
 
-void LoadNormalUv(uint primIdx, float2 bary, in ObjectData obj, out float3 norm, out float2 uv) {
+void LoadNormalUv(uint primIdx, float3 bary, in ObjectData obj, out float3 norm, out float2 uv) {
     ByteAddressBuffer ib = g_Buffers[NonUniformResourceIndex(obj.ibSrv)];
     ByteAddressBuffer vb = g_Buffers[NonUniformResourceIndex(obj.vbSrv)];
     uint3 tri = ib.Load3(primIdx * 12);
-    float3 w = float3(1 - bary.x - bary.y, bary.x, bary.y);
     norm = 0; uv = 0;
     // just PRAY we hit VertexPBR
     [unroll]
     for (uint i = 0; i < 3; i++) {
         uint base = tri[i] * obj.stride;
-        norm += w[i] * asfloat(vb.Load3(base + 12));
-        uv   += w[i] * asfloat(vb.Load2(base + 48));
+        norm += bary[i] * asfloat(vb.Load3(base + 12));
+        uv += bary[i] * asfloat(vb.Load2(base + 48));
     }
     norm = normalize(norm);
 }

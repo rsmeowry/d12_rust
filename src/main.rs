@@ -17,5 +17,5 @@ mod scenes;
 pub mod ui;
 
 fn main() -> anyhow::Result<()> {
-    app::App::<MeshletsScene>::new()?.run()
+    app::App::<SponzaWithLights>::new()?.run()
 }
