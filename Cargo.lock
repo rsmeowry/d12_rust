@@ -343,6 +343,7 @@ dependencies = [
  "asset-importer",
  "bitflags",
  "bytemuck",
+ "direct-storage",
  "egui",
  "egui-probe",
  "flume",
@@ -364,6 +365,18 @@ dependencies = [
  "walkdir",
  "windows",
  "windows-core",
+]
+
+[[package]]
+name = "direct-storage"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "899e196dc5fab0cf2c9ec0fcaeca7693d2e85ca51c6b67f5d2363d13093e8a98"
+dependencies = [
+ "libloading",
+ "windows",
+ "windows-core",
+ "windows-link",
 ]
 
 [[package]]
@@ -912,6 +925,16 @@ checksum = "a9fd2f41a1cba099f79a0b6b6c35656cf7c03351a7bae8ff0f28f25270f929d2"
 dependencies = [
  "arbitrary",
  "cc",
+]
+
+[[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
 ]
 
 [[package]]

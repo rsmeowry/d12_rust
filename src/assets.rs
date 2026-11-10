@@ -1,4 +1,5 @@
 pub mod shaders;
+pub mod dstorage;
 
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::perf::frustum::AABB;

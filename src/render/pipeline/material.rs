@@ -1,7 +1,8 @@
 ﻿use glam::{Vec3, Vec4};
+use serde::{Deserialize, Serialize};
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Serialize, Deserialize)]
 pub struct GpuMaterial {
     pub textures: [u32; 8], // up to 8 textures
     pub unique_params: [f32; 16], // 16 floats worth of params
