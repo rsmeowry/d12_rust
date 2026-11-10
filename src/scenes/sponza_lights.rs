@@ -92,6 +92,10 @@ impl Scene for SponzaWithLights {
             self.should_dump_gi = true;
         }
 
+        if ui.button("Load GI Dump").clicked() {
+            self.baked_vpls = postcard::from_bytes(&std::fs::read("dumps/baked_vpl.dump")?)?;
+        }
+
         Probe::new(&mut self.vpl_settings).with_header("VPLs").show(ui);
         Ok(())
     }
@@ -181,7 +185,7 @@ impl Scene for SponzaWithLights {
             pending_gi_read: false,
             baked_vpls: vec![],
             vpl_settings: VplSettings {
-                k: [0.12, 0.25, 2., 64., 1.],
+                k: [2., 3., 4., 16., 32.],
                 enabled: false,
                 threshold: 0.01,
                 ibl_strength: 0.03,
