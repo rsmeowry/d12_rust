@@ -264,17 +264,17 @@ impl App {
             egui::Window::new(format!("Brine: {}", self.active_scene_name)).show(ctx, |ui| {
                 ui.label(format!("FPS: {} | mspf: {:.2}ms", self.fps, (1.0 / self.fps as f32) * 1000.));
 
-                egui::CollapsingHeader::new("Rendering Options").show(ui, |header_ui| {
-                    Probe::new(&mut self.opts).show(header_ui);
-                    egui::widgets::global_theme_preference_buttons(header_ui);
-                });
-
                 egui::ComboBox::from_label("Active scene").selected_text(self.active_scene_name)
                     .show_ui(ui, |ui| {
                         for (scene_idx, scene) in SCENES.iter().enumerate() {
                             ui.selectable_value(&mut self.pending_scene_swap, Some(scene_idx as u32), scene.0);
                         }
                     });
+
+                egui::CollapsingHeader::new("Rendering Options").show(ui, |header_ui| {
+                    Probe::new(&mut self.opts).show(header_ui);
+                    egui::widgets::global_theme_preference_buttons(header_ui);
+                });
 
                 egui::CollapsingHeader::new("Scene info").show(ui, |header_ui| {
                     self.active_scene.ui(header_ui).unwrap();

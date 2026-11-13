@@ -115,8 +115,6 @@ impl VoxelTree {
 
     fn fill_dense(&self, idx: usize, origin: [i64; 3], size: i64, min: [i64; 3], window: usize, dst: &mut [Voxel]) {
         // overlapping chunk with node's box
-        let d = self.size();
-
         let lo: [i64; 3] = std::array::from_fn(|a| origin[a].max(min[a]));
         let hi: [i64; 3] = std::array::from_fn(|a| (origin[a] + size).min(min[a] + window as i64));
 
@@ -131,7 +129,7 @@ impl VoxelTree {
                 // just a cube, fill it
                 for z in lo[2]..hi[2] {
                     for y in lo[1]..hi[1] {
-                        let row = d * ((y - min[1]) as usize + d * (z - min[2]) as usize);
+                        let row = window * ((y - min[1]) as usize + window * (z - min[2]) as usize);
                         let (x0, x1) = ((lo[0] - min[0]) as usize, (hi[0] - min[0]) as usize);
                         dst[row + x0..row + x1].fill(Voxel { material: v.material, density: v.density });
                     }

@@ -11,11 +11,11 @@ use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::shadows::{ShadowMap, SHADOW_DISTANCE, SHADOW_EXTEND};
 use crate::render::voxels::naive::NaiveBoxes;
-use crate::render::voxels::{index_to_ivec3, index_to_uvec3, VoxelWorld, CHUNK_DEPTH};
-use crate::scenes::Scene;
+use crate::render::voxels::{index_to_ivec3, index_to_uvec3, VoxelMesher, VoxelWorld, CHUNK_DEPTH};
+use crate::scenes::{Scene, SCENES};
 use crate::time::Time;
 use crate::ui::ShowUi;
-use egui::{Slider, Ui};
+use egui::{ComboBox, Slider, Ui};
 use glam::{IVec3, Vec3};
 use std::f32::consts::PI;
 use std::ops::Div;
@@ -35,6 +35,11 @@ pub const VOXEL_SCENE_MAT_DIAMOND_BLOCK: u8 = 3;
 pub const VOXEL_SCENE_MAT_MOSS: u8 = 4;
 pub const VOXEL_SCENE_MAT_SNOW: u8 = 5;
 
+const MESHERS: &[(&str, fn() -> Arc<dyn VoxelMesher>)] = &[
+    ("Naive boxes", || { Arc::new(NaiveBoxes) }),
+    ("DC", || { Arc::new(DualContouring) }),
+];
+
 #[derive(Debug)]
 pub struct VoxelsScene {
     gbuffer: GBuffer,
@@ -43,6 +48,8 @@ pub struct VoxelsScene {
     voxel_textures: Vec<Texture>,
 
     fsr_pass: Fsr2Pass,
+    pending_mesher: Option<u32>,
+    active_mesher: &'static str,
 
     sun_t: f32,
     atmosphere: AtmosphereProps,
@@ -63,6 +70,14 @@ impl Scene for VoxelsScene {
             ui.label("Sun");
             ui.add(Slider::new(&mut self.sun_t, -PI..=PI).step_by(0.1))
         });
+
+        ComboBox::from_label("Active mesher").selected_text(self.active_mesher)
+            .show_ui(ui, |ui| {
+                for (m_idx, scene) in MESHERS.iter().enumerate() {
+                    ui.selectable_value(&mut self.pending_mesher, Some(m_idx as u32), scene.0);
+                }
+            });
+
         Ok(())
     }
 
@@ -114,6 +129,8 @@ impl Scene for VoxelsScene {
             world,
             materials_buf,
             voxel_textures,
+            pending_mesher: None,
+            active_mesher: "Naive boxes",
 
             fsr_pass,
             blit,
@@ -192,6 +209,14 @@ impl Scene for VoxelsScene {
     }
 
     fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+        if let Some(mesher_idx) = self.pending_mesher.take() {
+            renderer.gd.flush_command_queue()?;
+            let mesher = MESHERS[mesher_idx as usize];
+            self.active_mesher = mesher.0;
+            self.world.swap_mesher(mesher.1(), renderer)?;
+            renderer.gd.flush_command_queue()?;
+        }
+
         let material_data = self.world.material_data();
         let mesher = self.world.mesher();
         self.world.generator_mut().launch(mesher, renderer.cam.pos(), material_data);
