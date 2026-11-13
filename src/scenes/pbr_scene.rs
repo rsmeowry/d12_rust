@@ -34,8 +34,6 @@ pub const SPHERES_AMT_X: usize = 6;
 pub const SPHERES_AMT_Y: usize = 6;
 
 impl Scene for PbrSample {
-    const NAME: &'static str = "PBR Spheres";
-
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         Ok(())
     }

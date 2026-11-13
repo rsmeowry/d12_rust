@@ -39,8 +39,6 @@ pub struct CullingScene {
 const MAX_LOD_LEVEL: u32 = 3;
 
 impl Scene for CullingScene {
-    const NAME: &'static str = "Pusheens (10K)";
-
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         ui.add(egui::Slider::new(&mut self.max_dist, 0.5..=120.0).text("Max distance"));
         Ok(())

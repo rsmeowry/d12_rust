@@ -63,8 +63,6 @@ pub struct SponzaWithLights {
 }
 
 impl Scene for SponzaWithLights {
-    const NAME: &'static str = "Sponza (w/ lights)";
-
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         ui.horizontal(|ui| {
             ComboBox::from_label("Shadows mode")

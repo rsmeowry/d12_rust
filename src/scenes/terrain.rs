@@ -42,8 +42,6 @@ pub struct TerrainScene {
 }
 
 impl Scene for TerrainScene {
-    const NAME: &'static str = "Terrain";
-
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         self.atmosphere.show_ui(ui);
         ui.horizontal(|ui| {

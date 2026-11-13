@@ -33,8 +33,6 @@ pub struct CloudmarchScene {
 }
 
 impl Scene for CloudmarchScene {
-    const NAME: &'static str = "Cloud marching";
-
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         Ok(())
     }

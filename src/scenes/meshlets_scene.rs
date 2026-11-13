@@ -42,8 +42,6 @@ pub struct MeshletsScene {
 }
 
 impl Scene for MeshletsScene {
-    const NAME: &'static str = "Meshlets mesh";
-
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         ui.add(Checkbox::new(&mut self.meshlet_debug, "Meshlet debug"));
         let total: u32 = self.model.meshlet_meshes.iter().map(|m| m.count()).sum();

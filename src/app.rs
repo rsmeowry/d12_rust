@@ -1,11 +1,12 @@
 use std::cell::Cell;
+use egui::TexturesDelta;
 use crate::input::KeyCode;
 use crate::render::camera::Camera;
 use crate::render::deferred::util::DebugTextPass;
 use crate::render::graph::FrameGraph;
 use crate::render::pipeline::Globals;
-use crate::render::renderer::Renderer;
-use crate::scenes::Scene;
+use crate::render::renderer::{HeapMark, Renderer};
+use crate::scenes::{Scene, SCENES};
 use crate::time::Time;
 use crate::ui::EguiPass;
 use crate::wrappers::event::WindowEvent;
@@ -14,11 +15,12 @@ use egui_probe::{EguiProbe, Probe};
 use glam::{EulerRot, Mat4, Quat, Vec2, Vec2Swizzles, Vec3};
 use crate::render::aa::{AntiAliasing, FsrQuality};
 use crate::render::aa::temporal::jitter_vec;
+use crate::scenes::sponza_lights::{ShadowMode, SponzaWithLights};
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 
-pub struct App<S: Scene> {
+pub struct App {
     renderer: Renderer,
     cam_target: Vec3,
     tilt: Vec2,
@@ -29,7 +31,10 @@ pub struct App<S: Scene> {
     egui_ui_out: Option<(Vec<egui::ClippedPrimitive>, egui::TexturesDelta, f32)>,
 
     text: DebugTextPass,
-    scene: S,
+    active_scene: Box<dyn Scene>,
+    active_scene_name: &'static str,
+    begin_heap: HeapMark,
+    pending_scene_swap: Option<u32>,
 
     globals: Globals,
     time: Time,
@@ -46,7 +51,7 @@ pub struct App<S: Scene> {
     controller: ControllerInfo,
 }
 
-impl<S: Scene> App<S> {
+impl App {
     pub fn new() -> anyhow::Result<Self> {
         let window = NativeWindow::create(WindowProps::default())?;
         window.set_cursor_locked(true)?;
@@ -77,11 +82,23 @@ impl<S: Scene> App<S> {
         };
 
         let mut renderer = Renderer::new(window.handle(), WIDTH, HEIGHT, cam)?;
+        let mut egui_pass = EguiPass::new(&mut renderer)?;
 
-        let scene = S::setup(&mut renderer)?;
+        // pre-generating EGUI textures so they are before the mark
+        let mut graph = FrameGraph::new();
+        egui_pass.add_pass(&[], 1., egui::Vec2::ZERO, &renderer, &mut graph)?;
+        graph.execute(&renderer.gd, &renderer.gr)?;
+        let tex = TexturesDelta::default();
+        egui_pass.update_textures(&renderer.gd, &tex)?;
+        renderer.gd.flush_command_queue()?;
+
         let text = DebugTextPass::new(&mut renderer)?;
 
-        let egui_pass = EguiPass::new(&mut renderer)?;
+        let begin_heap = renderer.heap_mark()?;
+
+        let scene = SCENES[0];
+        let active_scene = scene.1(&mut renderer)?;
+        let active_scene_name = scene.0;
 
         Ok(Self {
             cam_target: renderer.cam.pos(),
@@ -89,7 +106,10 @@ impl<S: Scene> App<S> {
             renderer,
 
             text,
-            scene,
+            active_scene,
+            active_scene_name,
+            begin_heap,
+            pending_scene_swap: None,
 
             globals,
             time,
@@ -157,6 +177,15 @@ impl<S: Scene> App<S> {
     }
 
     fn update(&mut self) -> anyhow::Result<()> {
+        // scene swapping
+        if let Some(idx) = self.pending_scene_swap.take() {
+            self.renderer.gd.flush_command_queue()?;
+            self.renderer.rewind(self.begin_heap)?;
+            self.active_scene = SCENES[idx as usize].1(&mut self.renderer)?;
+            self.active_scene_name = SCENES[idx as usize].0;
+            self.cam_target = Vec3::ZERO;
+        }
+
         self.handle_camera_movement();
 
         let input = self.window.input();
@@ -232,7 +261,7 @@ impl<S: Scene> App<S> {
         let egui_inputs = self.window.input_mut().collect_egui_input(self.globals.display_resolution.x as u32, self.globals.display_resolution.y as u32, self.time.game_time());
 
         let out = self.egui.run_ui(egui_inputs, |ctx| {
-            egui::Window::new(format!("Brine: {}", S::NAME)).show(ctx, |ui| {
+            egui::Window::new(format!("Brine: {}", self.active_scene_name)).show(ctx, |ui| {
                 ui.label(format!("FPS: {} | mspf: {:.2}ms", self.fps, (1.0 / self.fps as f32) * 1000.));
 
                 egui::CollapsingHeader::new("Rendering Options").show(ui, |header_ui| {
@@ -240,8 +269,15 @@ impl<S: Scene> App<S> {
                     egui::widgets::global_theme_preference_buttons(header_ui);
                 });
 
+                egui::ComboBox::from_label("Active scene").selected_text(self.active_scene_name)
+                    .show_ui(ui, |ui| {
+                        for (scene_idx, scene) in SCENES.iter().enumerate() {
+                            ui.selectable_value(&mut self.pending_scene_swap, Some(scene_idx as u32), scene.0);
+                        }
+                    });
+
                 egui::CollapsingHeader::new("Scene info").show(ui, |header_ui| {
-                    self.scene.ui(header_ui).unwrap();
+                    self.active_scene.ui(header_ui).unwrap();
                 });
 
                 egui::CollapsingHeader::new("Pass Timings").show(ui, |header_ui| {
@@ -257,7 +293,7 @@ impl<S: Scene> App<S> {
         let prims = self.egui.tessellate(out.shapes, out.pixels_per_point);
         self.egui_ui_out = Some((prims, out.textures_delta, out.pixels_per_point));
         
-        self.scene.update(&mut self.renderer, &self.time)?;
+        self.active_scene.update(&mut self.renderer, &self.time)?;
 
         Ok(())
     }
@@ -267,11 +303,10 @@ impl<S: Scene> App<S> {
 
         let mut graph = FrameGraph::new();
 
-        self.scene.build_graph(&self.renderer, &self.time, &mut graph, &mut self.opts)?;
+        self.active_scene.build_graph(&self.renderer, &self.time, &mut graph, &mut self.opts)?;
 
         let cam_pos = self.renderer.cam.pos();
 
-        let text = format!("FPS: {} | tpf: {:.2}ms\nCamera: {cam_pos:.2}\nScene: {}", self.fps, 1000. / self.fps as f32, S::NAME);
         if let Some((prims, tex, ppp)) = &mut self.egui_ui_out {
             self.egui_pass.update_textures(&self.renderer.gd, tex)?;
             self.egui_pass.add_pass(prims, *ppp, egui::Vec2::new(self.globals.display_resolution.x, self.globals.display_resolution.y), &self.renderer, &mut graph)?;

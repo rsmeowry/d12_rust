@@ -56,6 +56,14 @@ impl GraphResources {
         ((self.screen_size.0 as f32 * self.render_scale).max(1.) as u32, (self.screen_size.1 as f32 * self.render_scale).max(1.) as u32)
     }
 
+    pub fn mark(&self) -> u32 {
+        self.resources.len() as u32
+    }
+
+    pub fn rewind(&mut self, mark: u32) {
+        self.resources.truncate(mark as usize);
+    }
+
     pub fn color(&mut self, gd: &GraphicsDevice, name: &str, format: DXGI_FORMAT, clear: Vec4, size: ResSize) -> anyhow::Result<ResId> {
         let (w, h) = size.resolve(self.screen_size(), self.render_size());
         let tex = Texture::render_target(gd, format, w, h, clear, name)?;

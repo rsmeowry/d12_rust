@@ -32,8 +32,6 @@ pub struct TesselatedSample {
 }
 
 impl Scene for TesselatedSample {
-    const NAME: &'static str = "Tesselation (bricks)";
-
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         Ok(())
     }

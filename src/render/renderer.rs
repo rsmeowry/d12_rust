@@ -179,6 +179,35 @@ impl Renderer {
         graph.execute(&self.gd, &self.gr)?;
         self.gd.display_rt(opts)
     }
+
+    pub fn heap_mark(&self) -> anyhow::Result<HeapMark> {
+        let srv_mark = self.gd.srv_heap()?.mark();
+        let dsv_mark = self.gd.dsv_heap()?.mark();
+        let rtv_mark = self.gd.rtv_heap()?.mark();
+        let res_mark = self.gr.mark();
+        Ok(HeapMark {
+            srv_mark,
+            dsv_mark,
+            rtv_mark,
+            res_mark
+        })
+    }
+
+    pub fn rewind(&mut self, mark: HeapMark) -> anyhow::Result<()> {
+        self.gd.srv_heap()?.rewind(mark.srv_mark);
+        self.gd.dsv_heap()?.rewind(mark.dsv_mark);
+        self.gd.rtv_heap()?.rewind(mark.rtv_mark);
+        self.gr.rewind(mark.res_mark);
+        Ok(())
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct HeapMark {
+    pub srv_mark: u32,
+    pub dsv_mark: u32,
+    pub rtv_mark: u32,
+    pub res_mark: u32
 }
 
 impl LoadedScene {

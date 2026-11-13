@@ -29,8 +29,6 @@ pub struct PbrSampleMesh {
 }
 
 impl Scene for PbrSampleMesh {
-    const NAME: &'static str = "PBR Mesh";
-
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
         Ok(())
     }
