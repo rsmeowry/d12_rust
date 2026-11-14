@@ -39,7 +39,7 @@ bool IsVisible(Meshlet m) {
         vp[3] - vp[2]
     };
     [unroll]
-     for (uint i = 0; i < 5; i++)
+    for (uint i = 0; i < 5; i++)
         if (dot(planes[i].xyz, c) + planes[i].w < -r * length(planes[i].xyz))
             return false;
 
@@ -48,6 +48,7 @@ bool IsVisible(Meshlet m) {
     return dot(v, axis) < m.coneCutoff * length(v) + r;
 }
 
+// https://www.tmarrec.dev/posts/mesh-shaders-and-meshlet-culling.html
 [numthreads(AS_GROUP, 1, 1)]
 void amp(uint dtid : SV_DispatchThreadID) {
     uint count = g_Meshlets.Load(0);

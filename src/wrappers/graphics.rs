@@ -101,7 +101,7 @@ impl GraphicsDevice {
             device: device.cast::<ID3D12Device>()?,
             resources: None,
             current_fence: Cell::new(0),
-            is_rt_supported: false
+            is_rt_supported: is_raytracing_supported
         })
     }
 

@@ -247,7 +247,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
         }
         let vc = vertices.clone();
         let ic = indices.clone();
-        Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions), is_static, true).map(|it| (it, base + mesh.material_index() as u32, vc, ic))
+        Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions), is_static, renderer.gd.is_rt_supported).map(|it| (it, base + mesh.material_index() as u32, vc, ic))
     }).collect::<anyhow::Result<_>>()?;
 
     let mut optimized: Vec<Vec<(Mesh, u32)>> = Vec::new();

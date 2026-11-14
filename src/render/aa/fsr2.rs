@@ -140,7 +140,11 @@ impl Drop for FsrCtx {
 }
 
 fn fsr_ensure(err_c: ErrorCode) -> anyhow::Result<()> {
-    if err_c == FFX_OK { Ok(()) } else { bail!("FSR2 Error: {err_c:#x}")}
+    if err_c == FFX_OK {
+        Ok(())
+    } else {
+        bail!("FSR2 Error: {err_c:#x}")
+    }
 }
 
 fn fsr_res(tex: &Texture, state: ResourceStates, name: PCWSTR) -> Resource {
