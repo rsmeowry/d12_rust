@@ -45,8 +45,8 @@ pub struct SponzaWithLights {
     sky_velocity: SkyVelocityPass,
     taa: TaaPass,
     fsr: Fsr2Pass,
-    rt_shadows: RtShadowsPass,
-    rt_gi_bakery: RtGiBakeryPass,
+    rt_shadows: Option<RtShadowsPass>,
+    rt_gi_bakery: Option<RtGiBakeryPass>,
 
     shadows: ShadowMap,
     culler: Culler,
@@ -151,8 +151,8 @@ impl Scene for SponzaWithLights {
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
         let blit = BlitPass::new(post.output_tex(), false, renderer)?;
-        let rt_shadows = RtShadowsPass::new(1, 0.27, renderer)?;
-        let rt_gi_bakery = RtGiBakeryPass::new(8192, renderer)?;
+        let rt_shadows = if renderer.gd.is_rt_supported { Some(RtShadowsPass::new(1, 0.27, renderer)?) } else { None };
+        let rt_gi_bakery = if renderer.gd.is_rt_supported { Some(RtGiBakeryPass::new(8192, renderer)?) } else { None };
 
         let (objects, meshes) = sponza.to_objects_and_draws();
         let culler = Culler::new(&objects, &meshes);
@@ -197,18 +197,19 @@ impl Scene for SponzaWithLights {
 
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
         // dumping GI if needed
-        if self.pending_gi_read {
+        let has_rt = self.rt_gi_bakery.is_some();
+        if self.pending_gi_read && has_rt {
             self.pending_gi_read = false;
-            let vpls = self.rt_gi_bakery.read(&renderer.gd)?;
+            let vpls = self.rt_gi_bakery.as_ref().unwrap().read(&renderer.gd)?;
             self.baked_vpls = vpls.clone();
             std::fs::create_dir_all("bakes")?;
             let bytes = postcard::to_allocvec(&vpls)?;
             std::fs::write("bakes/baked_vpl.dump", &bytes)?;
         }
 
-        if self.should_dump_gi {
+        if self.should_dump_gi && has_rt {
             self.should_dump_gi = false;
-            self.rt_gi_bakery.add_copy_pass(graph);
+            self.rt_gi_bakery.as_ref().unwrap().add_copy_pass(graph);
             self.pending_gi_read = true;
         }
 
@@ -291,11 +292,11 @@ impl Scene for SponzaWithLights {
         all_meshes.push(&self.sphere);
 
         // rebaking gi if needed
-        if self.should_rebake {
+        if self.should_rebake && has_rt {
             self.should_rebake = false;
-            self.rt_shadows.tlas().add_build_pass(&all_objects, &all_meshes, renderer, graph)?;
+            self.rt_shadows.as_ref().unwrap().tlas().add_build_pass(&all_objects, &all_meshes, renderer, graph)?;
             let all_objects_va = renderer.upload_objects(&all_objects)?;
-            self.rt_gi_bakery.add_bake_pass(renderer, Vec3::new(self.vpl_settings.sun_target_x, self.vpl_settings.sun_target_y, self.vpl_settings.sun_target_z), self.vpl_settings.sun_radius, all_objects_va, materials_va, self.rt_shadows.tlas().tlas_va(), &lights, graph)?;
+            self.rt_gi_bakery.as_ref().unwrap().add_bake_pass(renderer, Vec3::new(self.vpl_settings.sun_target_x, self.vpl_settings.sun_target_y, self.vpl_settings.sun_target_z), self.vpl_settings.sun_radius, all_objects_va, materials_va, self.rt_shadows.as_ref().unwrap().tlas().tlas_va(), &lights, graph)?;
         }
 
         if self.vpl_settings.enabled {
@@ -317,9 +318,9 @@ impl Scene for SponzaWithLights {
             for i in 0..CASCADE_COUNT {
                 self.debug_lines.push(format!("cascade {i}: <= {:.1}m | {} drawn", shadow.splits[i], shadow.drawn[i]))
             }
-        } else if self.shadow_mode == ShadowMode::Raytraced {
-            self.rt_shadows.add_pass(&all_objects, &all_meshes, &lights, &self.gbuffer, renderer, graph)?;
-            let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, None, Some(&self.rt_shadows), None, self.vpl_settings.ibl_strength, &self.gbuffer, graph, opts)?;
+        } else if has_rt && self.shadow_mode == ShadowMode::Raytraced {
+            self.rt_shadows.as_mut().unwrap().add_pass(&all_objects, &all_meshes, &lights, &self.gbuffer, renderer, graph)?;
+            let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, None, self.rt_shadows.as_ref(), None, self.vpl_settings.ibl_strength, &self.gbuffer, graph, opts)?;
         }
 
         let scene_color = match opts.anti_aliasing {

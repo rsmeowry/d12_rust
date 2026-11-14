@@ -33,6 +33,7 @@ pub struct GraphicsDevice {
     dxgi_factory: IDXGIFactory6,
     device: ID3D12Device,
     current_fence: Cell<u64>,
+    pub is_rt_supported: bool,
 }
 
 impl GraphicsDevice {
@@ -81,10 +82,12 @@ impl GraphicsDevice {
         let device = device_result
             .ok_or_else(|| anyhow::Error::msg("Failed to create a graphics device!"))?;
 
+        let mut is_raytracing_supported = false;
         unsafe {
             let mut caps: D3D12_FEATURE_DATA_D3D12_OPTIONS5 = Default::default();
             device.CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, ((&mut caps) as *mut _) as *mut c_void, size_of::<D3D12_FEATURE_DATA_D3D12_OPTIONS5>() as u32);
-            println!("This device {} raytracing", if caps.RaytracingTier.0 < D3D12_RAYTRACING_TIER_1_0.0 { "does not support" } else { "supports" });
+            is_raytracing_supported = caps.RaytracingTier.0 >= D3D12_RAYTRACING_TIER_1_0.0;
+            println!("This device {} raytracing", if is_raytracing_supported { "does not support" } else { "supports" });
         }
 
         unsafe {
@@ -94,10 +97,11 @@ impl GraphicsDevice {
         }
 
         Ok(Self {
-                dxgi_factory,
-                device: device.cast::<ID3D12Device>()?,
-                resources: None,
-                current_fence: Cell::new(0),
+            dxgi_factory,
+            device: device.cast::<ID3D12Device>()?,
+            resources: None,
+            current_fence: Cell::new(0),
+            is_rt_supported: false
         })
     }
 
