@@ -271,7 +271,7 @@ impl DSBlobUploader {
                     DrawTopology::TriangleList,
                     aabb,
                     true,
-                    true)?,
+                    renderer.gd.is_rt_supported)?,
                 mat_base as u32 + m.material_idx)
             );
             if let (Some(mb), Some(ml)) = (mb, &m.meshlet) {

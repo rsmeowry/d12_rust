@@ -192,7 +192,7 @@ impl Scene for MeshletsScene {
         self.rt_shadows_pass.add_pass(&objects, &all_draws, &lights, &self.gbuffer, renderer, graph)?;
         self.lighting.add_pass(None, lights, renderer, None, Some(&self.rt_shadows_pass), None, 0.4, &self.gbuffer, graph, opts)?;
         let scene_color = if opts.anti_aliasing == AntiAliasing::Fsr2 {
-            self.fsr_pass.add_pass(&self.gbuffer, renderer, time, graph)?
+            self.fsr_pass.add_pass(self.gbuffer.scene_color, &self.gbuffer, renderer, time, graph)?
         } else {
             self.gbuffer.scene_color
         };

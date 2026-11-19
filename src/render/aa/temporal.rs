@@ -52,14 +52,14 @@ impl TaaPass {
     }
 
     /// returns current texture (uav, just written)
-    pub fn add_pass<'a>(&self, gbuf: &GBuffer, rd: &'a Renderer, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
+    pub fn add_pass<'a>(&self, target: ResId, gbuf: &GBuffer, rd: &'a Renderer, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
         let (prev, current) = self.prev_current(rd.frame_count());
         let rs = rd.rs();
         let pipelines = rd.pipelines();
-        let d = rd.gr.get(gbuf.scene_color)?.desc();
+        let d = rd.gr.get(target)?.desc();
         let pass_va = rd.upload_cbuffer(&TaaData {
             prev_tex: rd.gr.get(prev)?.srv_ptr(),
-            current_tex: rd.gr.get(gbuf.scene_color)?.srv_ptr(),
+            current_tex: rd.gr.get(target)?.srv_ptr(),
             depth_tex: rd.gr.get(gbuf.scene_depth)?.srv_ptr(),
             velocity_tex: rd.gr.get(gbuf.velocity)?.srv_ptr(),
             out_tex: rd.gr.get(current)?.uav_ptr().unwrap(),
@@ -67,7 +67,7 @@ impl TaaPass {
         let cs = self.cs;
         graph.add_pass("TAA_Resolve")
             .reads(prev)
-            .reads(gbuf.scene_color)
+            .reads(target)
             .reads(gbuf.scene_depth)
             .reads(gbuf.velocity)
             .writes_uav(current, ResLoad::Preserve)

@@ -29,12 +29,14 @@ use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::PI;
 use std::io::Write;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::deferred::transparent::TransparentPass;
 
 const MAX_PARTICLES: usize = 4096;
 
 #[derive(Debug)]
 pub struct SponzaWithLights {
     gbuffer: GBuffer,
+    empty_pso: PipelineId,
 
     shadow_mode: ShadowMode,
     sponza: LoadedScene,
@@ -42,6 +44,7 @@ pub struct SponzaWithLights {
     sphere_mat_idx: u32,
 
     materials_buf: ID3D12Resource,
+    jelly_pass: TransparentPass,
     sky_velocity: SkyVelocityPass,
     taa: TaaPass,
     fsr: Fsr2Pass,
@@ -135,6 +138,7 @@ impl Scene for SponzaWithLights {
         batch.finish()?;
 
         let gbuffer = renderer.build_gbuffer::<VertexPbr>("deferred/GPassPBR.hlsl", DrawTopology::TriangleList)?;
+        let empty_pso = renderer.build_gpass::<VertexPbr>("deferred/GPassEmpty.hlsl", DrawTopology::TriangleList)?.0;
 
         let mut lighting = PbrLightingPass::new(renderer,
                                                 "assets/textures/sky/sponza/garden_sky.hdr",
@@ -146,6 +150,7 @@ impl Scene for SponzaWithLights {
         lighting.save_local_shadows(&shadows);
         let taa = TaaPass::new(renderer)?;
         let fsr = Fsr2Pass::new(renderer)?;
+        let jelly_pass = TransparentPass::new::<VertexPbr, &str>(renderer, "Jelly", "deferred/Jelly.hlsl")?;
 
         let sky_velocity = SkyVelocityPass::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
@@ -160,12 +165,14 @@ impl Scene for SponzaWithLights {
         Ok(Self {
             gbuffer,
             blit,
+            empty_pso,
 
             sphere,
             sphere_mat_idx,
             taa,
             fsr,
             sky_velocity,
+            jelly_pass,
 
             shadows,
             rt_shadows,
@@ -229,7 +236,7 @@ impl Scene for SponzaWithLights {
             stride: self.sphere.stride(),
         };
         objects.push(sphere_obj);
-        draws.push((&self.sphere, pass));
+        draws.push((&self.sphere, self.empty_pso));
 
         // sponza
         let frustum = renderer.cam.frustum();
@@ -265,6 +272,7 @@ impl Scene for SponzaWithLights {
         let pipelines = renderer.pipelines();
 
         // scene draw pass
+        let empty_pass_va = renderer.upload_cbuffer(&0u32)?;
         graph
             .add_pass("GPass")
             .writes_depth(self.gbuffer.scene_depth, ResLoad::Clear)
@@ -272,6 +280,7 @@ impl Scene for SponzaWithLights {
             .exec(move |ctx| {
                 rs.set_objects(ctx.cmd, objects_va);
                 rs.set_materials(ctx.cmd, materials_va);
+                rs.set_pass(ctx.cmd, empty_pass_va);
                 let mut bound = None;
                 for (i, (mesh, pso)) in draws.iter().enumerate() {
                     if bound != Some(*pso) {
@@ -283,7 +292,6 @@ impl Scene for SponzaWithLights {
                 }
                 Ok(())
             });
-
         // sky velocity
         self.sky_velocity.add_pass(&self.gbuffer, renderer, graph)?;
 
@@ -323,10 +331,14 @@ impl Scene for SponzaWithLights {
             let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, None, self.rt_shadows.as_ref(), None, self.vpl_settings.ibl_strength, &self.gbuffer, graph, opts)?;
         }
 
+        // jelly
+        self.blit.add_transforming_blit(&renderer, self.gbuffer.scene_color, self.jelly_pass.target_tex(), graph)?;
+        let jelly_tex = self.jelly_pass.add_pass(&self.sphere, &sphere_obj, renderer, &self.gbuffer, graph)?;
+
         let scene_color = match opts.anti_aliasing {
-            AntiAliasing::Disabled => self.gbuffer.scene_color,
-            AntiAliasing::Temporal => self.taa.add_pass(&self.gbuffer, renderer, graph)?,
-            AntiAliasing::Fsr2 => self.fsr.add_pass(&self.gbuffer, renderer, time, graph)?
+            AntiAliasing::Disabled => jelly_tex,
+            AntiAliasing::Temporal => self.taa.add_pass(jelly_tex, &self.gbuffer, renderer, graph)?,
+            AntiAliasing::Fsr2 => self.fsr.add_pass(jelly_tex, &self.gbuffer, renderer, time, graph)?
         };
 
         // bloom

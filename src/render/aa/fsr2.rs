@@ -30,7 +30,7 @@ impl Fsr2Pass {
         })
     }
 
-    pub fn add_pass<'a>(&'a mut self, gbuf: &GBuffer, rd: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
+    pub fn add_pass<'a>(&'a mut self, source: ResId, gbuf: &GBuffer, rd: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
         let (rw, rh) = rd.gr.render_size();
         let key = (rd.frame_count(), (rw, rh));
 
@@ -39,7 +39,7 @@ impl Fsr2Pass {
         self.last_frame = Some(key);
 
         let tgt = self.target;
-        let color = rd.gr.get(gbuf.scene_color)?;
+        let color = rd.gr.get(source)?;
         let depth = rd.gr.get(gbuf.scene_depth)?;
         let velocity = rd.gr.get(gbuf.velocity)?;
         let target = rd.gr.get(self.target)?;
@@ -50,7 +50,7 @@ impl Fsr2Pass {
         let ctx = self.try_context_mut(rd)?;
 
         graph.add_pass("FSR2")
-            .reads(gbuf.scene_color)
+            .reads(source)
             .reads(gbuf.scene_depth)
             .reads(gbuf.velocity)
             .writes_uav(tgt, ResLoad::Preserve)

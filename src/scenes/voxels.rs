@@ -177,7 +177,7 @@ impl Scene for VoxelsScene {
         let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, Some(self.atmosphere), 0.19, &self.gbuffer, graph, opts)?;
 
         let scene_color = if opts.anti_aliasing == AntiAliasing::Fsr2 {
-            self.fsr_pass.add_pass(&self.gbuffer, renderer, time, graph)?
+            self.fsr_pass.add_pass(self.gbuffer.scene_color, &self.gbuffer, renderer, time, graph)?
         } else {
             self.gbuffer.scene_color
         };

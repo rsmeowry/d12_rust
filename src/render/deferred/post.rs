@@ -149,6 +149,34 @@ impl BlitPass {
         })
     }
 
+    pub fn add_transforming_blit<'a>(&'a self, renderer: &'a Renderer, from: ResId, to: ResId, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
+        let gr = &renderer.gr;
+
+        let blit_va = renderer.upload_cbuffer(&BlitProperties {
+            source_tex: gr.get(from)?.srv_ptr(),
+            transform_hdr: 0,
+        })?;
+
+        let rs = renderer.rs();
+        let pipelines = renderer.pipelines();
+
+        graph.add_pass("Blit")
+            .reads(from)
+            .writes(to, ResLoad::Clear)
+            .exec(move |ctx| {
+                pipelines.get(self.blit).bind(ctx.cmd);
+                rs.set_pass(ctx.cmd, blit_va);
+                rs.set_draw_index(ctx.cmd, 0);
+                unsafe {
+                    ctx.cmd.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    ctx.cmd.DrawInstanced(3, 1, 0, 0);
+                }
+                Ok(())
+            });
+
+        Ok(to)
+    }
+
     pub fn add_pass<'a>(&'a self, renderer: &'a Renderer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
         let gr = &renderer.gr;
 
