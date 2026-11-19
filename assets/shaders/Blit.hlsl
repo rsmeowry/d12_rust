@@ -17,7 +17,7 @@ Varyings vert(uint id : SV_VertexID) {
     return o;
 }
 
-#define DITHER_STRENGTH 0.01
+#define DITHER_STRENGTH 0.001
 
 float Bayer4x4(float2 p){
     int x = int(p.x % 4.0);

@@ -150,7 +150,7 @@ impl Scene for SponzaWithLights {
         lighting.save_local_shadows(&shadows);
         let taa = TaaPass::new(renderer)?;
         let fsr = Fsr2Pass::new(renderer)?;
-        let jelly_pass = TransparentPass::new::<VertexPbr, &str>(renderer, "Jelly", "deferred/Jelly.hlsl")?;
+        let jelly_pass = TransparentPass::new::<VertexPbr, &str>(renderer, "Jelly", "deferred/Jelly.hlsl", "deferred/JellyPrepass.hlsl")?;
 
         let sky_velocity = SkyVelocityPass::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
@@ -228,8 +228,10 @@ impl Scene for SponzaWithLights {
         let t = time.game_time();
         let prev_t = time.game_time() - time.delta_time();
         let sphere_obj = ObjectData {
-            model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + t.sin(), -1.)),
-            prev_model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + prev_t.sin(), -1.)),
+            prev_model: Mat4::from_translation(Vec3::new(-2., 2., -1.)),
+            model: Mat4::from_translation(Vec3::new(-2., 2., -1.)),
+            // model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + t.sin(), -1.)),
+            // prev_model: Mat4::from_scale_rotation_translation(0.5 * Vec3::ONE, Quat::IDENTITY, Vec3::new(-2., 2. + prev_t.sin(), -1.)),
             material_id: self.sphere_mat_idx,
             vb_srv: self.sphere.vb_srv(),
             ib_srv: self.sphere.ib_srv(),
@@ -312,6 +314,7 @@ impl Scene for SponzaWithLights {
             lights.extend(self.baked_vpls.iter().map(|v| GpuLight::vpl(*v, s.k[v.level as usize], s.threshold)));
         }
 
+        let main_light = lights[0].clone();
         if self.shadow_mode == ShadowMode::Cascades {
             // shadowws (global and local)
             let all_objects_va = renderer.upload_objects(&all_objects)?;
@@ -333,7 +336,7 @@ impl Scene for SponzaWithLights {
 
         // jelly
         self.blit.add_transforming_blit(&renderer, self.gbuffer.scene_color, self.jelly_pass.target_tex(), graph)?;
-        let jelly_tex = self.jelly_pass.add_pass(&self.sphere, &sphere_obj, renderer, &self.gbuffer, graph)?;
+        let jelly_tex = self.jelly_pass.add_pass(self.lighting.irradiance_tex(), &main_light, &self.sphere, &sphere_obj, renderer, &self.gbuffer, graph)?;
 
         let scene_color = match opts.anti_aliasing {
             AntiAliasing::Disabled => jelly_tex,

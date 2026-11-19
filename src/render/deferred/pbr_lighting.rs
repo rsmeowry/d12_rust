@@ -99,6 +99,10 @@ impl PbrLightingPass {
     pub fn save_local_shadows(&mut self, map: &ShadowMap) {
         self.local_shadows.extend(map.fetch_all_local_shadows());
     }
+    
+    pub fn irradiance_tex(&self) -> u32 {
+        self.ibl_irradiance_tex.srv_ptr()
+    }
 
     pub fn add_pass<'a>(&'a self, target: Option<ResId>, mut lights: Vec<GpuLight>, renderer: &'a Renderer, shadows: Option<ShadowCascades>, rt_shadows: Option<&RtShadowsPass>, atmosphere: Option<AtmosphereProps>, ambient_strength: f32, gbuffer: &GBuffer, graph: &mut FrameGraph<'a>, opts: &RenderOpts) -> anyhow::Result<(u64, u32)> {
         let target = target.unwrap_or_else(|| gbuffer.scene_color);
