@@ -1,6 +1,136 @@
-﻿pub mod particle;
+﻿use egui_probe::EguiProbe;
+use glam::Vec3;
+use crate::physics::body::particle::BodyParticle;
+use crate::physics::body::spring::{Spring, SpringKind};
+
+pub mod particle;
 pub mod spring;
+
+#[derive(Debug, Copy, Clone, EguiProbe)]
+pub struct BodyParams {
+    pub mass: f32, // kg
+    pub size: f32, // m
+    pub ppa: usize, // points-per-axis
+    pub k_struct: f32, // n/m
+    pub k_shear: f32, // n/m
+    pub damping: f32, // n*s/m
+}
 
 #[derive(Debug, Clone)]
 pub struct SoftBody {
+    pub particles: Vec<BodyParticle>,
+    pub springs: Vec<Spring>,
+    pub ppa: usize, // particles-per-axis a ne dopsa
+    initial_positions: Vec<Vec3>
+}
+
+impl SoftBody {
+    pub fn new_cube(params: BodyParams, origin: Vec3) -> Self {
+        let ppa = params.ppa;
+        let height = params.size / (ppa - 1) as f32;
+        let mass = params.mass / (ppa * ppa * ppa) as f32;
+
+        // particles
+        let mut particles = Vec::with_capacity(ppa * ppa * ppa);
+        for x in 0..ppa {
+            for y in 0..ppa {
+                for z in 0..ppa {
+                    let local_pos = Vec3::new(x as f32, y as f32, z as f32) * height - Vec3::new(params.size * 0.5, 0., params.size * 0.5);
+                    particles.push(BodyParticle::new(origin + local_pos, mass));
+                }
+            }
+        }
+
+        // placing springs
+        let mut springs = Vec::new();
+        for x in 0..(ppa as i32) {
+            for y in 0..(ppa as i32) {
+                for z in 0..(ppa as i32) {
+                    for dz in -1..=1i32 {
+                        for dy in -1..=1i32 {
+                            for dx in -1..=1i32 {
+
+                                if dx <= 0 && dy <= 0 && dz <= 0 {
+                                    continue;
+                                }
+
+                                let (x2, y2, z2) = (x + dx, y + dy, z + dz);
+                                if !(0..(ppa as i32)).contains(&x2) || !(0..(ppa as i32)).contains(&y2) || !(0..(ppa as i32)).contains(&z2) {
+                                    continue;
+                                }
+
+                                let nz = (dx != 0) as u8 + (dy != 0) as u8 + (dz != 0) as u8;
+                                let (kind, k_stiff) = if nz == 1 {
+                                    (SpringKind::Structural, params.k_struct)
+                                } else {
+                                    (SpringKind::Shear, params.k_shear)
+                                };
+
+                                let from = Self::idx(ppa, x as usize, y as usize, z as usize);
+                                let to = Self::idx(ppa, x2 as usize, y2 as usize, z2 as usize);
+                                let rest_len = (particles[to].position - particles[from].position).length();
+                                springs.push(Spring {
+                                    from,
+                                    to,
+                                    rest_len,
+                                    k: k_stiff,
+                                    c: params.damping,
+                                    kind,
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let initial_positions = particles.iter().map(|particle| particle.position).collect();
+        Self {
+            particles,
+            springs,
+            ppa,
+            initial_positions,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        for (q, &p0) in self.particles.iter_mut().zip(&self.initial_positions) {
+            q.position = p0;
+            q.velocity = Vec3::ZERO;
+            q.force = Vec3::ZERO;
+        }
+    }
+
+    pub fn face_indices(&self, axis: usize, layer: usize) -> Vec<usize> {
+        let ppa = self.ppa;
+        let mut v = Vec::with_capacity(ppa * ppa);
+        for a in 0..ppa {
+            for b in 0..ppa {
+                v.push(match axis {
+                    0 => Self::idx(ppa, layer, a, b),
+                    1 => Self::idx(ppa, a, layer, b),
+                    _ => Self::idx(ppa, a, b, layer),
+                });
+            }
+        }
+        v
+    }
+
+    pub fn set_stiffness(&mut self, k_struct: f32, k_shear: f32, c: f32) {
+        for s in &mut self.springs {
+            s.k = match s.kind {
+                SpringKind::Structural => k_struct,
+                SpringKind::Shear => k_shear
+            };
+            s.c = c;
+        }
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        // todo
+    }
+
+    pub fn idx(n: usize, x: usize, y: usize, z: usize) -> usize {
+        x + n * (y + n * z)
+    }
 }
