@@ -34,7 +34,8 @@ pub struct SoftBody {
     pub springs: Vec<Spring>,
     pub ppa: usize, // particles-per-axis a ne dopsa
     initial_positions: Vec<Vec3>,
-    pub grab: Option<Grab>
+    pub grab: Option<Grab>,
+    pub initial_mass: f32
 }
 
 impl SoftBody {
@@ -103,7 +104,8 @@ impl SoftBody {
             springs,
             ppa,
             initial_positions,
-            grab: None
+            grab: None,
+            initial_mass: params.mass,
         }
     }
 

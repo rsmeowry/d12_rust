@@ -75,6 +75,7 @@ impl Scene for MeshletsScene {
                 metallic: 0.7,
                 roughness: 0.4,
             }.to_gpu_material(),
+            None,
             Some("bakes/baked_meshlets.bke".into())
             // None,
         )?;

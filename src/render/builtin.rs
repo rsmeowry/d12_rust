@@ -41,7 +41,7 @@ vertex_struct!(VertexSmooth {
 vertex_struct!(VertexFfd {
     stu: [f32; 3] as POSITION;
     norm: [f32; 3] as NORMAL;
-    uv: [f32; 2] as TEXCOORD;
+    uv: [f32; 2] as TEXCOORD0;
 });
 
 pub fn aabb_from_vertices3(vertices: &[Vertex3]) -> AABB {
@@ -63,6 +63,22 @@ impl FromVertexProps for VertexTess {
 impl FromVertexProps for VertexPbr {
     fn from_vertex_props(pos: Vec3, normal: Vec3, tangent: Vec3, binormal: Vec3, uv: Vec2, _color: Vec4) -> Self {
         Self::new(pos, normal, tangent, binormal, uv)
+    }
+}
+
+impl FromVertexProps for VertexFfd {
+    fn from_vertex_props(pos: Vec3, normal: Vec3, tangent: Vec3, binormal: Vec3, uv: Vec2, color: Vec4) -> Self {
+        Self {
+            stu: pos.to_array(), // temporary
+            norm: normal.to_array(),
+            uv: uv.to_array(),
+        }
+    }
+}
+
+impl LodVertex for VertexFfd {
+    fn pos(&self) -> Vec3 {
+        self.stu.into()
     }
 }
 

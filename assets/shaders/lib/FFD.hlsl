@@ -5,9 +5,9 @@ cbuffer FFDPoints : register(b3) {
 }
 
 struct VertexFFD {
-    float3 pos : POSITION; // stu
+    float3 stu : POSITION; // stu
     float3 normal : NORMAL;
-    float2 uv : TEXCOORD;
+    float2 uv : TEXCOORD0;
 };
 
 struct Varyings {
@@ -43,15 +43,18 @@ float Rand() {
 Varyings vert(VertexFFD v) {
     ObjectData obj = g_Objects[drawIndex];
 
-    float4 bs = Bern(v.pos.x);
-    float4 bt = Bern(v.pos.y);
-    float4 bu = Bern(v.pos.z);
+    float4 bs = Bern(v.stu.x);
+    float4 bt = Bern(v.stu.y);
+    float4 bu = Bern(v.stu.z);
 
-    float4 ds = dBern(v.pos.x);
-    float4 dt = dBern(v.pos.y);
-    float4 du = dBern(v.pos.z);
+    float4 ds = dBern(v.stu.x);
+    float4 dt = dBern(v.stu.y);
+    float4 du = dBern(v.stu.z);
 
-    float3 pos = 0, a = 0, b = 0, c = 0;
+    float3 pos = 0;
+    float3 a = 0;
+    float3 b = 0;
+    float3 c = 0;
     [unroll]
     for (int k = 0; k < 4; k++) {
         [unroll]
@@ -60,10 +63,10 @@ Varyings vert(VertexFFD v) {
             for (int i = 0; i < 4; i++)
             {
                 float3 p = points[i + 4*(j + 4*k)].xyz;
-                pos += bs[i]*bt[j]*bu[k] * p;
-                a += ds[i]*bt[j]*bu[k] * p;
-                b += bs[i]*dt[j]*bu[k] * p;
-                c += bs[i]*bt[j]*du[k] * p;
+                pos += bs[i] * bt[j] * bu[k] * p;
+                a += ds[i] * bt[j] * bu[k] * p;
+                b += bs[i] * dt[j] * bu[k] * p;
+                c += bs[i] * bt[j] * du[k] * p;
             }
         }
     }

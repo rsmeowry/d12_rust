@@ -61,6 +61,7 @@ impl Scene for TesselatedSample {
                 diffuse_k: 0.4,
                 specular_k: 0.8,
             }.to_gpu_material(),
+            None,
             None
         )?;
 

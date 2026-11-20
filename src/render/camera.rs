@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use glam::{Mat4, Quat, Vec3};
 use crate::render::perf::frustum::Frustum;
 
@@ -12,7 +13,8 @@ pub struct Camera {
     view: Mat4,
     proj: Mat4,
     view_proj: Mat4,
-    frustum: Frustum
+    frustum: Frustum,
+    rotation_locked: Cell<bool>
 }
 
 #[allow(unused)]
@@ -31,7 +33,8 @@ impl Camera {
             view,
             proj,
             view_proj,
-            frustum: Frustum::from_view_proj(view_proj)
+            frustum: Frustum::from_view_proj(view_proj),
+            rotation_locked: Cell::new(false)
         }
     }
 
@@ -64,11 +67,18 @@ impl Camera {
     }
 
     pub fn set_rot(&mut self, rot: Quat) {
+        if self.rotation_locked.get() {
+            return;
+        }
         self.rot = rot;
         self.view =
             glam::camera::lh::view::look_to_mat4(self.pos, self.rot.mul_vec3(Vec3::Z), self.rot.mul_vec3(Vec3::Y));
         self.view_proj = self.proj * self.view;
         self.frustum = Frustum::from_view_proj(self.view_proj);
+    }
+
+    pub fn lock_rotation(&self, locked: bool) {
+        self.rotation_locked.set(locked);
     }
 
     pub fn pos(&self) -> Vec3 {

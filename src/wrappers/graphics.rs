@@ -88,7 +88,7 @@ impl GraphicsDevice {
             let mut caps: D3D12_FEATURE_DATA_D3D12_OPTIONS5 = Default::default();
             device.CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, ((&mut caps) as *mut _) as *mut c_void, size_of::<D3D12_FEATURE_DATA_D3D12_OPTIONS5>() as u32);
             is_raytracing_supported = caps.RaytracingTier.0 >= D3D12_RAYTRACING_TIER_1_0.0;
-            println!("This device {} raytracing", if is_raytracing_supported { "does not support" } else { "supports" });
+            println!("This device {} raytracing", if !is_raytracing_supported { "does not support" } else { "supports" });
         }
 
         unsafe {

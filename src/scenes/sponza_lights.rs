@@ -118,7 +118,7 @@ impl Scene for SponzaWithLights {
                 metallic: mat.metallic_factor().unwrap_or(0.5),
                 roughness: mat.roughness_factor().unwrap_or(0.5),
             }.to_gpu_material(),
-            // None
+            None,
             Some("bakes/baked_sponza.bke".into())
         )?;
         let sphere = unit_sphere(32, 32, |pos, norm, tan, binorm, uv| VertexPbr::new(pos, norm, tan, binorm, uv));
@@ -336,13 +336,13 @@ impl Scene for SponzaWithLights {
         }
 
         // jelly
-        self.blit.add_transforming_blit(&renderer, self.gbuffer.scene_color, self.jelly_pass.target_tex(), graph)?;
-        let jelly_tex = self.jelly_pass.add_pass(None, self.lighting.irradiance_tex(), &main_light, &self.sphere, &sphere_obj, renderer, &self.gbuffer, graph)?;
+        // self.blit.add_transforming_blit(&renderer, self.gbuffer.scene_color, self.jelly_pass.target_tex(), graph)?;
+        // let jelly_tex = self.jelly_pass.add_pass(None, self.lighting.irradiance_tex(), &main_light, &self.sphere, &sphere_obj, renderer, &self.gbuffer, graph)?;
 
         let scene_color = match opts.anti_aliasing {
-            AntiAliasing::Disabled => jelly_tex,
-            AntiAliasing::Temporal => self.taa.add_pass(jelly_tex, &self.gbuffer, renderer, graph)?,
-            AntiAliasing::Fsr2 => self.fsr.add_pass(jelly_tex, &self.gbuffer, renderer, time, graph)?
+            AntiAliasing::Disabled => self.gbuffer.scene_color,
+            AntiAliasing::Temporal => self.taa.add_pass(self.gbuffer.scene_color, &self.gbuffer, renderer, graph)?,
+            AntiAliasing::Fsr2 => self.fsr.add_pass(self.gbuffer.scene_color, &self.gbuffer, renderer, time, graph)?
         };
 
         // bloom

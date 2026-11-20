@@ -43,6 +43,10 @@ impl PhysicsSystem {
         }
     }
 
+    pub fn get_body(&mut self, idx: usize) -> Option<&mut SoftBody> {
+        self.bodies.get_mut(idx)
+    }
+
     pub fn add_body(&mut self, body: SoftBody) {
         self.bodies.push(body);
     }

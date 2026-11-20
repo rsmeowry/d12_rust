@@ -1,33 +1,51 @@
 ﻿#include "../../lib/Core.hlsl"
 #include "../../lib/FFD.hlsl"
 
-#define MAX_DISTANCE 15.
+#define MAX_DISTANCE 30.
 #define DENSITY 1.3
 #define REFRACT_STRENGTH 1.3
 // more r b absorption than g
-#define ABSORPTION float3(1.5, 0.2, 1.7)
-#define JELLY_COLOR_A float3(0.35, 0.8, 0.12)
-#define JELLY_COLOR_B float3(0.5, 0.9, 0.08)
+#define ABSORPTION float3(0.1, 1.4, 0.9)
+#define JELLY_COLOR_A float3(0.8, 0.2, 0.22)
+#define JELLY_COLOR_B float3(1.0, 0.2, 0.3)
 #define SPEC_COLOR float3(0.7, 0.8, 0.4)
+#define MAX_BACKFACE_LAYERS 8
 
 SamplerState LinearClamp : register(s1);
 
 cbuffer TransparentPass : register(b2) {
     uint depthTex;
     uint sceneTex;
-    uint prepassTex;
+    uint _paddd;
     uint irradianceTex;
     float3 lightDir;
     uint _padd;
+    uint prepassTexs[MAX_BACKFACE_LAYERS];
+}
+
+float FindBackfaceDistance(uint2 pixel, float frontDistance)
+{
+    for (uint layer = 0; layer < MAX_BACKFACE_LAYERS; ++layer)
+    {
+        float2 hit = g_Tex2D[prepassTexs[layer]].Load(int3(pixel, 0));
+
+        if (hit.y >= MAX_DISTANCE)
+            break;
+
+        if (hit.y > frontDistance + 0.0001) {
+            return hit.y;
+        }
+    }
+
+    return MAX_DISTANCE;
 }
 
 float4 frag(Varyings i): SV_Target {
     Texture2D scene = g_Tex2D[sceneTex];
-    float backfaceDepth = g_Tex2D[prepassTex].Load(int3(i.pos.xy, 0)).r;
-
     uint2 pos = uint2(i.pos.xy);
 
     float frontDist = distance(i.posW, cameraPos);
+    float backfaceDist = FindBackfaceDistance(pos, frontDist);
     float3 rd = normalize(i.posW - cameraPos);
     float sceneZ = g_Tex2D[depthTex].Load(int3(pos, 0)).r;
 
@@ -35,12 +53,14 @@ float4 frag(Varyings i): SV_Target {
 
     float sceneDist = sceneZ == 0.0 ? MAX_DISTANCE : distance(WorldPosFromDepth(i.pos.xy, sceneZ), cameraPos);
 
-    float thickness = max(min(backfaceDepth, sceneDist) - frontDist, 0.0);
+    float thickness = max(min(backfaceDist, sceneDist) - frontDist, 0.0) * 0.1;
 
     // refraction
     float3 N = normalize(i.normalW);
     float3 refrDir = refract(rd, N, 1.0 / REFRACT_STRENGTH);
-    float3 exitPoint = i.posW + refrDir * thickness;
+    float cosTheta = max(dot(refrDir, rd), 0.001);
+    float pathLength = thickness / cosTheta;
+    float3 exitPoint = i.posW + refrDir * pathLength;
     float4 exitClip = mul(viewProj, float4(exitPoint, 1.));
     float2 exitSs = (exitClip / exitClip.w) * float2(0.5, -0.5) + 0.5;
     uint2 refrPix = uint2(exitSs * resolution);

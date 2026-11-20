@@ -68,6 +68,8 @@ bitflags! {
     }
 }
 
+pub type VertProc<V: Vertex + FromVertexProps + LodVertex> = Box<dyn Fn(&[V], &mut V)>;
+
 pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>>(
     renderer: &Renderer,
     batch: &mut UploadBatch<'_>,
@@ -77,7 +79,8 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
     topology: DrawTopology,
     is_static: bool,
     lods: LodCount,
-    make_material: impl Fn(&asset_importer::material::Material, TextureSet) -> GpuMaterial,
+    make_material: impl Fn(&Material, TextureSet) -> GpuMaterial,
+    process_vertex: Option<VertProc<V>>,
     bake_to: Option<PathBuf>,
 ) -> anyhow::Result<LoadedScene> {
     if let Some(baked_path) = bake_to.as_ref() && baked_path.exists() {
@@ -246,6 +249,11 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
             vertices.push(vert);
         }
         let vc = vertices.clone();
+        if let Some(pp) = &process_vertex {
+            for v in vertices.iter_mut() {
+                pp(&vc, v)
+            }
+        }
         let ic = indices.clone();
         Mesh::new(&renderer.gd, batch, &vertices, &indices, topology, AABB::from_points(&positions), is_static, renderer.gd.is_rt_supported).map(|it| (it, base + mesh.material_index() as u32, vc, ic))
     }).collect::<anyhow::Result<_>>()?;

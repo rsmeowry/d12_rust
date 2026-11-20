@@ -59,11 +59,24 @@ pub struct JellyScene {
 
 impl Scene for JellyScene {
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        if ui.button("Lock bottom face").clicked() {
+            let body = self.physics.get_body(0).expect("oops");
+            let p_count = body.particles.len() as f32;
+            for idx in body.face_indices(1, 0) {
+                let particle = body.particles.get_mut(idx).unwrap();
+                if particle.mass.is_infinite() {
+                    particle.mass = body.initial_mass / p_count;
+                } else {
+                    particle.mass = f32::INFINITY;
+                }
+            }
+        }
+
         Ok(())
     }
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
-        let mut phys = PhysicsSystem::new(1000.); // 60hz
+        let mut phys = PhysicsSystem::new(500.); // 500hz
         let gravity = Vec3::new(0., -9.81, 0.);
         let params = PhysParams {
             gravity: gravity.into(),
@@ -90,7 +103,7 @@ impl Scene for JellyScene {
 
         let mut batch = renderer.gd.begin_upload()?;
 
-        let sb_renderer = SoftBodyRenderer::new(Vec3::new(0., 0., 0.), 0, &mut batch, transparent_pass)?;
+        let sb_renderer = SoftBodyRenderer::new(Some("assets/models/jelly_scene/jelly_frog.gltf"), Vec3::new(0., 0., 0.), 0, &mut batch, renderer, transparent_pass)?;
 
         let mut materials = Vec::new();
         let scene = load_assimp_scene::<VertexPbr, _>(
@@ -107,7 +120,7 @@ impl Scene for JellyScene {
                 metallic: mat.metallic_factor().unwrap_or(0.5),
                 roughness: mat.roughness_factor().unwrap_or(0.5),
             }.to_gpu_material(),
-            // None
+            None,
             Some("bakes/jelly_scene.bke".into())
         )?;
 

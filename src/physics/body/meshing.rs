@@ -1,5 +1,7 @@
-﻿use glam::{Mat4, Vec3, Vec4};
+﻿use bytemuck::Zeroable;
+use glam::{Mat4, Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RANGE};
+use crate::assets::{load_assimp_scene, LoadTex, LodCount};
 use crate::physics::body::SoftBody;
 use crate::physics::PhysicsSystem;
 use crate::render::builtin::{VertexFfd, VertexPbr};
@@ -10,6 +12,7 @@ use crate::render::graph::res::ResId;
 use crate::render::lights::GpuLight;
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::perf::frustum::AABB;
+use crate::render::pipeline::material::GpuMaterial;
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::wrappers::graphics::{GraphicsDevice, MappedUploadBuffer};
 use crate::wrappers::graphics::batching::UploadBatch;
@@ -26,16 +29,26 @@ pub struct SoftBodyRenderer {
 }
 
 impl SoftBodyRenderer {
-    pub fn new(position: Vec3, body_idx: usize, batch: &mut UploadBatch, pass: TransparentPass) -> anyhow::Result<Self> {
+    pub fn new(mesh_path: Option<&str>, position: Vec3, body_idx: usize, batch: &mut UploadBatch, rd: &Renderer, pass: TransparentPass) -> anyhow::Result<Self> {
         let buffer = MappedUploadBuffer::<PointsBuffer>::new(&batch.gd())?;
         let (vertices, indices) = build_cube_mesh(POINT_COUNT as u32);
-        let mesh = Mesh::new(batch.gd(), batch, &vertices, &indices, DrawTopology::TriangleList, AABB::from_points(&[Vec3::NEG_ONE, Vec3::ONE]), false, false)?;
+        let (body_mesh, body_obj) = if let Some(mesh_path) = mesh_path {
+            let mut mats = vec![];
+            let loaded = load_assimp_scene::<VertexFfd, &str>(rd, batch, mesh_path, &mut mats, LoadTex::empty(), DrawTopology::TriangleList, false, LodCount::NoLods, |_, _| GpuMaterial::zeroed(), Some(Box::new(bind_single_to_lattice)), None)?;
+            let (mesh, model, _) = loaded.into_single_mesh();
+            let mesh_obj = ObjectData::new(Mat4::from_translation(position) * model, 0, &mesh);
+            (mesh, mesh_obj)
+        } else {
+            let mesh = Mesh::new(batch.gd(), batch, &vertices, &indices, DrawTopology::TriangleList, AABB::from_points(&[Vec3::NEG_ONE, Vec3::ONE]), false, false)?;
+            let mesh_obj = ObjectData::new(Mat4::from_translation(position), 0, &mesh);
+            (mesh, mesh_obj)
+        };
         Ok(Self {
             body_idx,
             transparents: pass,
             buffer,
-            body_obj: ObjectData::new(Mat4::from_translation(position), 0, &mesh),
-            body_mesh: mesh,
+            body_obj,
+            body_mesh,
         })
     }
 
@@ -97,4 +110,24 @@ fn build_cube_mesh(ppa: u32) -> (Vec<VertexFfd>, Vec<u32>) {
         }}
     }
     (vs, is)
+}
+
+fn bind_single_to_lattice(all: &[VertexFfd], this: &mut VertexFfd) {
+    let aabb = AABB::from_points(&all.iter().map(|it| it.stu.into()).collect::<Vec<_>>());
+    let inv = 1.0 / (aabb.max - aabb.min);
+    this.stu = ((Vec3::from(this.stu) - aabb.min) * inv).to_array();
+}
+
+fn bind_to_lattice(verts: &mut [VertexFfd], min: Vec3, max: Vec3) {
+    let inv = 1.0 / (max - min);
+    for v in verts.iter_mut() {
+        v.stu = ((Vec3::from(v.stu) - min) * inv).to_array();
+    }
+}
+
+fn lattice_aabb(points: &[Vec3]) -> (Vec3, Vec3) {
+    points.iter().fold(
+        (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+        |(lo, hi), &p| (lo.min(p), hi.max(p)),
+    )
 }
