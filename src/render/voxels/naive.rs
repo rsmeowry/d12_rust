@@ -1,13 +1,13 @@
-﻿use glam::{IVec3, UVec3, Vec3};
-use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_BACK, D3D12_CULL_MODE_NONE};
-use crate::render::builtin::{Vertex3, VertexCube};
+﻿use glam::{IVec3, Vec3};
+use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_NONE};
+use crate::render::builtin::VertexCube;
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::perf::frustum::AABB;
 use crate::render::pipeline::desc::{Depth, PipelineDesc};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
 use crate::render::vertex::Vertex;
-use crate::render::voxels::{index_to_ivec3, index_to_uvec3, uvec3_to_index, PaddedVolume, VoxelMeshData, VoxelMesher, CHUNK_DEPTH};
+use crate::render::voxels::{index_to_ivec3, uvec3_to_index, PaddedVolume, VoxelMeshData, VoxelMesher, CHUNK_DEPTH};
 use crate::render::voxels::generate::{PADDED, PAD_LO};
 use crate::render::voxels::svo::{Voxel, VoxelTree};
 use crate::wrappers::graphics::batching::UploadBatch;
@@ -17,7 +17,7 @@ use crate::wrappers::graphics::GraphicsDevice;
 pub struct NaiveBoxes;
 
 impl VoxelMesher for NaiveBoxes {
-    fn make_vertices_and_indices(&self, tree: &VoxelTree, volume: &PaddedVolume) -> anyhow::Result<Option<VoxelMeshData>> {
+    fn make_vertices_and_indices(&self, _tree: &VoxelTree, volume: &PaddedVolume) -> anyhow::Result<Option<VoxelMeshData>> {
         let mut total_vertices = vec![];
         let mut total_indices = vec![];
 

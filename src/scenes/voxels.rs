@@ -11,14 +11,13 @@ use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::render::shadows::{ShadowMap, SHADOW_DISTANCE, SHADOW_EXTEND};
 use crate::render::voxels::naive::NaiveBoxes;
-use crate::render::voxels::{index_to_ivec3, index_to_uvec3, VoxelMesher, VoxelWorld, CHUNK_DEPTH};
-use crate::scenes::{Scene, SCENES};
+use crate::render::voxels::{VoxelMesher, VoxelWorld};
+use crate::scenes::Scene;
 use crate::time::Time;
 use crate::ui::ShowUi;
 use egui::{ComboBox, Slider, Ui};
-use glam::{IVec3, Vec3};
+use glam::Vec3;
 use std::f32::consts::PI;
-use std::ops::Div;
 use std::sync::Arc;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::input::InputDevice;
@@ -209,7 +208,7 @@ impl Scene for VoxelsScene {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, _time: &Time, _input: &InputDevice) -> anyhow::Result<()> {
         if let Some(mesher_idx) = self.pending_mesher.take() {
             renderer.gd.flush_command_queue()?;
             let mesher = MESHERS[mesher_idx as usize];

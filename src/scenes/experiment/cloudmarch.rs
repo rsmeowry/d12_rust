@@ -1,27 +1,21 @@
 ﻿use crate::app::RenderOpts;
-use crate::assets::{load_assimp_scene, LoadTex, LodCount};
-use crate::render::builtin::VertexTess;
-use crate::render::deferred::lighting::PhongLightingPass;
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
-use crate::render::mesh::{DrawTopology, Mesh};
-use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
-use crate::render::renderer::{ObjectData, Renderer, SCENE_FORMAT};
-use crate::render::texture::{MipCount, Texture};
+use crate::render::renderer::{Renderer, SCENE_FORMAT};
+use crate::render::texture::Texture;
 use crate::scenes::Scene;
 use crate::time::Time;
 use egui::Ui;
-use glam::{Mat4, Vec3, Vec4};
-use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use glam::{Vec3, Vec4};
+use windows::Win32::Graphics::Direct3D12::D3D12_CULL_MODE_NONE;
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use crate::input::InputDevice;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::graph::res::{ResId, ResSize};
 use crate::render::pipeline::desc::PipelineDesc;
-use crate::wrappers::graphics::GraphicsDevice;
 
 #[derive(Debug)]
 pub struct CloudmarchScene {
@@ -34,7 +28,7 @@ pub struct CloudmarchScene {
 }
 
 impl Scene for CloudmarchScene {
-    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+    fn ui(&mut self, _ui: &mut Ui) -> anyhow::Result<()> {
         Ok(())
     }
 
@@ -65,8 +59,8 @@ impl Scene for CloudmarchScene {
         })
     }
 
-    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, _time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
-        let lights = vec![
+    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, _time: &Time, graph: &mut FrameGraph<'a>, _opts: &mut RenderOpts) -> anyhow::Result<()> {
+        let _lights = vec![
             GpuLight::directional(Vec3::new(-0.4, -0.8, 0.5), Vec3::new(1., 0.95, 0.9), 0.6),
         ];
 
@@ -119,7 +113,7 @@ impl Scene for CloudmarchScene {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, _renderer: &'a mut Renderer, _time: &Time, _input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

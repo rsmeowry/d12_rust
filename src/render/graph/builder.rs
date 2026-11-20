@@ -42,7 +42,7 @@ impl<'g, 'f> PassBuilder<'g, 'f> {
         self
     }
 
-    pub fn writes_gbuffer(mut self, gbuf: &GBuffer, load: ResLoad) -> Self {
+    pub fn writes_gbuffer(self, gbuf: &GBuffer, load: ResLoad) -> Self {
         self
             .writes(gbuf.albedo, load)
             .writes(gbuf.normals, load)

@@ -1,6 +1,6 @@
-﻿use glam::{IVec3, Mat3, Vec2, Vec3};
-use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_BACK, D3D12_CULL_MODE_NONE};
-use crate::render::builtin::{VertexCube, VertexSmooth};
+﻿use glam::{IVec3, Mat3, Vec3};
+use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_NONE};
+use crate::render::builtin::VertexSmooth;
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::perf::frustum::AABB;
 use crate::render::pipeline::desc::{Depth, PipelineDesc};
@@ -8,7 +8,7 @@ use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
 use crate::render::vertex::{octahedral_encode_normal, Vertex};
 use crate::render::voxels::svo::VoxelTree;
-use crate::render::voxels::{index_to_ivec3, index_to_uvec3, ivec3_to_index, uvec3_to_index, PaddedVolume, VoxelMeshData, VoxelMesher, CHUNK_DEPTH};
+use crate::render::voxels::{index_to_ivec3, ivec3_to_index, PaddedVolume, VoxelMeshData, VoxelMesher, CHUNK_DEPTH};
 use crate::render::voxels::generate::{PADDED, PAD_LO};
 use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
@@ -26,7 +26,7 @@ const EDGE_MASK: [u16; 256] = compute_edge_table();
 pub struct DualContouring;
 
 impl VoxelMesher for DualContouring {
-    fn make_vertices_and_indices<'a>(&self, tree: &VoxelTree, volume: &PaddedVolume) -> anyhow::Result<Option<VoxelMeshData>> {
+    fn make_vertices_and_indices<'a>(&self, _tree: &VoxelTree, volume: &PaddedVolume) -> anyhow::Result<Option<VoxelMeshData>> {
         let mut vertices = Vec::new();
         let mut aabb_points = Vec::new();
         let mut indices = Vec::new();
@@ -47,7 +47,7 @@ impl VoxelMesher for DualContouring {
             dens(c + IVec3::Z) - dens(c - IVec3::Z),
         );
 
-        let d = (1 << CHUNK_DEPTH) as isize;
+        let _d = (1 << CHUNK_DEPTH) as isize;
         let n = CELLS;
         for i in 0..=(n * n * n) {
             let real_pos = index_to_ivec3(i as isize, CELLS as isize);

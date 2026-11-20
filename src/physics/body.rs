@@ -3,7 +3,7 @@ use glam::Vec3;
 use crate::physics::body::particle::BodyParticle;
 use crate::physics::body::spring::{Spring, SpringKind};
 use crate::physics::contact::Collider;
-use crate::physics::{PhysParams, PhysicsSystem};
+use crate::physics::PhysParams;
 use crate::render::perf::frustum::AABB;
 
 pub mod particle;

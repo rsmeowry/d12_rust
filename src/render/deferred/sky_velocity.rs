@@ -1,7 +1,6 @@
 ﻿use windows::Win32::Graphics::Direct3D12::D3D12_CULL_MODE_NONE;
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 use crate::render::deferred::GBuffer;
-use crate::render::deferred::post::BlitProperties;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
 use crate::render::pipeline::desc::PipelineDesc;

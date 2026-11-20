@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use egui::TexturesDelta;
 use crate::input::KeyCode;
 use crate::render::camera::Camera;
@@ -15,7 +14,6 @@ use egui_probe::{EguiProbe, Probe};
 use glam::{EulerRot, Mat4, Quat, Vec2, Vec2Swizzles, Vec3};
 use crate::render::aa::{AntiAliasing, FsrQuality};
 use crate::render::aa::temporal::jitter_vec;
-use crate::scenes::sponza_lights::{ShadowMode, SponzaWithLights};
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -305,7 +303,7 @@ impl App {
 
         self.active_scene.build_graph(&self.renderer, &self.time, &mut graph, &mut self.opts)?;
 
-        let cam_pos = self.renderer.cam.pos();
+        let _cam_pos = self.renderer.cam.pos();
 
         if let Some((prims, tex, ppp)) = &mut self.egui_ui_out {
             self.egui_pass.update_textures(&self.renderer.gd, tex)?;

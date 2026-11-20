@@ -33,7 +33,7 @@ pub struct TesselatedSample {
 }
 
 impl Scene for TesselatedSample {
-    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+    fn ui(&mut self, _ui: &mut Ui) -> anyhow::Result<()> {
         Ok(())
     }
 
@@ -154,7 +154,7 @@ impl Scene for TesselatedSample {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, _renderer: &'a mut Renderer, _time: &Time, _input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

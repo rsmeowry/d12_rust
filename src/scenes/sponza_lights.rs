@@ -27,7 +27,6 @@ use egui::{ComboBox, Ui};
 use egui_probe::{EguiProbe, Probe};
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::PI;
-use std::io::Write;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::input::InputDevice;
 use crate::render::deferred::transparent::TransparentPass;
@@ -226,8 +225,8 @@ impl Scene for SponzaWithLights {
         let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
 
         // sphere
-        let t = time.game_time();
-        let prev_t = time.game_time() - time.delta_time();
+        let _t = time.game_time();
+        let _prev_t = time.game_time() - time.delta_time();
         let sphere_obj = ObjectData {
             prev_model: Mat4::from_translation(Vec3::new(-2., 2., -1.)),
             model: Mat4::from_translation(Vec3::new(-2., 2., -1.)),
@@ -315,7 +314,7 @@ impl Scene for SponzaWithLights {
             lights.extend(self.baked_vpls.iter().map(|v| GpuLight::vpl(*v, s.k[v.level as usize], s.threshold)));
         }
 
-        let main_light = lights[0].clone();
+        let _main_light = lights[0].clone();
         if self.shadow_mode == ShadowMode::Cascades {
             // shadowws (global and local)
             let all_objects_va = renderer.upload_objects(&all_objects)?;
@@ -372,7 +371,7 @@ impl Scene for SponzaWithLights {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, _renderer: &'a mut Renderer, _time: &Time, _input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

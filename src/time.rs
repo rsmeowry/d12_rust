@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::sync::RwLock;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 

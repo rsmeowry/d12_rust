@@ -1,29 +1,19 @@
 ﻿use std::f32::consts::PI;
 use crate::app::RenderOpts;
-use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
-use crate::render::deferred::fog::FogPass;
 use crate::render::deferred::pbr_lighting::{sun_transmittance, AtmosphereProps, PbrLightingPass};
 use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
-use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
-use crate::render::lights::{unit_sphere, GpuLight};
+use crate::render::lights::GpuLight;
 use crate::render::mesh::{DrawTopology, Mesh};
-use crate::render::particles::draw::{MeshParticleMaterial, ParticleKind, ParticleRendering, ParticleShape};
-use crate::render::particles::simulate::{ParticleSimulation, SimulateParticleProps};
-use crate::render::perf::frustum::AABB;
-use crate::render::perf::{Culler, NO_LOD};
-use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
-use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
-use crate::render::shadows::{ShadowMap, CASCADE_COUNT, SHADOW_DISTANCE, SHADOW_EXTEND};
+use crate::render::shadows::{ShadowMap, SHADOW_DISTANCE, SHADOW_EXTEND};
 use crate::scenes::Scene;
 use crate::time::Time;
 use egui::{Slider, Ui};
-use glam::{Mat4, Quat, Vec3};
-use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use glam::Vec3;
 use crate::input::InputDevice;
 use crate::render::terrain::Terrain;
 use crate::ui::ShowUi;
@@ -83,15 +73,15 @@ impl Scene for TerrainScene {
         })
     }
 
-    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
+    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, _time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
         let sun_dir = Vec3::new(self.sun_t.cos(), self.sun_t.sin(), 0.);
         let sun_color = sun_transmittance(&self.atmosphere, renderer.cam.pos().y, -sun_dir);
-        let mut lights = vec![GpuLight::directional(sun_dir, sun_color, 12.0)];
+        let lights = vec![GpuLight::directional(sun_dir, sun_color, 12.0)];
 
         let gr = &renderer.gr;
 
-        let rs = renderer.rs();
-        let pipelines = renderer.pipelines();
+        let _rs = renderer.rs();
+        let _pipelines = renderer.pipelines();
 
         let post_props = PostProperties {
             albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
@@ -109,8 +99,8 @@ impl Scene for TerrainScene {
         self.terrain.add_pass(renderer, &self.gbuffer, opts, graph)?;
 
         // shadowws (global and local)
-        let mut all_objects: Vec<ObjectData> = Vec::new();
-        let mut all_draws: Vec<&Mesh> = Vec::new();
+        let all_objects: Vec<ObjectData> = Vec::new();
+        let all_draws: Vec<&Mesh> = Vec::new();
         let lambda = 0.6;
         self.shadows.update(lights[0], lambda, renderer);
         let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &all_objects, &all_draws)?;
@@ -132,7 +122,7 @@ impl Scene for TerrainScene {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, _renderer: &'a mut Renderer, _time: &Time, _input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

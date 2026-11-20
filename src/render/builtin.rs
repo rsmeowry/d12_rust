@@ -67,7 +67,7 @@ impl FromVertexProps for VertexPbr {
 }
 
 impl FromVertexProps for VertexFfd {
-    fn from_vertex_props(pos: Vec3, normal: Vec3, tangent: Vec3, binormal: Vec3, uv: Vec2, color: Vec4) -> Self {
+    fn from_vertex_props(pos: Vec3, normal: Vec3, _tangent: Vec3, _binormal: Vec3, uv: Vec2, _color: Vec4) -> Self {
         Self {
             stu: pos.to_array(), // temporary
             norm: normal.to_array(),

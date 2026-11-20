@@ -1,8 +1,7 @@
 ﻿use glam::{Mat4, Vec2, Vec3};
-use image::GenericImageView;
 use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_GREATER_EQUAL, D3D12_CULL_MODE_NONE};
 use crate::app::RenderOpts;
-use crate::render::builtin::{Vertex3, VertexPbr};
+use crate::render::builtin::Vertex3;
 use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
@@ -10,7 +9,6 @@ use crate::render::graph::res::ResId;
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::perf::frustum::{Frustum, AABB};
 use crate::render::pipeline::desc::{Depth, PipelineDesc};
-use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::Renderer;
 use crate::render::terrain::quadtree::Quadtree;
@@ -188,10 +186,10 @@ impl Terrain {
 
         for z in 0..size {
             for x in 0..size {
-                let a = (z * (size + 1) + x);
-                let b = (z * (size + 1) + x + 1);
-                let c = ((z + 1) * (size + 1) + x);
-                let d = ((z + 1) * (size + 1) + (x + 1));
+                let a = z * (size + 1) + x;
+                let b = z * (size + 1) + x + 1;
+                let c = (z + 1) * (size + 1) + x;
+                let d = (z + 1) * (size + 1) + (x + 1);
 
                 indices.push(a);
                 indices.push(c);

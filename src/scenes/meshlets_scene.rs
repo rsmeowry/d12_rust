@@ -1,4 +1,4 @@
-﻿use egui::{Atoms, Checkbox, Ui};
+﻿use egui::{Checkbox, Ui};
 use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexPbr;
@@ -66,7 +66,7 @@ impl Scene for MeshletsScene {
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
             true, LodCount::Meshlets,
-            |mat, tex| MaterialParams::Pbr {
+            |_mat, tex| MaterialParams::Pbr {
                 albedo_tex: tex.albedo,
                 normal_tex: tex.normal,
                 metal_roughness_tex: tex.roughness,
@@ -214,7 +214,7 @@ impl Scene for MeshletsScene {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, _renderer: &'a mut Renderer, _time: &Time, _input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

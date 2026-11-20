@@ -1,10 +1,9 @@
 ﻿use std::cell::{Cell, Ref, RefCell};
 use std::fmt::Debug;
 use std::sync::Arc;
-use std::time::Instant;
 use glam::{IVec3, Mat4, UVec3, Vec3};
-use noise::{NoiseFn, Perlin};
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHasher};
+use noise::NoiseFn;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use crate::app::RenderOpts;
 use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
@@ -12,13 +11,10 @@ use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::ResId;
 use crate::render::mesh::Mesh;
 use crate::render::perf::frustum::{Frustum, AABB};
-use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{ObjectData, Renderer};
-use crate::render::texture::Texture;
 use crate::render::voxels::generate::{ChunkGenerator, GenerationStrategy, MAX_CHUNK_MESHES_PER_FRAME, PADDED, PAD_LO};
 use crate::render::voxels::svo::{Voxel, VoxelTree};
-use crate::time::Timings;
 use crate::wrappers::graphics::batching::UploadBatch;
 use crate::wrappers::graphics::GraphicsDevice;
 
@@ -147,7 +143,7 @@ impl<S: GenerationStrategy + 'static> VoxelWorld<S> {
         });
     }
 
-    pub fn select(&self, frustum: &Frustum, camera_pos: Vec3) -> (Vec<(u32, Ref<Mesh>)>, Vec<ObjectData>) {
+    pub fn select(&self, frustum: &Frustum, camera_pos: Vec3) -> (Vec<(u32, Ref<'_, Mesh>)>, Vec<ObjectData>) {
         let meshes_objects = self.chunks.iter().filter_map(|(chunk_pos, chunk)| {
             let mesh = if let Some(mesh) = transpose_ref_opt(chunk.mesh.borrow()) { mesh } else { return None };
             let chunk_pos_ws = Vec3::new(chunk_pos.x as f32, chunk_pos.y as f32, chunk_pos.z as f32) * chunk.tree.size() as f32;

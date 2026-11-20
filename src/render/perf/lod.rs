@@ -2,11 +2,9 @@
 use glam::{Mat4, Quat, Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList, D3D12_CULL_MODE_NONE, D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
-use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 use crate::app::RenderOpts;
 use crate::assets::LoadedScene;
 use crate::render::builtin::Vertex3;
-use crate::render::deferred::GBuffer;
 use crate::render::graph::builder::PassBuilder;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;

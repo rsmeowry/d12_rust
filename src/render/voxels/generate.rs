@@ -4,12 +4,11 @@ use std::cell::Cell;
 use std::fmt::Debug;
 use std::ops::Div;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 use std::time::Instant;
 use glam::{DVec3, FloatExt, IVec2, IVec3, UVec3, Vec3, Vec3Swizzles};
 use noise::{NoiseFn, Perlin};
 use rustc_hash::{FxBuildHasher, FxHashSet};
-use crate::render::voxels::{index_to_uvec3, uvec3_to_index, Chunk, PaddedVolume, VoxelMeshData, VoxelMesher, VoxelWorld, CHUNK_DEPTH, CHUNK_FLAT_ARR_DEPTH, NOISE_SCALE};
+use crate::render::voxels::{index_to_uvec3, uvec3_to_index, PaddedVolume, VoxelMeshData, VoxelMesher, CHUNK_DEPTH, NOISE_SCALE};
 use crate::render::voxels::svo::{Voxel, VoxelTree};
 use crate::scenes::voxels::{VOXEL_SCENE_MAT_DIRT, VOXEL_SCENE_MAT_MOSS, VOXEL_SCENE_MAT_ORE, VOXEL_SCENE_MAT_SNOW, VOXEL_SCENE_MAT_STONE};
 use crate::time::Timings;
@@ -108,7 +107,7 @@ impl<S: GenerationStrategy + 'static> ChunkGenerator<S> {
 
     }
 
-    fn build_chunk(strategy: Arc<S>, chunk_pos: IVec3, perlin: Perlin, material_data: [u64; 8]) -> (VoxelTree, Vec<Voxel>) {
+    fn build_chunk(strategy: Arc<S>, chunk_pos: IVec3, _perlin: Perlin, material_data: [u64; 8]) -> (VoxelTree, Vec<Voxel>) {
         let n = 1 << CHUNK_DEPTH;
         let origin = chunk_pos * n as i32 - IVec3::splat(PAD_LO as i32);
         let mut padded = vec![Voxel::AIR; PADDED * PADDED * PADDED];

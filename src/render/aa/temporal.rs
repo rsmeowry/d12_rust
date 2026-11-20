@@ -1,19 +1,18 @@
-﻿use glam::{Mat4, Vec2, Vec3};
+﻿use glam::Vec2;
 use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::res::{ResId, ResSize};
 use crate::render::pipeline::desc::PipelineDesc;
-use crate::render::pipeline::{Globals, PipelineId};
+use crate::render::pipeline::PipelineId;
 use crate::render::renderer::{Renderer, SCENE_FORMAT};
-use crate::time::Time;
 
 pub fn halton_sequence(mut index: u32, base: u32) -> f32 {
     let mut f = 1.;
     let mut res = 0.;
     let base_f = base as f32;
 
-    while(index > 0) {
+    while index > 0 {
         f /= base_f;
         res += f * (index % base) as f32;
         index /= base;

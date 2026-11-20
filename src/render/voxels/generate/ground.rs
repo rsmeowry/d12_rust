@@ -1,9 +1,9 @@
-﻿use glam::{DVec3, IVec2, IVec3, UVec3, Vec3Swizzles};
-use noise::{Billow, Fbm, MultiFractal, NoiseFn, Perlin, RidgedMulti, Simplex, SuperSimplex, Worley};
+﻿use glam::{IVec3, UVec3};
+use noise::{Billow, Fbm, MultiFractal, NoiseFn, RidgedMulti, Simplex, SuperSimplex};
 use crate::render::voxels::generate::GenerationStrategy;
-use crate::render::voxels::{uvec3_to_index, NOISE_SCALE};
+use crate::render::voxels::uvec3_to_index;
 use crate::render::voxels::svo::Voxel;
-use crate::scenes::voxels::{VOXEL_SCENE_MAT_DIAMOND_BLOCK, VOXEL_SCENE_MAT_DIRT, VOXEL_SCENE_MAT_MOSS, VOXEL_SCENE_MAT_ORE, VOXEL_SCENE_MAT_SNOW, VOXEL_SCENE_MAT_STONE};
+use crate::scenes::voxels::{VOXEL_SCENE_MAT_DIRT, VOXEL_SCENE_MAT_MOSS, VOXEL_SCENE_MAT_ORE, VOXEL_SCENE_MAT_SNOW, VOXEL_SCENE_MAT_STONE};
 
 #[derive(Debug, Clone)]
 pub struct GroundGenStrategy {
@@ -131,7 +131,7 @@ impl GenerationStrategy for GroundGenStrategy {
             let (cx, cz) = ((i % w) as i32 - 1, (i / w) as i32 - 1);
             self.column((origin.x + cx) as f64, (origin.z + cz) as f64)
         }).collect();
-        let at = |x: usize, z: usize| raw[(x + 1) + (z + 1) * w];
+        let _at = |x: usize, z: usize| raw[(x + 1) + (z + 1) * w];
         let r = |x: usize, z: usize| raw[z * w + x];
 
         if raw.iter().all(|c| c.0 < origin.y as f64 - 2.) {

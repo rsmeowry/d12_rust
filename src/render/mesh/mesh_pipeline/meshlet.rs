@@ -1,6 +1,5 @@
 ﻿use meshopt::VertexDataAdapter;
-use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
-use crate::render::mesh::Mesh;
+use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
 use crate::render::vertex::Vertex;
 use crate::wrappers::graphics::batching::UploadBatch;
 

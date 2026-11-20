@@ -1,10 +1,9 @@
 ﻿use bytemuck::Zeroable;
 use glam::{Mat4, Vec3, Vec4};
-use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RANGE};
 use crate::assets::{load_assimp_scene, LoadTex, LodCount};
 use crate::physics::body::SoftBody;
 use crate::physics::PhysicsSystem;
-use crate::render::builtin::{VertexFfd, VertexPbr};
+use crate::render::builtin::VertexFfd;
 use crate::render::deferred::GBuffer;
 use crate::render::deferred::transparent::TransparentPass;
 use crate::render::graph::FrameGraph;
@@ -14,7 +13,7 @@ use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::perf::frustum::AABB;
 use crate::render::pipeline::material::GpuMaterial;
 use crate::render::renderer::{ObjectData, Renderer};
-use crate::wrappers::graphics::{GraphicsDevice, MappedUploadBuffer};
+use crate::wrappers::graphics::MappedUploadBuffer;
 use crate::wrappers::graphics::batching::UploadBatch;
 
 pub const POINT_COUNT: usize = 4;
@@ -68,7 +67,7 @@ impl SoftBodyRenderer {
 
         graph.add_pass("FFDCopyDataPass")
             .has_side_effects()
-            .exec(move |ctx| {
+            .exec(move |_ctx| {
                 unsafe {
                     *self.buffer.write_idx(frame_idx) = PointsBuffer { points };
                 }

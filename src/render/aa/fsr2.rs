@@ -1,6 +1,5 @@
 ﻿use std::fmt::{Debug, Formatter};
-use std::mem::{transmute_copy, ManuallyDrop};
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use fsr_sys::{Context, ContextCreate, ContextDescription, ContextDestroy, ContextDispatch, Dimensions2D, DispatchDescription, ErrorCode, FloatCoords2D, Resource, ResourceStates, FFX_FSR2_ENABLE_AUTO_EXPOSURE, FFX_FSR2_ENABLE_DEPTH_INFINITE, FFX_FSR2_ENABLE_DEPTH_INVERTED, FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE, FFX_OK};
 use fsr_sys::d3d12::{GetCommandListDX12, GetInterfaceDX12, GetResourceDX12, GetScratchMemorySizeDX12};
 use windows::Win32::Graphics::Direct3D12::D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -55,7 +54,7 @@ impl Fsr2Pass {
             .reads(gbuf.velocity)
             .writes_uav(tgt, ResLoad::Preserve)
             .exec(move |pc| {
-                let mut d = DispatchDescription {
+                let d = DispatchDescription {
                     color: fsr_res(color, ResourceStates::COMPUTE_READ, w!("FSR2_Color")),
                     depth: fsr_res(depth, ResourceStates::COMPUTE_READ, w!("FSR2_Depth")),
                     motionVectors: fsr_res(velocity, ResourceStates::COMPUTE_READ, w!("FSR2_Velocity")),
@@ -92,7 +91,7 @@ impl Fsr2Pass {
         }
         if self.ctx.is_none() {
             unsafe {
-                let mut dev = rd.gd.device().as_raw();
+                let dev = rd.gd.device().as_raw();
                 let mut scratch = vec![0; GetScratchMemorySizeDX12().div_ceil(8)];
                 let mut desc = ContextDescription {
                     device: dev,

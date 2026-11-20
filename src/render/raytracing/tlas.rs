@@ -87,7 +87,7 @@ impl Tlas {
         inst
     }
 
-    unsafe fn initial_build_tlas(gd: &GraphicsDevice, max_instances: u32) -> anyhow::Result<(ID3D12Resource, ID3D12Resource)> {
+    unsafe fn initial_build_tlas(gd: &GraphicsDevice, max_instances: u32) -> anyhow::Result<(ID3D12Resource, ID3D12Resource)> { unsafe {
         let as_inputs = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS {
             Type: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL,
             Flags: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD,
@@ -110,5 +110,5 @@ impl Tlas {
         let tlas_result = GraphicsDevice::create_as_buffer(&dev, res_size, "TLAS_Result")?;
 
         Ok((tlas_scratch, tlas_result))
-    }
+    }}
 }

@@ -1,14 +1,13 @@
 ﻿use std::f32::consts::PI;
-use glam::{Vec3, Vec4};
+use glam::Vec3;
 use serde::{Deserialize, Serialize};
-use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RANGE, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RANGE};
 use crate::render::graph::FrameGraph;
 use crate::render::lights::{GpuLight, LIGHT_POINT, LIGHT_SPOT};
 use crate::render::pipeline::desc::PipelineDesc;
 use crate::render::pipeline::PipelineId;
-use crate::render::raytracing::RtShadowsPass;
-use crate::render::renderer::{ObjectData, Renderer};
-use crate::wrappers::graphics::{transition_barrier, GraphicsDevice};
+use crate::render::renderer::Renderer;
+use crate::wrappers::graphics::GraphicsDevice;
 
 pub const MAX_VPL_LEVELS: u32 = 5;
 

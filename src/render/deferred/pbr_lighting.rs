@@ -1,6 +1,5 @@
 ﻿use std::path::Path;
 use egui::{CollapsingHeader, DragValue, Ui};
-use egui_probe::{EguiProbe, Probe};
 use glam::Vec3;
 use windows::Win32::Graphics::Direct3D12::{D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_CULL_MODE_FRONT, D3D12_CULL_MODE_NONE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;

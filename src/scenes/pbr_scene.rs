@@ -35,7 +35,7 @@ pub const SPHERES_AMT_X: usize = 6;
 pub const SPHERES_AMT_Y: usize = 6;
 
 impl Scene for PbrSample {
-    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+    fn ui(&mut self, _ui: &mut Ui) -> anyhow::Result<()> {
         Ok(())
     }
 
@@ -150,7 +150,7 @@ impl Scene for PbrSample {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, _renderer: &'a mut Renderer, _time: &Time, _input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

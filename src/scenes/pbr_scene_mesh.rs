@@ -30,7 +30,7 @@ pub struct PbrSampleMesh {
 }
 
 impl Scene for PbrSampleMesh {
-    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+    fn ui(&mut self, _ui: &mut Ui) -> anyhow::Result<()> {
         Ok(())
     }
 
@@ -50,7 +50,7 @@ impl Scene for PbrSampleMesh {
             &mut materials,
             LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
             true, LodCount::Meshlets,
-            |mat, tex| MaterialParams::Pbr {
+            |_mat, tex| MaterialParams::Pbr {
                 albedo_tex: tex.albedo,
                 normal_tex: tex.normal,
                 metal_roughness_tex: tex.roughness,
@@ -159,7 +159,7 @@ impl Scene for PbrSampleMesh {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, _renderer: &'a mut Renderer, _time: &Time, _input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

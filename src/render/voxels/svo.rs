@@ -1,5 +1,4 @@
 ﻿use glam::{IVec3, UVec3};
-use rustc_hash::FxHashMap;
 
 // sparse voxel octree
 #[derive(Debug, Clone)]
@@ -246,9 +245,9 @@ impl Voxel {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
+    use crate::render::voxels::svo::{Voxel, VoxelTree};
     use glam::UVec3;
-    use crate::render::voxels::svo::{Voxel, VoxelNode, VoxelTree};
+    use std::assert_matches;
 
     #[test]
     fn test_svo() {

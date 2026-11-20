@@ -6,11 +6,11 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use direct_storage::{readonly_copy, IDStorageCompressionCodec, IDStorageFactory, IDStorageFile, IDStorageQueue, IDStorageQueue2, DSTORAGE_COMPRESSION_BEST_RATIO, DSTORAGE_COMPRESSION_DEFAULT, DSTORAGE_COMPRESSION_FORMAT, DSTORAGE_COMPRESSION_FORMAT_GDEFLATE, DSTORAGE_COMPRESSION_FORMAT_NONE, DSTORAGE_COMPRESSION_SUPPORT_CPU_FALLBACK, DSTORAGE_COMPRESSION_SUPPORT_GPU_FALLBACK, DSTORAGE_COMPRESSION_SUPPORT_GPU_OPTIMIZED, DSTORAGE_DESTINATION, DSTORAGE_DESTINATION_BUFFER, DSTORAGE_DESTINATION_MULTIPLE_SUBRESOURCES, DSTORAGE_DESTINATION_TEXTURE_REGION, DSTORAGE_MAX_QUEUE_CAPACITY, DSTORAGE_PRIORITY_NORMAL, DSTORAGE_QUEUE_DESC, DSTORAGE_REQUEST, DSTORAGE_REQUEST_DESTINATION_BUFFER, DSTORAGE_REQUEST_DESTINATION_MULTIPLE_SUBRESOURCES, DSTORAGE_REQUEST_DESTINATION_TYPE, DSTORAGE_REQUEST_OPTIONS, DSTORAGE_REQUEST_SOURCE_FILE, DSTORAGE_SOURCE, DSTORAGE_SOURCE_FILE};
+use direct_storage::{readonly_copy, IDStorageCompressionCodec, IDStorageFactory, IDStorageFile, IDStorageQueue, IDStorageQueue2, DSTORAGE_COMPRESSION_BEST_RATIO, DSTORAGE_COMPRESSION_FORMAT, DSTORAGE_COMPRESSION_FORMAT_GDEFLATE, DSTORAGE_COMPRESSION_FORMAT_NONE, DSTORAGE_COMPRESSION_SUPPORT_CPU_FALLBACK, DSTORAGE_COMPRESSION_SUPPORT_GPU_FALLBACK, DSTORAGE_COMPRESSION_SUPPORT_GPU_OPTIMIZED, DSTORAGE_DESTINATION, DSTORAGE_DESTINATION_BUFFER, DSTORAGE_DESTINATION_MULTIPLE_SUBRESOURCES, DSTORAGE_MAX_QUEUE_CAPACITY, DSTORAGE_PRIORITY_NORMAL, DSTORAGE_QUEUE_DESC, DSTORAGE_REQUEST, DSTORAGE_REQUEST_DESTINATION_BUFFER, DSTORAGE_REQUEST_DESTINATION_MULTIPLE_SUBRESOURCES, DSTORAGE_REQUEST_DESTINATION_TYPE, DSTORAGE_REQUEST_OPTIONS, DSTORAGE_REQUEST_SOURCE_FILE, DSTORAGE_SOURCE, DSTORAGE_SOURCE_FILE};
 use glam::Mat4;
 use serde::{Deserialize, Serialize};
 use windows::Win32::Foundation::CloseHandle;
-use windows::Win32::Graphics::Direct3D12::{ID3D12Fence, ID3D12Resource, D3D12_FENCE_FLAGS, D3D12_FENCE_FLAG_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Fence, ID3D12Resource, D3D12_FENCE_FLAG_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT;
 use windows::Win32::System::LibraryLoader::SetDllDirectoryW;
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject, INFINITE};
@@ -148,7 +148,7 @@ impl DSBlobUploader {
     }
 
     // just tthe same as load_assimp_scene
-    pub fn load_scene<TVert: Vertex>(mut self, renderer: &Renderer, batch: &mut UploadBatch, materials: &mut Vec<GpuMaterial>) -> anyhow::Result<(LoadedScene, f32, f32)> {
+    pub fn load_scene<TVert: Vertex>(self, renderer: &Renderer, batch: &mut UploadBatch, materials: &mut Vec<GpuMaterial>) -> anyhow::Result<(LoadedScene, f32, f32)> {
         let t_io = Instant::now();
 
         let gd = &renderer.gd;
@@ -176,7 +176,7 @@ impl DSBlobUploader {
         // all the rest of the data is loaded from dstorage file, drop this reader
         drop(read);
 
-        let (factory, file, queue) = self.prepare_ds_props(gd)?;
+        let (_factory, file, queue) = self.prepare_ds_props(gd)?;
 
         // preparing resources and requests
         let data_start = (4 + 8 + hlen) as u32;
@@ -318,7 +318,7 @@ impl DSBlobUploader {
     }
 
     // https://github.com/hasenbanck/direct-storage-rs/blob/master/examples/hello_direct_storage/main.rs
-    unsafe fn dstorage_request(file: &IDStorageFile, offset: u32, stored: u32, uncompressed: u32, compression: DSTORAGE_COMPRESSION_FORMAT, dst_type: DSTORAGE_REQUEST_DESTINATION_TYPE, dst: DSTORAGE_DESTINATION) -> DSTORAGE_REQUEST {
+    unsafe fn dstorage_request(file: &IDStorageFile, offset: u32, stored: u32, uncompressed: u32, compression: DSTORAGE_COMPRESSION_FORMAT, dst_type: DSTORAGE_REQUEST_DESTINATION_TYPE, dst: DSTORAGE_DESTINATION) -> DSTORAGE_REQUEST { unsafe {
         let mut o = DSTORAGE_REQUEST_OPTIONS::default();
         o.set_CompressionFormat(compression);
         o.set_SourceType(DSTORAGE_REQUEST_SOURCE_FILE);
@@ -338,7 +338,7 @@ impl DSBlobUploader {
             CancellationTag: 0,
             Name: PCSTR::null(),
         }
-    }
+    }}
 
     // enqueues a NONCOMPRESSED(!!) buffer
     fn enqueue_buffer(queue: &IDStorageQueue, file: &IDStorageFile, data_start: u32, (off, size): (u32, u32), res: &ID3D12Resource) {

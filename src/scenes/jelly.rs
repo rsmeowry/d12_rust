@@ -1,8 +1,6 @@
 ﻿use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
-use crate::render::aa::fsr2::Fsr2Pass;
 use crate::render::aa::temporal::TaaPass;
-use crate::render::aa::AntiAliasing;
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
@@ -11,23 +9,18 @@ use crate::render::deferred::sky_velocity::SkyVelocityPass;
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
-use crate::render::lights::{unit_sphere, GpuLight};
+use crate::render::lights::GpuLight;
 use crate::render::mesh::{DrawTopology, Mesh};
-use crate::render::perf::frustum::AABB;
-use crate::render::perf::{Culler, NO_LOD};
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
-use crate::render::raytracing::gi::{GpuVpl, RtGiBakeryPass, MAX_VPL_LEVELS};
-use crate::render::raytracing::RtShadowsPass;
+use crate::render::raytracing::gi::MAX_VPL_LEVELS;
 use crate::render::renderer::{ObjectData, Renderer};
-use crate::render::shadows::{ShadowMap, CASCADE_COUNT, SHADOW_DISTANCE, SHADOW_EXTEND};
+use crate::render::shadows::{ShadowMap, SHADOW_DISTANCE, SHADOW_EXTEND};
 use crate::scenes::Scene;
 use crate::time::Time;
-use egui::{ComboBox, Ui};
-use egui_probe::{EguiProbe, Probe};
-use glam::{Mat4, Quat, Vec3};
-use std::f32::consts::PI;
-use std::io::Write;
+use egui::Ui;
+use egui_probe::EguiProbe;
+use glam::Vec3;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::input::InputDevice;
 use crate::physics::{PhysParams, PhysicsSystem};
@@ -140,7 +133,7 @@ impl Scene for JellyScene {
         let shadows = ShadowMap::new(renderer, 1024, 4096, 512, 512, SHADOW_DISTANCE, SHADOW_EXTEND)?;
         lighting.save_local_shadows(&shadows);
         let taa = TaaPass::new(renderer)?;
-        let jelly_pass = TransparentPass::new::<VertexPbr, &str>(renderer, "Jelly", "deferred/Jelly.hlsl", "deferred/JellyPrepass.hlsl")?;
+        let _jelly_pass = TransparentPass::new::<VertexPbr, &str>(renderer, "Jelly", "deferred/Jelly.hlsl", "deferred/JellyPrepass.hlsl")?;
 
         let sky_velocity = SkyVelocityPass::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
@@ -174,7 +167,7 @@ impl Scene for JellyScene {
         let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
 
         // sponza
-        let frustum = renderer.cam.frustum();
+        let _frustum = renderer.cam.frustum();
         let (scene_obj, scene_draw) = self.scene.to_objects_and_draws();
         objects.extend_from_slice(&scene_obj);
         draws.extend(scene_draw.clone().into_iter().zip(std::iter::repeat(pass)));

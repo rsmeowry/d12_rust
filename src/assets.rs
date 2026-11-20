@@ -17,7 +17,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use egui::IntoAtoms;
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_R16_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
 use crate::assets::dstorage::{DSBlobUploader, DSBlobWriter, DSHeader, DSMesh, DSMeshlet, DSTexture};
 use crate::render::mesh::mesh_pipeline::meshlet::MeshletMesh;
 
@@ -68,7 +67,7 @@ bitflags! {
     }
 }
 
-pub type VertProc<V: Vertex + FromVertexProps + LodVertex> = Box<dyn Fn(&[V], &mut V)>;
+pub type VertProc<V> = Box<dyn Fn(&[V], &mut V)>;
 
 pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>>(
     renderer: &Renderer,
@@ -84,7 +83,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
     bake_to: Option<PathBuf>,
 ) -> anyhow::Result<LoadedScene> {
     if let Some(baked_path) = bake_to.as_ref() && baked_path.exists() {
-        let mut uploader = DSBlobUploader::new(baked_path)?;
+        let uploader = DSBlobUploader::new(baked_path)?;
         let (scene, io_time, batch_time) = uploader.load_scene::<V>(renderer, batch, materials)?;
         println!("Used DStorage! Load took: io/{io_time:.2}ms batch/{batch_time:.2}ms total/{:.2}ms", io_time + batch_time);
         return Ok(scene);
@@ -95,7 +94,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
     let pathbuf = path.as_ref().to_path_buf();
 
     // for DStorage
-    let mut bw = bake_to.as_ref().map(|p| DSBlobWriter::new(true)).transpose()?;
+    let mut bw = bake_to.as_ref().map(|_p| DSBlobWriter::new(true)).transpose()?;
     let mut ds_texs = vec![];
     let mut ds_meshlets = vec![];
 
@@ -308,7 +307,7 @@ pub fn load_assimp_scene<V: Vertex + FromVertexProps + LodVertex, P: AsRef<Path>
             }),
         }).collect();
 
-        let srv_to_tex = textures.iter().enumerate().map(|(i, t)| (t.srv_ptr(), i as i16)).collect::<HashMap<_, _>>();;
+        let srv_to_tex = textures.iter().enumerate().map(|(i, t)| (t.srv_ptr(), i as i16)).collect::<HashMap<_, _>>();
         let materials = materials[base as usize..].iter().map(|m: &GpuMaterial| {
             (*m, m.textures.map(|srv| *srv_to_tex.get(&srv).unwrap_or(&-1)))
         }).collect::<Vec<(GpuMaterial, [i16; 8])>>();

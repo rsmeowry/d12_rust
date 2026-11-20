@@ -97,7 +97,7 @@ impl Culler {
         self.push_visible_raw(visible_objects, visible_meshes, &all_objects, &all_meshes, pso, frustum, opts);
     }
 
-    pub fn finish(&mut self, opts: &mut RenderOpts) {
+    pub fn finish(&mut self, _opts: &mut RenderOpts) {
         self.total_objects = 0;
         self.culled_objects = 0;
         self.elapsed_time_ms = 0.;

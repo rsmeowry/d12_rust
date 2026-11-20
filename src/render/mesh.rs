@@ -97,7 +97,7 @@ impl Mesh {
 
         let blas = if build_blas {
             unsafe {
-                Some(Self::build_blas::<TVert>(batch, id, &ib, &vb, (vb_size / size_of::<TVert>() as u32), index_count)?)
+                Some(Self::build_blas::<TVert>(batch, id, &ib, &vb, vb_size / size_of::<TVert>() as u32, index_count)?)
             }
         } else {
             None
@@ -180,7 +180,7 @@ impl Mesh {
         }
     }
 
-    unsafe fn build_blas<T: Vertex>(batch: &mut UploadBatch, id: u16, ib: &ID3D12Resource, vb: &ID3D12Resource, vertex_count: u32, index_count: u32) -> anyhow::Result<ID3D12Resource> {
+    unsafe fn build_blas<T: Vertex>(batch: &mut UploadBatch, id: u16, ib: &ID3D12Resource, vb: &ID3D12Resource, vertex_count: u32, index_count: u32) -> anyhow::Result<ID3D12Resource> { unsafe {
         let geom_desc = D3D12_RAYTRACING_GEOMETRY_DESC {
             Type: D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
             Flags: D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE,
@@ -233,7 +233,7 @@ impl Mesh {
         cmd.ResourceBarrier(&[uav_barrier(&blas_result)]);
 
         Ok(blas_result)
-    }
+    }}
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
