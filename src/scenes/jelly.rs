@@ -1,0 +1,233 @@
+﻿use crate::app::RenderOpts;
+use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
+use crate::render::aa::fsr2::Fsr2Pass;
+use crate::render::aa::temporal::TaaPass;
+use crate::render::aa::AntiAliasing;
+use crate::render::builtin::VertexPbr;
+use crate::render::deferred::bloom::{BloomPass, BloomProperties};
+use crate::render::deferred::pbr_lighting::PbrLightingPass;
+use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::sky_velocity::SkyVelocityPass;
+use crate::render::deferred::GBuffer;
+use crate::render::graph::pass::ResLoad;
+use crate::render::graph::FrameGraph;
+use crate::render::lights::{unit_sphere, GpuLight};
+use crate::render::mesh::{DrawTopology, Mesh};
+use crate::render::perf::frustum::AABB;
+use crate::render::perf::{Culler, NO_LOD};
+use crate::render::pipeline::material::MaterialParams;
+use crate::render::pipeline::PipelineId;
+use crate::render::raytracing::gi::{GpuVpl, RtGiBakeryPass, MAX_VPL_LEVELS};
+use crate::render::raytracing::RtShadowsPass;
+use crate::render::renderer::{ObjectData, Renderer};
+use crate::render::shadows::{ShadowMap, CASCADE_COUNT, SHADOW_DISTANCE, SHADOW_EXTEND};
+use crate::scenes::Scene;
+use crate::time::Time;
+use egui::{ComboBox, Ui};
+use egui_probe::{EguiProbe, Probe};
+use glam::{Mat4, Quat, Vec3};
+use std::f32::consts::PI;
+use std::io::Write;
+use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::render::deferred::transparent::TransparentPass;
+
+#[derive(Debug)]
+pub struct JellyScene {
+    gbuffer: GBuffer,
+    empty_pso: PipelineId,
+    scene: LoadedScene,
+
+    materials_buf: ID3D12Resource,
+    jelly_pass: TransparentPass,
+    sky_velocity: SkyVelocityPass,
+    taa: TaaPass,
+
+    shadows: ShadowMap,
+    bloom: BloomPass,
+    lighting: PbrLightingPass,
+    post: PostProcessPass,
+    blit: BlitPass,
+}
+
+impl Scene for JellyScene {
+    fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
+        let mut batch = renderer.gd.begin_upload()?;
+
+        let mut materials = Vec::new();
+        let scene = load_assimp_scene::<VertexPbr, _>(
+            &renderer, &mut batch, "assets/models/jelly_scene/jelly_scene.gltf",
+            &mut materials,
+            LoadTex::ALBEDO | LoadTex::NORMAL | LoadTex::ROUGHNESS | LoadTex::LIGHTMAP, DrawTopology::TriangleList,
+            true, LodCount::NoLods,
+            |mat, tex| MaterialParams::Pbr {
+                albedo_tex: tex.albedo,
+                normal_tex: tex.normal,
+                metal_roughness_tex: tex.roughness,
+                occlusion_tex: tex.lightmap,
+                base_color: mat.base_color().map(|it| Vec3::new(it.x, it.y, it.z)).unwrap_or(Vec3::ONE),
+                metallic: mat.metallic_factor().unwrap_or(0.5),
+                roughness: mat.roughness_factor().unwrap_or(0.5),
+            }.to_gpu_material(),
+            // None
+            Some("bakes/jelly_scene.bke".into())
+        )?;
+
+        let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "Sponza/MaterialBuffer")?;
+
+        batch.finish()?;
+
+        let gbuffer = renderer.build_gbuffer::<VertexPbr>("deferred/GPassPBR.hlsl", DrawTopology::TriangleList)?;
+        let empty_pso = renderer.build_gpass::<VertexPbr>("deferred/GPassEmpty.hlsl", DrawTopology::TriangleList)?.0;
+
+        let mut lighting = PbrLightingPass::new(renderer,
+                                                "assets/textures/sky/sky.hdr",
+                                                "assets/textures/sky/sky_irradiance.dds",
+                                                "assets/textures/sky/sky_specular.dds",
+                                                "assets/textures/pbr/ibl_brdf_lut.dds"
+        )?;
+        let shadows = ShadowMap::new(renderer, 1024, 4096, 512, 512, SHADOW_DISTANCE, SHADOW_EXTEND)?;
+        lighting.save_local_shadows(&shadows);
+        let taa = TaaPass::new(renderer)?;
+        let jelly_pass = TransparentPass::new::<VertexPbr, &str>(renderer, "Jelly", "deferred/Jelly.hlsl", "deferred/JellyPrepass.hlsl")?;
+
+        let sky_velocity = SkyVelocityPass::new(renderer)?;
+        let bloom = BloomPass::new(renderer)?;
+        let post = PostProcessPass::new(renderer)?;
+        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+
+        Ok(Self {
+            gbuffer,
+            blit,
+            empty_pso,
+
+            taa,
+            sky_velocity,
+            jelly_pass,
+            scene,
+
+            shadows,
+            bloom,
+            materials_buf,
+            lighting,
+            post,
+        })
+    }
+
+    fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()> {
+        let mut objects: Vec<ObjectData> = Vec::new();
+        let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
+        let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
+
+
+        // sponza
+        let frustum = renderer.cam.frustum();
+        let (scene_obj, scene_draw) = self.scene.to_objects_and_draws();
+        objects.extend_from_slice(&scene_obj);
+        draws.extend(scene_draw.clone().into_iter().zip(std::iter::repeat(pass)));
+
+        let objects_va = renderer.upload_objects(&objects)?;
+        let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
+
+        let _t = time.game_time();
+        let mut lights = vec![
+            GpuLight::directional(Vec3::new(-0.3, -0.7, -0.15), Vec3::new(1., 0.95, 0.9), 5.0),
+        ];
+
+        let gr = &renderer.gr;
+
+        let rs = renderer.rs();
+        let pipelines = renderer.pipelines();
+
+        // scene draw pass
+        let empty_pass_va = renderer.upload_cbuffer(&0u32)?;
+        graph
+            .add_pass("GPass")
+            .writes_depth(self.gbuffer.scene_depth, ResLoad::Clear)
+            .writes_gbuffer(&self.gbuffer, ResLoad::Clear)
+            .exec(move |ctx| {
+                rs.set_objects(ctx.cmd, objects_va);
+                rs.set_materials(ctx.cmd, materials_va);
+                rs.set_pass(ctx.cmd, empty_pass_va);
+                let mut bound = None;
+                for (i, (mesh, pso)) in draws.iter().enumerate() {
+                    if bound != Some(*pso) {
+                        pipelines.get(*pso).bind(ctx.cmd);
+                        bound = Some(*pso);
+                    }
+                    rs.set_draw_index(ctx.cmd, i as u32);
+                    mesh.draw(ctx.cmd);
+                }
+                Ok(())
+            });
+        // sky velocity
+        self.sky_velocity.add_pass(&self.gbuffer, renderer, graph)?;
+
+        // shadowws (global and local)
+        let all_objects_va = renderer.upload_objects(&scene_obj)?;
+        let lambda = 0.6;
+        let main_light = lights[0];
+        self.shadows.update(lights[0], lambda, renderer);
+        let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &scene_obj, &scene_draw)?;
+        self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &scene_obj, &scene_draw, graph)?;
+
+        let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, None, 0.12, &self.gbuffer, graph, opts)?;
+
+        // jelly TODO
+        // self.blit.add_transforming_blit(&renderer, self.gbuffer.scene_color, self.jelly_pass.target_tex(), graph)?;
+        // let jelly_tex = self.jelly_pass.add_pass(self.lighting.irradiance_tex(), &main_light, &self.sphere, &sphere_obj, renderer, &self.gbuffer, graph)?;
+
+        let scene_color = self.taa.add_pass(self.gbuffer.scene_color, &self.gbuffer, renderer, graph)?;
+
+        // bloom
+        let bloom = self.bloom.add_pass(BloomProperties {
+            threshold: 1.0,
+            knee: 0.12,
+            radius: 1.0,
+            intensity: 1.0,
+            ..Default::default()
+        }, scene_color, renderer, graph)?;
+
+        // post
+        let post_props = PostProperties {
+            albedo: gr.get(self.gbuffer.albedo)?.srv_ptr(),
+            normals: gr.get(self.gbuffer.normals)?.srv_ptr(),
+            materials: gr.get(self.gbuffer.materials)?.srv_ptr(),
+            depth: gr.get(self.gbuffer.scene_depth)?.srv_ptr(),
+            scene_color: gr.get(scene_color)?.srv_ptr(),
+            enable_sobel: 0,
+            enable_fly_eye: 0,
+            enable_vignette: 1,
+            ..Default::default()
+        };
+        self.post.add_pass(post_props, Some(scene_color), Some(bloom), renderer, &self.gbuffer, graph)?;
+        self.blit.add_pass(renderer, graph)?;
+
+        Ok(())
+    }
+
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Debug, Copy, Clone, EguiProbe, PartialEq)]
+pub enum ShadowMode {
+    Cascades,
+    Raytraced
+}
+
+#[derive(Debug, EguiProbe)]
+struct VplSettings {
+    pub k: [f32; MAX_VPL_LEVELS as usize],
+    pub threshold: f32,
+    pub enabled: bool,
+    pub ibl_strength: f32,
+    pub sun_target_x: f32,
+    pub sun_target_y: f32,
+    pub sun_target_z: f32,
+    pub sun_radius: f32,
+}

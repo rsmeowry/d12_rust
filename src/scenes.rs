@@ -7,10 +7,12 @@ pub mod experiment;
 pub mod terrain;
 pub mod voxels;
 pub mod meshlets_scene;
+pub mod jelly;
 
 use crate::app::RenderOpts;
 use crate::render::graph::FrameGraph;
 use crate::render::renderer::Renderer;
+use crate::scenes::jelly::JellyScene;
 use crate::scenes::meshlets_scene::MeshletsScene;
 use crate::scenes::pbr_scene::PbrSample;
 use crate::scenes::pbr_scene_mesh::PbrSampleMesh;
@@ -35,6 +37,7 @@ fn boxed_setup<S: Scene + 'static>(rd: &mut Renderer) -> anyhow::Result<Box<dyn 
 pub type SceneBuild = fn(&mut Renderer) -> anyhow::Result<Box<dyn Scene>>;
 pub const SCENES: &[(&str, SceneBuild)] = &[
     ("Sponza", boxed_setup::<SponzaWithLights>),
+    ("Jelly", boxed_setup::<JellyScene>),
     ("Voxel terrain", boxed_setup::<VoxelsScene>),
     ("Culling w/ pusheens", boxed_setup::<CullingScene>),
     ("Terrain", boxed_setup::<TerrainScene>),
