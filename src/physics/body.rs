@@ -4,6 +4,7 @@ use crate::physics::body::particle::BodyParticle;
 use crate::physics::body::spring::{Spring, SpringKind};
 use crate::physics::contact::Collider;
 use crate::physics::{PhysParams, PhysicsSystem};
+use crate::render::perf::frustum::AABB;
 
 pub mod particle;
 pub mod spring;
@@ -20,11 +21,20 @@ pub struct BodyParams {
 }
 
 #[derive(Debug, Clone)]
+pub struct Grab {
+    pub particle: usize,
+    pub target: Vec3,
+    pub k_mouse: f32,
+    pub damping: f32
+}
+
+#[derive(Debug, Clone)]
 pub struct SoftBody {
     pub particles: Vec<BodyParticle>,
     pub springs: Vec<Spring>,
     pub ppa: usize, // particles-per-axis a ne dopsa
-    initial_positions: Vec<Vec3>
+    initial_positions: Vec<Vec3>,
+    pub grab: Option<Grab>
 }
 
 impl SoftBody {
@@ -93,7 +103,13 @@ impl SoftBody {
             springs,
             ppa,
             initial_positions,
+            grab: None
         }
+    }
+
+    pub fn aabb(&self) -> AABB {
+        let points = self.particles.iter().map(|particle| particle.position).collect::<Vec<_>>();
+        AABB::from_points(&points)
     }
 
     pub fn reset(&mut self) {
@@ -138,14 +154,22 @@ impl SoftBody {
             };
         }
 
+        for p in self.particles.iter_mut().filter(|p| p.mass.is_finite()) {
+            p.force -= params.air_drag * p.velocity;
+        }
+
         for s in self.springs.iter_mut() {
             s.apply(&mut self.particles);
         }
 
-        // todo: external forces
-        // exclude pinned
+        if let Some(g) = &self.grab {
+            let p = &mut self.particles[g.particle];
+            let f = g.k_mouse * (g.target - p.position) - g.damping * p.velocity;
+            p.force += f;
+        }
 
-        for p in self.particles.iter_mut().filter(|p| !p.mass.is_infinite()) {
+        // exclude pinned
+        for p in self.particles.iter_mut().filter(|p| p.mass.is_finite()) {
             p.velocity += p.force / p.mass * dt;
             p.position += p.velocity * dt;
         }

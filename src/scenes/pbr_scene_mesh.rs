@@ -15,6 +15,7 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use glam::{Mat4, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::input::InputDevice;
 
 #[derive(Debug)]
 pub struct PbrSampleMesh {
@@ -157,7 +158,7 @@ impl Scene for PbrSampleMesh {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

@@ -17,6 +17,7 @@ use egui::Ui;
 use glam::{Mat4, Vec3, Vec4};
 use windows::Win32::Graphics::Direct3D12::{D3D12_CULL_MODE_NONE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+use crate::input::InputDevice;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::graph::res::{ResId, ResSize};
 use crate::render::pipeline::desc::PipelineDesc;
@@ -118,7 +119,7 @@ impl Scene for CloudmarchScene {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

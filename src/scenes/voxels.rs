@@ -21,6 +21,7 @@ use std::f32::consts::PI;
 use std::ops::Div;
 use std::sync::Arc;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::input::InputDevice;
 use crate::render::aa::AntiAliasing;
 use crate::render::graph::pass::ResLoad;
 use crate::render::aa::fsr2::Fsr2Pass;
@@ -208,7 +209,7 @@ impl Scene for VoxelsScene {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
         if let Some(mesher_idx) = self.pending_mesher.take() {
             renderer.gd.flush_command_queue()?;
             let mesher = MESHERS[mesher_idx as usize];

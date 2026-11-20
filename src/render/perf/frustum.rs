@@ -16,6 +16,10 @@ impl AABB {
         }
     }
 
+    pub fn contains_point(&self, point: Vec3) -> bool {
+        self.min.cmple(point).all() && self.max.cmpge(point).all()
+    }
+
     pub fn contains_box(&self, o: &AABB) -> bool {
         self.min.cmple(o.min).all() && o.max.cmple(self.max).all()
     }

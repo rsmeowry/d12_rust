@@ -293,7 +293,7 @@ impl App {
         let prims = self.egui.tessellate(out.shapes, out.pixels_per_point);
         self.egui_ui_out = Some((prims, out.textures_delta, out.pixels_per_point));
         
-        self.active_scene.update(&mut self.renderer, &self.time)?;
+        self.active_scene.update(&mut self.renderer, &self.time, self.window.input())?;
 
         Ok(())
     }

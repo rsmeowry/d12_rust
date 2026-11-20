@@ -10,6 +10,7 @@ pub mod meshlets_scene;
 pub mod jelly;
 
 use crate::app::RenderOpts;
+use crate::input::InputDevice;
 use crate::render::graph::FrameGraph;
 use crate::render::renderer::Renderer;
 use crate::scenes::jelly::JellyScene;
@@ -27,7 +28,7 @@ pub trait Scene {
     fn ui(&mut self, ui: &mut egui::Ui) -> anyhow::Result<()>;
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> where Self: Sized;
     fn build_graph<'a>(&'a mut self, renderer: &'a Renderer, time: &Time, graph: &mut FrameGraph<'a>, opts: &mut RenderOpts) -> anyhow::Result<()>;
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()>;
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()>;
 }
 
 fn boxed_setup<S: Scene + 'static>(rd: &mut Renderer) -> anyhow::Result<Box<dyn Scene>> {

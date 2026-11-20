@@ -16,6 +16,7 @@ use crate::time::Time;
 use glam::{Mat4, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12GraphicsCommandList2, ID3D12GraphicsCommandList6, ID3D12Resource, D3D12_RANGE, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_WRITEBUFFERIMMEDIATE_PARAMETER};
 use windows_core::Interface;
+use crate::input::InputDevice;
 use crate::render::aa::AntiAliasing;
 use crate::render::aa::fsr2::Fsr2Pass;
 use crate::render::deferred::sky_velocity::SkyVelocityPass;
@@ -212,7 +213,7 @@ impl Scene for MeshletsScene {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }

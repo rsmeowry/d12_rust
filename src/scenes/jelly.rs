@@ -29,6 +29,7 @@ use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::PI;
 use std::io::Write;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::input::InputDevice;
 use crate::physics::{PhysParams, PhysicsSystem};
 use crate::physics::body::meshing::{SoftBodyRenderer, POINT_COUNT};
 use crate::physics::body::{BodyParams, SoftBody};
@@ -69,14 +70,15 @@ impl Scene for JellyScene {
             restitution: 0.1,
             k_friction: 0.6,
             rest_speed: 3.0 * gravity.length() * phys.fixed_dt(),
+            air_drag: 0.02
         };
         let body = SoftBody::new_cube(BodyParams {
-            mass: 1.0,
+            mass: 1.5,
             size: 3.0,
             ppa: POINT_COUNT,
-            k_struct: 30.,
-            k_shear: 15.,
-            damping: 0.2,
+            k_struct: 150.,
+            k_shear: 75.,
+            damping: 0.5,
         }, Vec3::new(0., 19., 0.));
 
         phys.add_static_collider(Box::new(Plane {
@@ -244,8 +246,8 @@ impl Scene for JellyScene {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
-        self.physics.update(&self.phys_params, time);
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+        self.physics.update(&self.phys_params, time, &renderer.cam, input);
         Ok(())
     }
 }

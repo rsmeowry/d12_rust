@@ -29,6 +29,7 @@ use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::PI;
 use std::io::Write;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::input::InputDevice;
 use crate::render::deferred::transparent::TransparentPass;
 
 const MAX_PARTICLES: usize = 4096;
@@ -371,7 +372,7 @@ impl Scene for SponzaWithLights {
         Ok(())
     }
 
-    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+    fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
         Ok(())
     }
 }
