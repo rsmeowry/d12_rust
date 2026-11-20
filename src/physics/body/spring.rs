@@ -19,7 +19,7 @@ pub struct Spring {
 
 impl Spring {
     pub fn apply(&self, particles: &mut [BodyParticle]) {
-        let delta_pos = particles[self.to].position; - particles[self.from].position;
+        let delta_pos = particles[self.to].position - particles[self.from].position;
         let spring_len = delta_pos.length();
         if spring_len < MIN_SPRING_LEN {
             return;

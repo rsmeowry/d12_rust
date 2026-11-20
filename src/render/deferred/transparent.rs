@@ -52,7 +52,7 @@ impl TransparentPass {
         })
     }
 
-    pub fn add_pass<'a>(&'a self, irradiance_tex: u32, main_light: &GpuLight, mesh: &'a Mesh, object: &ObjectData, rd: &'a Renderer, gbuf: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
+    pub fn add_pass<'a>(&'a self, ffd_va: Option<u64>, irradiance_tex: u32, main_light: &GpuLight, mesh: &'a Mesh, object: &ObjectData, rd: &'a Renderer, gbuf: &GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
         let pass_va = rd.upload_cbuffer(&TransparentPassData {
             depth_tex: rd.gr.get(gbuf.scene_depth)?.srv_ptr(),
             scene_tex: rd.gr.get(gbuf.scene_color)?.srv_ptr(),
@@ -72,6 +72,9 @@ impl TransparentPass {
             .add_pass("TransparentsPrepass")
             .writes(self.prepass_tex, ResLoad::Clear)
             .exec(move |ctx| {
+                if let Some(ffd) = ffd_va {
+                    rs.set_ffd(ctx.cmd, ffd);
+                }
                 rs.set_objects(ctx.cmd, objects_va);
                 pipelines.get(prepass_pso).bind(ctx.cmd);
                 rs.set_draw_index(ctx.cmd, 0);
@@ -86,6 +89,9 @@ impl TransparentPass {
             .reads(self.prepass_tex)
             .writes(self.target_tex, ResLoad::Preserve)
             .exec(move |ctx| {
+                if let Some(ffd) = ffd_va {
+                    rs.set_ffd(ctx.cmd, ffd);
+                }
                 rs.set_objects(ctx.cmd, objects_va);
                 rs.set_pass(ctx.cmd, pass_va);
                 pipelines.get(pso).bind(ctx.cmd);

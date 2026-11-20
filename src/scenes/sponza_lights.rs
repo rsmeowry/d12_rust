@@ -336,7 +336,7 @@ impl Scene for SponzaWithLights {
 
         // jelly
         self.blit.add_transforming_blit(&renderer, self.gbuffer.scene_color, self.jelly_pass.target_tex(), graph)?;
-        let jelly_tex = self.jelly_pass.add_pass(self.lighting.irradiance_tex(), &main_light, &self.sphere, &sphere_obj, renderer, &self.gbuffer, graph)?;
+        let jelly_tex = self.jelly_pass.add_pass(None, self.lighting.irradiance_tex(), &main_light, &self.sphere, &sphere_obj, renderer, &self.gbuffer, graph)?;
 
         let scene_color = match opts.anti_aliasing {
             AntiAliasing::Disabled => jelly_tex,

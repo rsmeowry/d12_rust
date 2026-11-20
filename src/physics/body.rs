@@ -2,9 +2,12 @@
 use glam::Vec3;
 use crate::physics::body::particle::BodyParticle;
 use crate::physics::body::spring::{Spring, SpringKind};
+use crate::physics::contact::Collider;
+use crate::physics::{PhysParams, PhysicsSystem};
 
 pub mod particle;
 pub mod spring;
+pub mod meshing;
 
 #[derive(Debug, Copy, Clone, EguiProbe)]
 pub struct BodyParams {
@@ -32,9 +35,9 @@ impl SoftBody {
 
         // particles
         let mut particles = Vec::with_capacity(ppa * ppa * ppa);
-        for x in 0..ppa {
+        for z in 0..ppa {
             for y in 0..ppa {
-                for z in 0..ppa {
+                for x in 0..ppa {
                     let local_pos = Vec3::new(x as f32, y as f32, z as f32) * height - Vec3::new(params.size * 0.5, 0., params.size * 0.5);
                     particles.push(BodyParticle::new(origin + local_pos, mass));
                 }
@@ -50,7 +53,7 @@ impl SoftBody {
                         for dy in -1..=1i32 {
                             for dx in -1..=1i32 {
 
-                                if dx <= 0 && dy <= 0 && dz <= 0 {
+                                if (dz, dy, dx) <= (0, 0, 0) {
                                     continue;
                                 }
 
@@ -126,8 +129,34 @@ impl SoftBody {
         }
     }
 
-    pub fn update(&mut self, dt: f32) {
-        // todo
+    pub fn update(&mut self, params: &PhysParams, colliders: &[Box<dyn Collider>], dt: f32) {
+        for p in self.particles.iter_mut() {
+            p.force = if p.mass.is_finite() {
+                Vec3::from(params.gravity) * p.mass
+            } else {
+                Vec3::ZERO
+            };
+        }
+
+        for s in self.springs.iter_mut() {
+            s.apply(&mut self.particles);
+        }
+
+        // todo: external forces
+        // exclude pinned
+
+        for p in self.particles.iter_mut().filter(|p| !p.mass.is_infinite()) {
+            p.velocity += p.force / p.mass * dt;
+            p.position += p.velocity * dt;
+        }
+
+        for p in self.particles.iter_mut() {
+            for col in colliders {
+                if let Some(c) = col.contact(p.position) {
+                    p.resolve_collision(&c, params);
+                }
+            }
+        }
     }
 
     pub fn idx(n: usize, x: usize, y: usize, z: usize) -> usize {

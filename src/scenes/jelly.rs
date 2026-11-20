@@ -29,6 +29,10 @@ use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::PI;
 use std::io::Write;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
+use crate::physics::{PhysParams, PhysicsSystem};
+use crate::physics::body::meshing::{SoftBodyRenderer, POINT_COUNT};
+use crate::physics::body::{BodyParams, SoftBody};
+use crate::physics::contact::Plane;
 use crate::render::deferred::transparent::TransparentPass;
 
 #[derive(Debug)]
@@ -38,9 +42,12 @@ pub struct JellyScene {
     scene: LoadedScene,
 
     materials_buf: ID3D12Resource,
-    jelly_pass: TransparentPass,
     sky_velocity: SkyVelocityPass,
     taa: TaaPass,
+
+    phys_params: PhysParams,
+    physics: PhysicsSystem,
+    sb_renderer: SoftBodyRenderer,
 
     shadows: ShadowMap,
     bloom: BloomPass,
@@ -55,7 +62,33 @@ impl Scene for JellyScene {
     }
 
     fn setup(renderer: &mut Renderer) -> anyhow::Result<Self> {
+        let mut phys = PhysicsSystem::new(1000.); // 60hz
+        let gravity = Vec3::new(0., -9.81, 0.);
+        let params = PhysParams {
+            gravity: gravity.into(),
+            restitution: 0.1,
+            k_friction: 0.6,
+            rest_speed: 3.0 * gravity.length() * phys.fixed_dt(),
+        };
+        let body = SoftBody::new_cube(BodyParams {
+            mass: 1.0,
+            size: 3.0,
+            ppa: POINT_COUNT,
+            k_struct: 30.,
+            k_shear: 15.,
+            damping: 0.2,
+        }, Vec3::new(0., 19., 0.));
+
+        phys.add_static_collider(Box::new(Plane {
+            point: Vec3::new(0., 0.3, 0.),
+            normal: Vec3::Y,
+        }));
+        phys.add_body(body);
+        let transparent_pass = TransparentPass::new::<VertexPbr, &str>(renderer, "JellyFFD", "deferred/jelly/JellyFFD.hlsl", "deferred/jelly/JellyFFDPrepass.hlsl")?;
+
         let mut batch = renderer.gd.begin_upload()?;
+
+        let sb_renderer = SoftBodyRenderer::new(Vec3::new(0., 0., 0.), 0, &mut batch, transparent_pass)?;
 
         let mut materials = Vec::new();
         let scene = load_assimp_scene::<VertexPbr, _>(
@@ -104,9 +137,12 @@ impl Scene for JellyScene {
             blit,
             empty_pso,
 
+            physics: phys,
+            phys_params: params,
+            sb_renderer,
+
             taa,
             sky_velocity,
-            jelly_pass,
             scene,
 
             shadows,
@@ -121,7 +157,6 @@ impl Scene for JellyScene {
         let mut objects: Vec<ObjectData> = Vec::new();
         let mut draws: Vec<(&Mesh, PipelineId)> = Vec::new();
         let pass = if opts.use_wireframe { self.gbuffer.gpass_wireframe } else { self.gbuffer.gpass };
-
 
         // sponza
         let frustum = renderer.cam.frustum();
@@ -177,10 +212,10 @@ impl Scene for JellyScene {
         let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, None, 0.12, &self.gbuffer, graph, opts)?;
 
         // jelly TODO
-        // self.blit.add_transforming_blit(&renderer, self.gbuffer.scene_color, self.jelly_pass.target_tex(), graph)?;
-        // let jelly_tex = self.jelly_pass.add_pass(self.lighting.irradiance_tex(), &main_light, &self.sphere, &sphere_obj, renderer, &self.gbuffer, graph)?;
+        self.blit.add_transforming_blit(&renderer, self.gbuffer.scene_color, self.sb_renderer.transparents_pass().target_tex(), graph)?;
+        let jelly_tex = self.sb_renderer.add_pass(self.lighting.irradiance_tex(), &main_light, &self.physics, renderer, &self.gbuffer, graph)?;
 
-        let scene_color = self.taa.add_pass(self.gbuffer.scene_color, &self.gbuffer, renderer, graph)?;
+        let scene_color = self.taa.add_pass(jelly_tex, &self.gbuffer, renderer, graph)?;
 
         // bloom
         let bloom = self.bloom.add_pass(BloomProperties {
@@ -210,6 +245,7 @@ impl Scene for JellyScene {
     }
 
     fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time) -> anyhow::Result<()> {
+        self.physics.update(&self.phys_params, time);
         Ok(())
     }
 }

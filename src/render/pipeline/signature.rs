@@ -24,6 +24,7 @@ impl RootSignature {
     pub const VB: u32 = Self::LIGHTS_DATA; // t3, reusing these
     pub const MESHLETS: u32 = Self::TLAS; // t4
     pub const BUFFERS: u32 = 14; // t0 space4 - ib/vb
+    pub const FFD_DATA: u32 = 15; // b3 - root cbv for FFD data
 
     pub fn new(dev: &ID3D12Device) -> anyhow::Result<Self> {
         let tex2d_range = D3D12_DESCRIPTOR_RANGE {
@@ -245,7 +246,18 @@ impl RootSignature {
                     }
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
-            }
+            },
+            // b3 - ffd data
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_CBV,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    Descriptor: D3D12_ROOT_DESCRIPTOR {
+                        ShaderRegister: 3,
+                        RegisterSpace: 0,
+                    },
+                },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+            },
         ];
 
         let samplers = [
@@ -338,6 +350,10 @@ impl RootSignature {
             cmd.SetGraphicsRootShaderResourceView(Self::VB, vb);
             cmd.SetGraphicsRootShaderResourceView(Self::MESHLETS, meshlets);
         }
+    }
+
+    pub fn set_ffd(&self, cmd: &ID3D12GraphicsCommandList, ffd: u64) {
+        unsafe { cmd.SetGraphicsRootConstantBufferView(Self::FFD_DATA, ffd) }
     }
 
     pub fn set_compute_lights(&self, cmd: &ID3D12GraphicsCommandList, lights_va: u64) {

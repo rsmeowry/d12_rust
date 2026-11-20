@@ -38,6 +38,12 @@ vertex_struct!(VertexSmooth {
     normal: [i16; 2] as NORMAL; // octahedral encoding
 });
 
+vertex_struct!(VertexFfd {
+    stu: [f32; 3] as POSITION;
+    norm: [f32; 3] as NORMAL;
+    uv: [f32; 2] as TEXCOORD;
+});
+
 pub fn aabb_from_vertices3(vertices: &[Vertex3]) -> AABB {
     AABB::from_points(&vertices.iter().map(|it| Vec3::from(it.pos)).collect::<Vec<_>>())
 }

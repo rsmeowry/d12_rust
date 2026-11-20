@@ -1,0 +1,12 @@
+﻿{
+  "targets": [
+    {
+      "type": "fragment",
+      "entry": "frag"
+    },
+    {
+      "type": "vertex",
+      "entry": "vert"
+    }
+  ]
+}
