@@ -47,6 +47,10 @@ impl PhysicsSystem {
         self.bodies.get_mut(idx)
     }
 
+    pub fn get_collider(&mut self, idx: usize) -> Option<&mut Box<dyn Collider>> {
+        self.static_colliders.get_mut(idx)
+    }
+
     pub fn add_body(&mut self, body: SoftBody) {
         self.bodies.push(body);
     }

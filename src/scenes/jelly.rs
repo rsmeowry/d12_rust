@@ -1,16 +1,23 @@
 ﻿use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
+use crate::input::InputDevice;
+use crate::physics::body::meshing::{SoftBodyRenderer, POINT_COUNT};
+use crate::physics::body::{BodyParams, SoftBody};
+use crate::physics::contact::{Plane, Sphere};
+use crate::physics::{PhysParams, PhysicsSystem};
 use crate::render::aa::temporal::TaaPass;
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
 use crate::render::deferred::post::{Blitter, PostProcessPass, PostProperties};
 use crate::render::deferred::sky_velocity::SkyVelocityPass;
+use crate::render::deferred::transparent::TransparentPass;
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
-use crate::render::lights::GpuLight;
+use crate::render::lights::{unit_sphere, GpuLight};
 use crate::render::mesh::{DrawTopology, Mesh};
+use crate::render::perf::frustum::AABB;
 use crate::render::pipeline::material::MaterialParams;
 use crate::render::pipeline::PipelineId;
 use crate::render::raytracing::gi::MAX_VPL_LEVELS;
@@ -20,20 +27,16 @@ use crate::scenes::Scene;
 use crate::time::Time;
 use egui::Ui;
 use egui_probe::{EguiProbe, Probe};
-use glam::Vec3;
+use glam::{Mat4, Quat, Vec3};
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
-use crate::input::InputDevice;
-use crate::physics::{PhysParams, PhysicsSystem};
-use crate::physics::body::meshing::{SoftBodyRenderer, POINT_COUNT};
-use crate::physics::body::{BodyParams, SoftBody};
-use crate::physics::contact::Plane;
-use crate::render::deferred::transparent::TransparentPass;
 
 #[derive(Debug)]
 pub struct JellyScene {
     gbuffer: GBuffer,
     empty_pso: PipelineId,
     scene: LoadedScene,
+    sphere_mesh: Mesh,
+    sphere_material: u32,
 
     materials_buf: ID3D12Resource,
     sky_velocity: SkyVelocityPass,
@@ -102,6 +105,10 @@ impl Scene for JellyScene {
             point: Vec3::new(0., 0.4, 0.),
             normal: Vec3::Y,
         }));
+        phys.add_static_collider(Box::new(Sphere {
+            point: Vec3::ZERO,
+            radius: 3.0,
+        }));
         phys.add_body(body);
 
         let transparent_pass = TransparentPass::new::<VertexPbr, &str>(renderer, "JellyFFD", "deferred/jelly/JellyFFD.hlsl", "deferred/jelly/JellyFFDPrepass.hlsl")?;
@@ -109,9 +116,18 @@ impl Scene for JellyScene {
 
         let mut batch = renderer.gd.begin_upload()?;
         let mut materials = Vec::new();
+        materials.push(MaterialParams::Pbr {
+            albedo_tex: renderer.white_tex().srv_ptr(),
+            normal_tex: renderer.flat_normal_tex().srv_ptr(),
+            metal_roughness_tex: renderer.white_tex().srv_ptr(),
+            occlusion_tex: renderer.white_tex().srv_ptr(),
+            base_color: Vec3::new(0.6, 0.6, 0.6),
+            metallic: 0.4,
+            roughness: 0.5,
+        }.to_gpu_material());
 
         let sb_renderer = SoftBodyRenderer::new(Some("assets/models/jelly_scene/jelly_frog.gltf"), Vec3::new(0., 0., 0.), 0, MaterialParams::Jelly {
-            density: 32.,
+            density: 1.6,
             refract_strength: 1.3,
             is_chroma: true,
             absorption: Vec3::new(0.3, 1.4, 0.8),
@@ -137,6 +153,8 @@ impl Scene for JellyScene {
             None,
             Some("bakes/jelly_scene.bke".into())
         )?;
+        let (sphere_vert, sphere_ind) = unit_sphere(16, 16, |pos, norm, tan, binorm, uv| VertexPbr::new(pos, norm, tan, binorm, uv));
+        let sphere_mesh = Mesh::new(&renderer.gd, &mut batch, &sphere_vert, &sphere_ind, DrawTopology::TriangleList, AABB { min: Vec3::NEG_ONE, max: Vec3::ONE }, false, false)?;
 
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "Sponza/MaterialBuffer")?;
 
@@ -171,6 +189,9 @@ impl Scene for JellyScene {
             sb_renderer,
             pending_phys_reset: false,
 
+            sphere_material: 0,
+            sphere_mesh,
+
             taa,
             sky_velocity,
             scene,
@@ -193,6 +214,19 @@ impl Scene for JellyScene {
         let (scene_obj, scene_draw) = self.scene.to_objects_and_draws();
         objects.extend_from_slice(&scene_obj);
         draws.extend(scene_draw.clone().into_iter().zip(std::iter::repeat(pass)));
+        let mut meshes = Vec::new();
+        meshes.extend_from_slice(&scene_draw);
+        meshes.push(&self.sphere_mesh);
+
+        objects.push(ObjectData {
+            model: Mat4::from_scale_rotation_translation(Vec3::splat(1.5), Quat::IDENTITY, Vec3::new(0., 4., 6. * (time.game_time() * 0.5).sin())),
+            prev_model: Mat4::from_scale_rotation_translation(Vec3::splat(1.5), Quat::IDENTITY, Vec3::new(0., 4., 6. * ((time.game_time() - time.delta_time()) * 0.5).sin())),
+            material_id: 0,
+            vb_srv: 0,
+            ib_srv: 0,
+            stride: 0,
+        });
+        draws.push((&self.sphere_mesh, pass));
 
         let objects_va = renderer.upload_objects(&objects)?;
         let materials_va = unsafe { self.materials_buf.GetGPUVirtualAddress() };
@@ -232,12 +266,12 @@ impl Scene for JellyScene {
         self.sky_velocity.add_pass(&self.gbuffer, renderer, graph)?;
 
         // shadowws (global and local)
-        let all_objects_va = renderer.upload_objects(&scene_obj)?;
+        let all_objects_va = renderer.upload_objects(&objects)?;
         let lambda = 0.6;
         let main_light = lights[0];
         self.shadows.update(lights[0], lambda, renderer);
-        let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &scene_obj, &scene_draw)?;
-        self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &scene_obj, &scene_draw, graph)?;
+        let shadow = self.shadows.add_global_shadows_pass(lambda, renderer, graph, &objects, &meshes)?;
+        self.shadows.add_local_shadows_pass(&mut lights, renderer, all_objects_va, &objects, &meshes, graph)?;
 
         let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, None, 0.12, &self.gbuffer, graph, opts)?;
 
@@ -273,10 +307,16 @@ impl Scene for JellyScene {
     }
 
     fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+        *self.physics.get_collider(1).unwrap() = Box::new(Sphere {
+            point: Vec3::new(0., 4., 6. * (time.game_time() * 0.5).sin()),
+            radius: 1.5,
+        });
+
         if self.pending_phys_reset {
             self.pending_phys_reset = false;
             *self.physics.get_body(0).unwrap() = SoftBody::new_cube(self.body_params, Vec3::new(0., 10., 0.));
         }
+
         self.physics.update(&self.phys_params, time, &renderer.cam, input);
         Ok(())
     }
