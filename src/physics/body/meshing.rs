@@ -62,7 +62,7 @@ impl SoftBodyRenderer {
 
     pub fn add_pass<'a>(&'a self, irradiance_tex: u32, main_light: &GpuLight, phys: &PhysicsSystem, rd: &'a Renderer, gbuf: &'a GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
         self.blitter.blit_to_tex(gbuf.scene_color, self.transparents.target_tex(), rd, graph)?;
-        
+
         let body: &SoftBody = &phys.bodies[self.body_idx];
 
         let mut points = [Vec4::ZERO; POINT_COUNT * POINT_COUNT * POINT_COUNT];

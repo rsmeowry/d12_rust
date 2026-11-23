@@ -12,6 +12,7 @@ struct VertexFFD {
 
 struct Varyings {
     float4 pos : SV_Position;
+    float3 normO : OBJ_NORMAL;
     float3 posW : WORLD_POS;
     float3 normalW : NORMAL;
     float2 uv : TEXCOORD;
@@ -74,6 +75,7 @@ Varyings vert(VertexFFD v) {
     float4 posW = mul(obj.model, float4(pos, 1.0));
 
     Varyings o;
+    o.normO = nrm;
     o.posW = posW.xyz;
     o.pos = mul(viewProj, posW);
     o.normalW = mul((float3x3) obj.model, nrm);

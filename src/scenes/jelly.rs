@@ -19,7 +19,7 @@ use crate::render::shadows::{ShadowMap, SHADOW_DISTANCE, SHADOW_EXTEND};
 use crate::scenes::Scene;
 use crate::time::Time;
 use egui::Ui;
-use egui_probe::EguiProbe;
+use egui_probe::{EguiProbe, Probe};
 use glam::Vec3;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 use crate::input::InputDevice;
@@ -40,6 +40,8 @@ pub struct JellyScene {
     taa: TaaPass,
 
     phys_params: PhysParams,
+    body_params: BodyParams,
+    pending_phys_reset: bool,
     physics: PhysicsSystem,
     sb_renderer: SoftBodyRenderer,
 
@@ -52,6 +54,12 @@ pub struct JellyScene {
 
 impl Scene for JellyScene {
     fn ui(&mut self, ui: &mut Ui) -> anyhow::Result<()> {
+        ui.label("Physics params");
+        Probe::new(&mut self.phys_params).show(ui);
+        ui.spacing();
+        ui.label("Body params (needs reset)");
+        Probe::new(&mut self.body_params).show(ui);
+
         if ui.button("Lock bottom face").clicked() {
             let body = self.physics.get_body(0).expect("oops");
             let p_count = body.particles.len() as f32;
@@ -64,6 +72,8 @@ impl Scene for JellyScene {
                 }
             }
         }
+
+        self.pending_phys_reset = ui.button("Full body reset").clicked();
 
         Ok(())
     }
@@ -78,17 +88,18 @@ impl Scene for JellyScene {
             rest_speed: 3.0 * gravity.length() * phys.fixed_dt(),
             air_drag: 0.02
         };
-        let body = SoftBody::new_cube(BodyParams {
+        let body_params = BodyParams {
             mass: 1.5,
             size: 3.0,
             ppa: POINT_COUNT,
             k_struct: 150.,
             k_shear: 75.,
             damping: 0.5,
-        }, Vec3::new(0., 19., 0.));
+        };
+        let body = SoftBody::new_cube(body_params, Vec3::new(0., 19., 0.));
 
         phys.add_static_collider(Box::new(Plane {
-            point: Vec3::new(0., 0.3, 0.),
+            point: Vec3::new(0., 0.4, 0.),
             normal: Vec3::Y,
         }));
         phys.add_body(body);
@@ -101,8 +112,8 @@ impl Scene for JellyScene {
 
         let sb_renderer = SoftBodyRenderer::new(Some("assets/models/jelly_scene/jelly_frog.gltf"), Vec3::new(0., 0., 0.), 0, MaterialParams::Jelly {
             density: 32.,
-            refract_strength: 0.4,
-            is_chroma: false,
+            refract_strength: 1.3,
+            is_chroma: true,
             absorption: Vec3::new(0.3, 1.4, 0.8),
             jelly_color_a: Vec3::new(0.9, 0.4, 0.6),
             jelly_color_b: Vec3::new(0.9, 0.6, 0.2),
@@ -156,7 +167,9 @@ impl Scene for JellyScene {
 
             physics: phys,
             phys_params: params,
+            body_params,
             sb_renderer,
+            pending_phys_reset: false,
 
             taa,
             sky_velocity,
@@ -260,6 +273,10 @@ impl Scene for JellyScene {
     }
 
     fn update<'a>(&'a mut self, renderer: &'a mut Renderer, time: &Time, input: &InputDevice) -> anyhow::Result<()> {
+        if self.pending_phys_reset {
+            self.pending_phys_reset = false;
+            *self.physics.get_body(0).unwrap() = SoftBody::new_cube(self.body_params, Vec3::new(0., 10., 0.));
+        }
         self.physics.update(&self.phys_params, time, &renderer.cam, input);
         Ok(())
     }

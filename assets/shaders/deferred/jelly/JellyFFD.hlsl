@@ -39,6 +39,32 @@ struct JellyMaterial {
 
 StructuredBuffer<JellyMaterial> g_Materials : register(t2);
 
+// https://gist.github.com/mairod/a75e7b44f68110e1576d77419d608786
+float3 HueShift(float3 color, float hueAdjust){
+    const float3 kRGBToYPrime = float3 (0.299, 0.587, 0.114);
+    const float3 kRGBToI      = float3 (0.596, -0.275, -0.321);
+    const float3 kRGBToQ      = float3 (0.212, -0.523, 0.311);
+
+    const float3 kYIQToR      = float3 (1.0, 0.956, 0.621);
+    const float3 kYIQToG      = float3 (1.0, -0.272, -0.647);
+    const float3 kYIQToB      = float3 (1.0, -1.107, 1.704);
+
+    float   YPrime  = dot   (color, kRGBToYPrime);
+    float   I       = dot   (color, kRGBToI);
+    float   Q       = dot   (color, kRGBToQ);
+    float   hue     = atan2 (Q, I);
+    float   chroma  = sqrt  (I * I + Q * Q);
+
+    hue += hueAdjust;
+
+    Q = chroma * sin (hue);
+    I = chroma * cos (hue);
+
+    float3    yIQ   = float3 (YPrime, I, Q);
+
+    return float3( dot (yIQ, kYIQToR), dot (yIQ, kYIQToG), dot (yIQ, kYIQToB) );
+}
+
 float FindBackfaceDistance(uint2 pixel, float frontDistance)
 {
     for (uint layer = 0; layer < MAX_BACKFACE_LAYERS; ++layer)
@@ -105,6 +131,10 @@ float4 frag(Varyings i): SV_Target {
     float3 spec = pow(saturate(dot(N, H)), 128.0) * mat.specColor;
 
     float3 col = transmitted + inscatter + F * irradiance + spec;
+
+    if(mat.isChroma != 0) {
+        col = HueShift(col, dot(i.posW.x, i.posW.y) * 0.2 + time);
+    }
 
     return float4(col, 1);
 }
