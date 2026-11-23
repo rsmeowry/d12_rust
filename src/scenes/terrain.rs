@@ -3,7 +3,7 @@ use crate::app::RenderOpts;
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::deferred::pbr_lighting::{sun_transmittance, AtmosphereProps, PbrLightingPass};
-use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::post::{Blitter, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
@@ -29,7 +29,7 @@ pub struct TerrainScene {
     bloom: BloomPass,
     lighting: PbrLightingPass,
     post: PostProcessPass,
-    blit: BlitPass
+    blit: Blitter
 }
 
 impl Scene for TerrainScene {
@@ -55,7 +55,7 @@ impl Scene for TerrainScene {
         lighting.save_local_shadows(&shadows);
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
-        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let blit = Blitter::new(renderer)?;
 
         let terrain = Terrain::new(renderer, "assets/textures/terrain/terrain", 16, 0.8, 120.)?;
 
@@ -117,7 +117,7 @@ impl Scene for TerrainScene {
             ..Default::default()
         }, self.gbuffer.scene_color, renderer, graph)?;
         self.post.add_pass(post_props, None, Some(bloom), renderer, &self.gbuffer, graph)?;
-        self.blit.add_pass(renderer, graph)?;
+        self.blit.blit_to_screen(false, self.post.target_tex(), renderer, graph)?;
 
         Ok(())
     }

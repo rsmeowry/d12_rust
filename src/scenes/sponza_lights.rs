@@ -6,7 +6,7 @@ use crate::render::aa::AntiAliasing;
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
-use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::post::{Blitter, PostProcessPass, PostProperties};
 use crate::render::deferred::sky_velocity::SkyVelocityPass;
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
@@ -56,7 +56,7 @@ pub struct SponzaWithLights {
     bloom: BloomPass,
     lighting: PbrLightingPass,
     post: PostProcessPass,
-    blit: BlitPass,
+    blit: Blitter,
     debug_lines: Vec<String>,
     should_rebake: bool,
     should_dump_gi: bool,
@@ -155,7 +155,7 @@ impl Scene for SponzaWithLights {
         let sky_velocity = SkyVelocityPass::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
-        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let blit = Blitter::new(renderer)?;
         let rt_shadows = if renderer.gd.is_rt_supported { Some(RtShadowsPass::new(1, 0.27, renderer)?) } else { None };
         let rt_gi_bakery = if renderer.gd.is_rt_supported { Some(RtGiBakeryPass::new(8192, renderer)?) } else { None };
 
@@ -366,7 +366,7 @@ impl Scene for SponzaWithLights {
             ..Default::default()
         };
         self.post.add_pass(post_props, Some(scene_color), Some(bloom), renderer, &self.gbuffer, graph)?;
-        self.blit.add_pass(renderer, graph)?;
+        self.blit.blit_to_screen(false, self.post.target_tex(), renderer, graph)?;
 
         Ok(())
     }

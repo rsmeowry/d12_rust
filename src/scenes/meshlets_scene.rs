@@ -3,7 +3,7 @@ use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
-use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::post::{Blitter, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
@@ -39,7 +39,7 @@ pub struct MeshletsScene {
     fsr_pass: Fsr2Pass,
     lighting: PbrLightingPass,
     post: PostProcessPass,
-    blit: BlitPass,
+    blit: Blitter,
 }
 
 impl Scene for MeshletsScene {
@@ -87,7 +87,7 @@ impl Scene for MeshletsScene {
         let gbuffer = renderer.build_gbuffer::<VertexPbr>("mesh/GPassMeshlets.hlsl", DrawTopology::TriangleList)?;
 
         let post = PostProcessPass::new(renderer)?;
-        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let blit = Blitter::new(renderer)?;
         let rt_shadows = RtShadowsPass::new(1, 0.3, renderer)?;
         let fsr = Fsr2Pass::new(renderer)?;
         let sky_velocity = SkyVelocityPass::new(renderer)?;
@@ -209,7 +209,7 @@ impl Scene for MeshletsScene {
             ..Default::default()
         };
         self.post.add_pass(post_props, Some(scene_color), None, renderer, &self.gbuffer, graph)?;
-        self.blit.add_pass(renderer, graph)?;
+        self.blit.blit_to_screen(false, self.post.target_tex(), renderer, graph)?;
 
         Ok(())
     }

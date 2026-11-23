@@ -2,7 +2,7 @@
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::Vertex3;
 use crate::render::deferred::lighting::PhongLightingPass;
-use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::post::{Blitter, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
@@ -34,7 +34,7 @@ pub struct CullingScene {
     culler: Culler,
     lighting: PhongLightingPass,
     post: PostProcessPass,
-    blit: BlitPass
+    blit: Blitter
 }
 
 const MAX_LOD_LEVEL: u32 = 3;
@@ -89,7 +89,7 @@ impl Scene for CullingScene {
 
 
         let post = PostProcessPass::new(renderer)?;
-        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let blit = Blitter::new(renderer)?;
 
         let meshes = vec![mesh; 10000];
         let culler = Culler::new(&objects, &meshes);
@@ -197,7 +197,7 @@ impl Scene for CullingScene {
 
         self.lighting.add_pass(lights, renderer, None, &self.gbuffer, &opts, graph)?;
         self.post.add_pass(post_props, None, None, renderer, &self.gbuffer, graph)?;
-        self.blit.add_pass(renderer, graph)?;
+        self.blit.blit_to_screen(false, self.post.target_tex(), renderer, graph)?;
 
         Ok(())
     }

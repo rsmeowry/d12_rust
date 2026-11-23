@@ -5,13 +5,14 @@ use crate::physics::body::SoftBody;
 use crate::physics::PhysicsSystem;
 use crate::render::builtin::VertexFfd;
 use crate::render::deferred::GBuffer;
+use crate::render::deferred::post::Blitter;
 use crate::render::deferred::transparent::TransparentPass;
 use crate::render::graph::FrameGraph;
 use crate::render::graph::res::ResId;
 use crate::render::lights::GpuLight;
 use crate::render::mesh::{DrawTopology, Mesh};
 use crate::render::perf::frustum::AABB;
-use crate::render::pipeline::material::GpuMaterial;
+use crate::render::pipeline::material::{GpuMaterial, MaterialParams};
 use crate::render::renderer::{ObjectData, Renderer};
 use crate::wrappers::graphics::MappedUploadBuffer;
 use crate::wrappers::graphics::batching::UploadBatch;
@@ -22,29 +23,33 @@ pub const POINT_COUNT: usize = 4;
 pub struct SoftBodyRenderer {
     body_idx: usize,
     transparents: TransparentPass,
+    blitter: Blitter,
     body_mesh: Mesh,
     body_obj: ObjectData,
     buffer: MappedUploadBuffer<PointsBuffer>,
 }
 
 impl SoftBodyRenderer {
-    pub fn new(mesh_path: Option<&str>, position: Vec3, body_idx: usize, batch: &mut UploadBatch, rd: &Renderer, pass: TransparentPass) -> anyhow::Result<Self> {
+    pub fn new(mesh_path: Option<&str>, position: Vec3, body_idx: usize, material: MaterialParams, materials: &mut Vec<GpuMaterial>, batch: &mut UploadBatch, rd: &Renderer, blitter: Blitter, pass: TransparentPass) -> anyhow::Result<Self> {
         let buffer = MappedUploadBuffer::<PointsBuffer>::new(&batch.gd())?;
-        let (vertices, indices) = build_cube_mesh(POINT_COUNT as u32);
+        materials.push(material.to_gpu_material());
+        let mat_id = materials.len() as u32 - 1;
         let (body_mesh, body_obj) = if let Some(mesh_path) = mesh_path {
             let mut mats = vec![];
             let loaded = load_assimp_scene::<VertexFfd, &str>(rd, batch, mesh_path, &mut mats, LoadTex::empty(), DrawTopology::TriangleList, false, LodCount::NoLods, |_, _| GpuMaterial::zeroed(), Some(Box::new(bind_single_to_lattice)), None)?;
             let (mesh, model, _) = loaded.into_single_mesh();
-            let mesh_obj = ObjectData::new(Mat4::from_translation(position) * model, 0, &mesh);
+            let mesh_obj = ObjectData::new(Mat4::from_translation(position) * model, mat_id, &mesh);
             (mesh, mesh_obj)
         } else {
+            let (vertices, indices) = build_cube_mesh(POINT_COUNT as u32);
             let mesh = Mesh::new(batch.gd(), batch, &vertices, &indices, DrawTopology::TriangleList, AABB::from_points(&[Vec3::NEG_ONE, Vec3::ONE]), false, false)?;
-            let mesh_obj = ObjectData::new(Mat4::from_translation(position), 0, &mesh);
+            let mesh_obj = ObjectData::new(Mat4::from_translation(position), mat_id, &mesh);
             (mesh, mesh_obj)
         };
         Ok(Self {
             body_idx,
             transparents: pass,
+            blitter,
             buffer,
             body_obj,
             body_mesh,
@@ -56,6 +61,8 @@ impl SoftBodyRenderer {
     }
 
     pub fn add_pass<'a>(&'a self, irradiance_tex: u32, main_light: &GpuLight, phys: &PhysicsSystem, rd: &'a Renderer, gbuf: &'a GBuffer, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
+        self.blitter.blit_to_tex(gbuf.scene_color, self.transparents.target_tex(), rd, graph)?;
+        
         let body: &SoftBody = &phys.bodies[self.body_idx];
 
         let mut points = [Vec4::ZERO; POINT_COUNT * POINT_COUNT * POINT_COUNT];

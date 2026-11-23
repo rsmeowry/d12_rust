@@ -2,7 +2,7 @@
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::deferred::pbr_lighting::{sun_transmittance, AtmosphereProps, PbrLightingPass};
-use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::post::{Blitter, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
@@ -57,7 +57,7 @@ pub struct VoxelsScene {
     bloom: BloomPass,
     lighting: PbrLightingPass,
     post: PostProcessPass,
-    blit: BlitPass
+    blit: Blitter
 }
 
 impl Scene for VoxelsScene {
@@ -119,7 +119,7 @@ impl Scene for VoxelsScene {
         let materials_buf = renderer.gd.create_default_buffer(&mut batch, bytemuck::cast_slice(&materials), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, "MaterialBuffer")?;
         batch.finish()?;
 
-        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let blit = Blitter::new(renderer)?;
         let fsr_pass = Fsr2Pass::new(renderer)?;
 
         let world = VoxelWorld::new(Arc::new(NaiveBoxes), GroundGenStrategy::new(0x63232), renderer, vec![0, 1, 2, 3, 4, 5, 6, 7], unsafe { materials_buf.GetGPUVirtualAddress() })?;
@@ -203,7 +203,7 @@ impl Scene for VoxelsScene {
             ..Default::default()
         };
         self.post.add_pass(post_props, Some(scene_color), Some(bloom), renderer, &self.gbuffer, graph)?;
-        self.blit.add_pass(renderer, graph)?;
+        self.blit.blit_to_screen(false, self.post.target_tex(), renderer, graph)?;
 
         Ok(())
     }

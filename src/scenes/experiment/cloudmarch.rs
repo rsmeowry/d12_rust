@@ -1,5 +1,5 @@
 ﻿use crate::app::RenderOpts;
-use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::post::{Blitter, PostProcessPass, PostProperties};
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
 use crate::render::lights::GpuLight;
@@ -23,7 +23,7 @@ pub struct CloudmarchScene {
     noise_tex: Texture,
     cloudmarch_pipeline: PipelineId,
     post: PostProcessPass,
-    blit: BlitPass,
+    blit: Blitter,
     bloom: BloomPass,
 }
 
@@ -44,7 +44,7 @@ impl Scene for CloudmarchScene {
         })?;
         let scene_color = renderer.gr.color(&renderer.gd, "SceneColor", SCENE_FORMAT, Vec4::ZERO, ResSize::FitScreen)?;
         let post = PostProcessPass::new(renderer)?;
-        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let blit = Blitter::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
         let mut batch = renderer.gd.begin_upload()?;
         let noise_tex = Texture::from_rgba8_3d(&mut batch, 64, 64, 64, &std::fs::read("assets/textures/noise/noise_3d_64.raw")?, "Noise3D")?;
@@ -108,7 +108,7 @@ impl Scene for CloudmarchScene {
             post_props, Some(tex),
             renderer, self.scene_color, self.scene_color, self.scene_color, self.scene_color, self.scene_color, graph)?;
 
-        self.blit.add_pass(renderer, graph)?;
+        self.blit.blit_to_screen(false, self.post.target_tex(), renderer, graph)?;
 
         Ok(())
     }

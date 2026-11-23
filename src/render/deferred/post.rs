@@ -13,7 +13,7 @@ use windows::Win32::Graphics::Direct3D12::D3D12_CULL_MODE_NONE;
 #[derive(Debug)]
 pub struct PostProcessPass {
     post: PipelineId,
-    post_intermediate: ResId
+    target: ResId
 }
 
 impl PostProcessPass {
@@ -32,12 +32,12 @@ impl PostProcessPass {
 
         Ok(Self {
             post,
-            post_intermediate
+            target: post_intermediate
         })
     }
 
-    pub fn output_tex(&self) -> ResId {
-        self.post_intermediate
+    pub fn target_tex(&self) -> ResId {
+        self.target
     }
 
     pub fn add_generic_pass<'a>(&'a self, mut props: PostProperties, bloom: Option<ResId>, renderer: &'a Renderer,
@@ -65,7 +65,7 @@ impl PostProcessPass {
         if let Some(bloom) = bloom {
             pass = pass.reads(bloom);
         }
-        pass.writes(self.post_intermediate, ResLoad::Clear)
+        pass.writes(self.target, ResLoad::Clear)
             .exec(move |ctx| {
                 pipelines.get(self.post).bind(ctx.cmd);
                 rs.set_pass(ctx.cmd, post_va);
@@ -124,15 +124,13 @@ impl Default for PostProperties {
     }
 }
 
-#[derive(Debug)]
-pub struct BlitPass {
+#[derive(Debug, Clone)]
+pub struct Blitter {
     blit: PipelineId,
-    source: ResId,
-    transform_hdr: bool
 }
 
-impl BlitPass {
-    pub fn new(source: ResId, transform_hdr: bool, renderer: &mut Renderer) -> anyhow::Result<Self> {
+impl Blitter {
+    pub fn new(renderer: &mut Renderer) -> anyhow::Result<Self> {
         let blit = renderer.create_pipeline(PipelineDesc {
             rts: vec![GraphicsDevice::BB_RTV_FORMAT],
             name: "Blit",
@@ -144,12 +142,10 @@ impl BlitPass {
         })?;
         Ok(Self {
             blit,
-            source,
-            transform_hdr
         })
     }
 
-    pub fn add_transforming_blit<'a>(&'a self, renderer: &'a Renderer, from: ResId, to: ResId, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
+    pub fn blit_to_tex<'a>(&'a self, from: ResId, to: ResId, renderer: &'a Renderer, graph: &mut FrameGraph<'a>) -> anyhow::Result<ResId> {
         let gr = &renderer.gr;
 
         let blit_va = renderer.upload_cbuffer(&BlitProperties {
@@ -177,19 +173,19 @@ impl BlitPass {
         Ok(to)
     }
 
-    pub fn add_pass<'a>(&'a self, renderer: &'a Renderer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
+    pub fn blit_to_screen<'a>(&'a self, transform_hdr: bool, from: ResId, renderer: &'a Renderer, graph: &mut FrameGraph<'a>) -> anyhow::Result<()> {
         let gr = &renderer.gr;
 
         let blit_va = renderer.upload_cbuffer(&BlitProperties {
-            source_tex: gr.get(self.source)?.srv_ptr(),
-            transform_hdr: self.transform_hdr as u32,
+            source_tex: gr.get(from)?.srv_ptr(),
+            transform_hdr: transform_hdr as u32,
         })?;
 
         let rs = renderer.rs();
         let pipelines = renderer.pipelines();
 
         graph.add_pass("Blit")
-            .reads(self.source)
+            .reads(from)
             .uses_backbuffer()
             .exec(move |ctx| {
                 pipelines.get(self.blit).bind(ctx.cmd);

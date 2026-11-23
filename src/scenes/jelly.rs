@@ -4,7 +4,7 @@ use crate::render::aa::temporal::TaaPass;
 use crate::render::builtin::VertexPbr;
 use crate::render::deferred::bloom::{BloomPass, BloomProperties};
 use crate::render::deferred::pbr_lighting::PbrLightingPass;
-use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::post::{Blitter, PostProcessPass, PostProperties};
 use crate::render::deferred::sky_velocity::SkyVelocityPass;
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
@@ -47,7 +47,7 @@ pub struct JellyScene {
     bloom: BloomPass,
     lighting: PbrLightingPass,
     post: PostProcessPass,
-    blit: BlitPass,
+    blit: Blitter,
 }
 
 impl Scene for JellyScene {
@@ -92,13 +92,23 @@ impl Scene for JellyScene {
             normal: Vec3::Y,
         }));
         phys.add_body(body);
+
         let transparent_pass = TransparentPass::new::<VertexPbr, &str>(renderer, "JellyFFD", "deferred/jelly/JellyFFD.hlsl", "deferred/jelly/JellyFFDPrepass.hlsl")?;
+        let blit = Blitter::new(renderer)?;
 
         let mut batch = renderer.gd.begin_upload()?;
-
-        let sb_renderer = SoftBodyRenderer::new(Some("assets/models/jelly_scene/jelly_frog.gltf"), Vec3::new(0., 0., 0.), 0, &mut batch, renderer, transparent_pass)?;
-
         let mut materials = Vec::new();
+
+        let sb_renderer = SoftBodyRenderer::new(Some("assets/models/jelly_scene/jelly_frog.gltf"), Vec3::new(0., 0., 0.), 0, MaterialParams::Jelly {
+            density: 32.,
+            refract_strength: 0.4,
+            is_chroma: false,
+            absorption: Vec3::new(0.3, 1.4, 0.8),
+            jelly_color_a: Vec3::new(0.9, 0.4, 0.6),
+            jelly_color_b: Vec3::new(0.9, 0.6, 0.2),
+            spec_color: Vec3::new(0.8, 0.4, 0.1),
+        }, &mut materials, &mut batch, renderer, blit.clone(), transparent_pass)?;
+
         let scene = load_assimp_scene::<VertexPbr, _>(
             &renderer, &mut batch, "assets/models/jelly_scene/jelly_scene.gltf",
             &mut materials,
@@ -138,7 +148,6 @@ impl Scene for JellyScene {
         let sky_velocity = SkyVelocityPass::new(renderer)?;
         let bloom = BloomPass::new(renderer)?;
         let post = PostProcessPass::new(renderer)?;
-        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
 
         Ok(Self {
             gbuffer,
@@ -219,8 +228,6 @@ impl Scene for JellyScene {
 
         let (_lights_va, _light_count) = self.lighting.add_pass(None, lights, renderer, Some(shadow), None, None, 0.12, &self.gbuffer, graph, opts)?;
 
-        // jelly TODO
-        self.blit.add_transforming_blit(&renderer, self.gbuffer.scene_color, self.sb_renderer.transparents_pass().target_tex(), graph)?;
         let jelly_tex = self.sb_renderer.add_pass(self.lighting.irradiance_tex(), &main_light, &self.physics, renderer, &self.gbuffer, graph)?;
 
         let scene_color = self.taa.add_pass(jelly_tex, &self.gbuffer, renderer, graph)?;
@@ -247,7 +254,7 @@ impl Scene for JellyScene {
             ..Default::default()
         };
         self.post.add_pass(post_props, Some(scene_color), Some(bloom), renderer, &self.gbuffer, graph)?;
-        self.blit.add_pass(renderer, graph)?;
+        self.blit.blit_to_screen(false, self.post.target_tex(), renderer, graph)?;
 
         Ok(())
     }

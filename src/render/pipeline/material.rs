@@ -57,6 +57,15 @@ pub enum MaterialParams {
         roughness_tex: u32,
         metallic: f32,
         roughness: f32,
+    },
+    Jelly {
+        density: f32,
+        refract_strength: f32,
+        is_chroma: bool,
+        absorption: Vec3,
+        jelly_color_a: Vec3,
+        jelly_color_b: Vec3,
+        spec_color: Vec3,
     }
 }
 
@@ -122,6 +131,17 @@ impl MaterialParams {
                         0., 0., 0., 0.,            
                         0., 0., 0., 0.,            
                     ],
+                }
+            }
+            MaterialParams::Jelly { density, refract_strength, is_chroma, absorption, jelly_color_a, jelly_color_b, spec_color } => {
+                GpuMaterial {
+                    textures: [0; 8],
+                    unique_params: [
+                        spec_color.x, spec_color.y, spec_color.z, 0.,
+                        absorption.x, absorption.y, absorption.z, density,
+                        jelly_color_a.x, jelly_color_a.y, jelly_color_a.z, refract_strength,
+                        jelly_color_b.x, jelly_color_b.y, jelly_color_b.z, (is_chroma as u32) as f32,
+                    ]
                 }
             }
         }

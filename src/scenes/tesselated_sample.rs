@@ -2,7 +2,7 @@
 use crate::app::RenderOpts;
 use crate::assets::{load_assimp_scene, LoadTex, LoadedScene, LodCount};
 use crate::render::builtin::VertexTess;
-use crate::render::deferred::post::{BlitPass, PostProcessPass, PostProperties};
+use crate::render::deferred::post::{Blitter, PostProcessPass, PostProperties};
 use crate::render::deferred::GBuffer;
 use crate::render::graph::pass::ResLoad;
 use crate::render::graph::FrameGraph;
@@ -29,7 +29,7 @@ pub struct TesselatedSample {
     _displacement: Texture,
     lighting: PhongLightingPass,
     post: PostProcessPass,
-    blit: BlitPass,
+    blit: Blitter,
 }
 
 impl Scene for TesselatedSample {
@@ -72,7 +72,7 @@ impl Scene for TesselatedSample {
         let gbuffer = renderer.build_gbuffer::<VertexTess>("deferred/GPassTess.hlsl", DrawTopology::PatchList3)?;
 
         let post = PostProcessPass::new(renderer)?;
-        let blit = BlitPass::new(post.output_tex(), false, renderer)?;
+        let blit = Blitter::new(renderer)?;
 
         Ok(Self {
             gbuffer,
@@ -149,7 +149,7 @@ impl Scene for TesselatedSample {
 
         self.lighting.add_pass(lights, renderer, None, &self.gbuffer, opts, graph)?;
         self.post.add_pass(post_props, None, None, renderer, &self.gbuffer, graph)?;
-        self.blit.add_pass(renderer, graph)?;
+        self.blit.blit_to_screen(false, self.post.target_tex(), renderer, graph)?;
 
         Ok(())
     }
